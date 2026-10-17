@@ -26,7 +26,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Web timeline (caregiver view) | Pending | |
 | Family read-only view | Pending | |
 | Doctor edits care plan (new version) | Pending | Role and permission in schema; no endpoint/view yet |
-| Patient view (own care plan, no reports) | Pending | Role and permission in schema; no endpoint/view yet |
+| Patient view (how I feel + I need help; no reports or alerts) | Pending | Role and permission in schema; no endpoint/view yet |
 | Cited natural-language query | Pending | |
 | Login with 6-digit WhatsApp code | Pending | |
 | Eval script and 20 cases | Pending | |

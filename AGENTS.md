@@ -60,7 +60,7 @@ Appetite, sleep, urination/diuresis, medication, mood, mobility, pain, incidents
 
 ## 5. Data model (design rules)
 
-Schema lives in `backend/app/models.py`. Entities: `person` (name, email, WhatsApp number = identity; "user" in the contract), `patient_access` (person + patient + role; "membership" in the contract, see section 6), `invite` (pending membership by phone or email), `login_code` (hashed 6-digit code, expiry, used flag), `patient`, `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient). Pending in code: `login_code`, `invite`, `patient_message`, `message`, and the `nurse` / `institution` roles; `magic_link` goes away with the 6-digit code login.
+Schema lives in `backend/app/models.py`. Entities: `person` (name, email, WhatsApp number = identity; "user" in the contract), `patient_access` (person + patient + role; "membership" in the contract, see section 6), `invite` (pending membership by WhatsApp number), `login_code` (hashed 6-digit code, expiry, used flag), `patient`, `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient). Pending in code: `login_code`, `invite`, `patient_message`, `message`, `magic_link` goes away with the 6-digit code login.
 
 Rules:
 - Structured data in Postgres; binaries (audio, images, documents) in object storage. `file` stores only the storage path and metadata.
@@ -84,7 +84,7 @@ One web app, same data, a view per role. Roles are per patient (`patient_access`
 
 The patient is the subject of the profile; optionally they also have their own login with the `patient` role. Dose text is written by people (caregiver at creation, doctor afterwards); code never computes or suggests doses.
 
-Auth: sign up with name, email and WhatsApp number -> the bot sends a **6-digit code** to that WhatsApp -> code entered on the web. Codes are single-use, expire in 10 minutes, are stored hashed and are rate-limited per number. No passwords. Outbound WhatsApp messages outside the 24h window need an approved authentication template (or, in the sandbox, the user must join first); verify with the provider's docs. Invited users get the role from their invite after their first login. Only caregivers can invite. Login and sign-up never reveal whether a phone or email is registered. The WhatsApp webhook verifies the provider signature before trusting the sender phone; corrections and reports take the author from the session or the verified sender, never from the request body.
+Auth: sign up with name, email and WhatsApp number -> the bot sends a **6-digit code** to that WhatsApp -> code entered on the web. Codes are single-use, expire in 10 minutes, are stored hashed and are rate-limited per number. No passwords. Outbound WhatsApp messages outside the 24h window need an approved authentication template (or, in the sandbox, the user must join first); verify with the provider's docs. Invited users get the role from their invite after their first login. Only caregivers can invite, by WhatsApp number only (email is not verified, so it never grants access). Email is contact info, not identity, and need not be unique. Login and sign-up never reveal whether a phone is registered. The WhatsApp webhook verifies the provider signature before trusting the sender phone; corrections and reports take the author from the session or the verified sender, never from the request body.
 
 ## 7. Safety rules (non-negotiable)
 
@@ -140,7 +140,7 @@ Endpoints (initial): `GET /patients/:id`, `GET /patients/:id/reports`, `POST /pa
 
 ## 10. Out of scope (do not build)
 
-Health-system / clinical-record integration, push notifications (alerts and help requests go out by WhatsApp message), passwords / OAuth / SSO, voice replies from the agent (text confirmation first; audio reply only if time remains Sunday), roles beyond the four in section 6, AI answers inside family <-> health team messages.
+Health-system / clinical-record integration, push notifications (alerts and help requests go out by WhatsApp message), passwords / OAuth / SSO, voice replies from the agent (text confirmation first; audio reply only if time remains Sunday), roles beyond the six in section 6 (caregiver, family, patient, doctor, nurse, institution), AI answers inside family <-> health team messages.
 
 **Priority order (scope was widened on Sat 13:45; the critical path still comes first):**
 1. Critical path: voice note or web report in -> verified record + alerts -> cited query, and the views that show it.

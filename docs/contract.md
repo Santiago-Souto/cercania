@@ -149,7 +149,7 @@ Creates a new version. Does not modify the old one. The author of the new versio
 
 Acknowledge immediately (HTTP 200), then process asynchronously. Dedupe by provider message id. Identify the caregiver by sender phone number. If the caregiver has several patients, ask "which patient?" before processing.
 
-Before anything else (including the ack), verify the provider signature on the raw request (`X-Twilio-Signature` for Twilio, `X-Hub-Signature-256` for Meta Cloud API) with `WHATSAPP_AUTH_TOKEN` from the environment, and check that the destination number is `WHATSAPP_FROM_NUMBER`. If either check fails, return `403` and process nothing. The sender phone is trusted only after this check.
+Before anything else (including the ack), verify the provider signature on the raw request (Twilio: `X-Twilio-Signature` with `WHATSAPP_AUTH_TOKEN`; Meta Cloud API: `X-Hub-Signature-256`, an HMAC-SHA256 of the raw body with `META_APP_SECRET`), both from the environment, and check that the destination number is `WHATSAPP_FROM_NUMBER`. If either check fails, return `403` and process nothing. The sender phone is trusted only after this check.
 
 ## Roles (fixed enum)
 
@@ -177,9 +177,9 @@ Both send a 6-digit code to the WhatsApp number and reply:
 { "status": "code_sent", "phone_last4": "0000", "expires_in_sec": 600, "resend_after_sec": 60 }
 ```
 
-Errors: `phone_invalid`, `too_many_requests`, `whatsapp_unreachable` (message tells the user to message the bot first).
+Errors: `phone_invalid`, `too_many_requests`. Neither is about whether the phone has an account.
 
-Anti-enumeration: these two endpoints must not reveal whether a phone or email is registered. `POST /auth/login` returns the same `code_sent` body for an unknown phone and sends nothing. `POST /auth/signup` for a phone that already has an account sends a normal login code instead of creating a second user. A conflicting email is reported only after the code is verified (`email_taken` from `POST /auth/verify`).
+Anti-enumeration: these two endpoints must not reveal whether a phone is registered. `POST /auth/login` returns the same `code_sent` body for an unknown phone and sends nothing. `POST /auth/signup` for a phone that already has an account sends a normal login code instead of creating a second user. If WhatsApp cannot deliver the code (e.g. the user has not messaged the bot yet), the response is still `code_sent`; the code screen always says "si no te llega, mandale \"hola\" al bot y pedí otro código". Email is contact info only: it is not verified, not unique, and never grants access, so there is no `email_taken`.
 
 ### `POST /auth/verify`
 
@@ -191,7 +191,7 @@ Anti-enumeration: these two endpoints must not reveal whether a phone or email i
 { "user": { "id": "usr_001", "name": "Ana Pérez (fictional)" }, "memberships": [ { "patient_id": "pat_001", "role": "caregiver" } ] }
 ```
 
-Codes are single-use, expire after `LOGIN_CODE_TTL_MINUTES` (default 10), are stored hashed, and lock after 5 wrong attempts. Errors: `code_invalid`, `code_expired`, `too_many_attempts`, `email_taken` (signup only: the email belongs to another account; the user is asked for a different one). Pending invites for that phone/email become memberships here.
+Codes are single-use, expire after `LOGIN_CODE_TTL_MINUTES` (default 10), are stored hashed, and lock after 5 wrong attempts. Errors: `code_invalid`, `code_expired`, `too_many_attempts`. Pending invites for the verified phone become memberships here. Invites are matched only on the phone proven by the code, never on email.
 
 ### `POST /auth/logout`
 
@@ -220,7 +220,7 @@ Patients the current user has a membership for, with what the list screen needs:
 }
 ```
 
-`missing_report` is computed by code (no report in the current shift window), never by the model.
+`missing_report` is computed by code (no report in the current shift window), never by the model. For memberships with role `patient`, `last_report_at`, `open_alerts`, `red_flag` and `missing_report` are `null`: the patient never sees reports or alerts about them.
 
 ### `POST /patients`
 
@@ -250,7 +250,7 @@ Returns the patient as in `GET /patients/{patient_id}`. The creator becomes `car
 { "contact": "+59899111111", "role": "family" }
 ```
 
-`contact` is a WhatsApp number or an email. Sends a WhatsApp/email invite; the membership is created when that person verifies a code (`POST /auth/verify`). Only `caregiver` memberships can invite (`403 forbidden` otherwise), matching `AGENTS.md` section 6. Health-team and family members cannot invite.
+`contact` is a WhatsApp number (E.164); emails are rejected with `phone_invalid` because email ownership is never verified. Sends a WhatsApp invite; the membership is created when that person verifies a code (`POST /auth/verify`). Only `caregiver` memberships can invite (`403 forbidden` otherwise), matching `AGENTS.md` section 6. Health-team and family members cannot invite.
 
 ## Reports from the web app
 
