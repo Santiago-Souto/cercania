@@ -56,7 +56,7 @@ export default async function PatientHome(props: PageProps<"/patients/[id]">) {
             </Avatar>
             <div>
               <CardTitle className="text-2xl font-bold">{patient.display_name}</CardTitle>
-              <CardDescription>Plan de cuidado</CardDescription>
+              <CardDescription>{patient.location ? `${patient.location} · ` : ""}Plan de cuidado</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="flex flex-col gap-2 text-sm">

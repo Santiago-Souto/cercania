@@ -23,12 +23,15 @@ export type CarePlan = {
 export type Patient = {
   id: string;
   display_name: string;
+  location?: string;
   care_plan: CarePlan;
 };
 
 export type ReportItem = {
   item: ChecklistItem;
   value: string | null;
+  /** Coarse category code uses to compare over time (e.g. appetite normal / low / none). Optional for display. */
+  level?: string | null;
   quote: string | null;
   quote_verified: boolean | null;
 };

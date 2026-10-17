@@ -16,6 +16,7 @@ import type {
 export const fakePatient: Patient = {
   id: "pat_001",
   display_name: "Rosa (ficticia)",
+  location: "Hab. 12",
   care_plan: {
     medications: [{ id: "med_002", name: "Medicación de ejemplo", dose: "según indicación", times: ["08:00", "20:00"] }],
     indications: ["Hidratación", "Asistir al caminar"],
@@ -28,13 +29,13 @@ export const fakeReports: Report[] = [
     id: "rep_123",
     version: 1,
     created_at: "2026-10-17T21:05:00-03:00",
-    caregiver: { id: "cg_001", display_name: "Ana (ficticia)" },
+    caregiver: { id: "usr_001", display_name: "Ana (ficticia)" },
     transcript:
       "Rosa casi no comió nada en la cena. La pastilla de las ocho se la tomó con agua. Fue hasta el comedor con el andador. No se quejó de nada. Todo tranquilo, sin novedades.",
     audio_url: "/media/rep_123.ogg",
     audio_duration_sec: 48,
     items: [
-      { item: "appetite", value: "Comió poco en la cena", quote: "casi no comió nada en la cena", quote_verified: true },
+      { item: "appetite", value: "Comió poco en la cena", level: "low", quote: "casi no comió nada en la cena", quote_verified: true },
       { item: "medication", value: "Tomó la dosis de las 20:00", quote: "la pastilla de las ocho se la tomó con agua", quote_verified: true },
       { item: "mobility", value: "Caminó con andador", quote: "fue hasta el comedor con el andador", quote_verified: true },
       { item: "mood", value: "Tranquila", quote: "estuvo tranquila toda la tarde", quote_verified: false },
@@ -63,7 +64,7 @@ export const fakeReports: Report[] = [
     id: "rep_122",
     version: 1,
     created_at: "2026-10-17T14:10:00-03:00",
-    caregiver: { id: "cg_002", display_name: "Luis (ficticio)" },
+    caregiver: { id: "usr_002", display_name: "Luis (ficticio)" },
     transcript: "A la mañana se resbaló en el baño, la ayudamos a levantarse y quedó acostada.",
     audio_url: "/media/rep_122.ogg",
     audio_duration_sec: 72,
@@ -86,7 +87,7 @@ export const fakeReports: Report[] = [
     id: "rep_121",
     version: 1,
     created_at: "2026-10-16T21:02:00-03:00",
-    caregiver: { id: "cg_001", display_name: "Ana (ficticia)" },
+    caregiver: { id: "usr_001", display_name: "Ana (ficticia)" },
     transcript: "Cenó poco, dejó la mitad del plato. Durmió bien.",
     audio_url: "/media/rep_121.ogg",
     audio_duration_sec: 55,
