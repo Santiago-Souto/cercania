@@ -242,7 +242,7 @@ Patients the current user has a membership for, with what the list screen needs:
 }
 ```
 
-Returns the patient as in `GET /patients/{patient_id}`. The creator becomes `caregiver` and sets the initial care plan; after that only a `doctor` can edit it. Doses are stored as entered; nothing is computed.
+`location` is optional free text and is `null` when not set. Returns the patient as in `GET /patients/{patient_id}`. The creator becomes `caregiver` and sets the initial care plan; after that only a `doctor` can edit it. Doses are stored as entered; nothing is computed.
 
 ### `GET /patients/{patient_id}/members`
 
@@ -336,4 +336,4 @@ Only `family` and health-team roles. Human-to-human: no model call. The UI alway
 
 ## Seed data
 
-`backend/app/seed.py` creates 2-3 fictional patients, each with a care plan, and fictional users for every role (one caregiver, one doctor, one nurse, one family member, the patient), plus a few days of history so that `change` alerts can be demonstrated. No real names or data.
+`backend/app/seed.py` creates 2-3 fictional patients, each with a care plan, and fictional users (caregivers, one doctor, one nurse, family members, and one patient login; no `institution` user yet), each with a fictional `@example.com` email, plus a few days of history so that `change` alerts can be demonstrated. No real names or data.
