@@ -1,0 +1,3 @@
+case_id,patient_id,transcript,expected_items,expected_missing_items,expected_alerts,split,notes
+c001,pat_001,"hoy comio poco en la cena y se quejo de la rodilla, no se que mas","appetite=ate little;pain=knee complaint","sleep;urination;mood;mobility;incidents;medication","omission:med_002","dev","planted omission: 08:00 med not mentioned"
+c002,pat_001,"todo bien, tomo la pastilla de las ocho, durmio bien, comio normal, de animo contenta","medication=taken 08:00;sleep=slept well;appetite=ate normally;mood=content","urination;mobility;pain;incidents","","dev","clean report, few missing items"
