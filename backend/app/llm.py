@@ -18,7 +18,9 @@ import os
 
 import httpx
 
-PROVIDERS = ("anthropic", "openai")
+# Env var holding the API key for each provider.
+API_KEY_ENV = {"anthropic": "ANTHROPIC_API_KEY", "openai": "LLM_API_KEY"}
+PROVIDERS = tuple(API_KEY_ENV)
 OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1"
 
 

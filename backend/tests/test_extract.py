@@ -13,7 +13,7 @@ from app.extract import (
     validate,
     verify_quote,
 )
-from app.llm import LLMError, parse_model
+from app.llm import API_KEY_ENV, LLMError, parse_model
 from app.models import ChecklistItem
 
 MEDS = [
@@ -210,8 +210,7 @@ def test_extract_raises_on_invalid_json_and_empty_transcript():
 # --- live call (needs the key for the configured EXTRACT_MODEL provider) -------------
 
 
-LIVE_KEY = {"anthropic": "ANTHROPIC_API_KEY", "openai": "LLM_API_KEY"}[
-    parse_model(os.environ.get("EXTRACT_MODEL") or "claude")[0]]
+LIVE_KEY = API_KEY_ENV[parse_model(os.environ.get("EXTRACT_MODEL") or "claude")[0]]
 
 
 @pytest.mark.skipif(not os.environ.get(LIVE_KEY), reason=f"needs {LIVE_KEY}")

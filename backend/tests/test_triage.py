@@ -2,10 +2,12 @@ import json
 import os
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from app.llm import API_KEY_ENV, parse_model
 from app.models import (
     Base,
     Patient,
@@ -83,6 +85,28 @@ def test_triage_sends_schema_and_sender_role():
     assert call["output_config"]["format"]["type"] == "json_schema"
     assert "Sender role: family" in call["messages"][0]["content"]
     assert t.emergency and t.quote_verified and t.raw == out
+    assert t.model == "anthropic:test-model"
+
+
+def test_triage_runs_on_openai_compatible_model(monkeypatch):
+    monkeypatch.setenv("LLM_BASE_URL", "http://llm.test/v1")
+    monkeypatch.setenv("LLM_API_KEY", "k")
+    out = {"emergency": True, "reason": "Caída", "quote": "no se puede levantar"}
+
+    def handler(request):
+        return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {
+            "role": "assistant", "content": json.dumps(out)}}]})
+
+    t = triage(TEXT, client=httpx.Client(transport=httpx.MockTransport(handler)), model="openai:gpt-x")
+    assert t.status is TriageStatus.ok and t.emergency and t.quote_verified
+    assert t.model == "openai:gpt-x"
+
+
+def test_triage_openai_http_error_fails_with_fixed_line(monkeypatch):
+    monkeypatch.setenv("LLM_BASE_URL", "http://llm.test/v1")
+    client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(503)))
+    t = triage(TEXT, client=client, model="openai:gpt-x")
+    assert t.status is TriageStatus.failed and t.reply == TRIAGE_FAILED_LINE
 
 
 @pytest.mark.parametrize("client", [
@@ -156,10 +180,13 @@ def test_recipients_never_include_patient_or_doctor_and_skip_missing_provider():
     assert [r["person_id"] for r in got] == ["cg1", "cg2", "fam"]
 
 
-# --- live call (needs ANTHROPIC_API_KEY) -------------------------------------------
+# --- live call (needs the key for the configured TRIAGE_MODEL provider) --------------
 
 
-@pytest.mark.skipif(not os.environ.get("ANTHROPIC_API_KEY"), reason="needs ANTHROPIC_API_KEY")
+LIVE_KEY = API_KEY_ENV[parse_model(os.environ.get("TRIAGE_MODEL") or "claude")[0]]
+
+
+@pytest.mark.skipif(not os.environ.get(LIVE_KEY), reason=f"needs {LIVE_KEY}")
 @pytest.mark.parametrize("text,role,expected", [
     ("Che, Jorge se fue al piso en el pasillo y no responde, está pálido.", Role.caregiver, True),
     ("Me caí y no me puedo levantar, ayuda por favor.", Role.patient, True),

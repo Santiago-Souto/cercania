@@ -17,14 +17,15 @@ The emergency criteria in SYSTEM_PROMPT are provisional (AGENTS.md section 16).
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
 
+from . import llm
 from .extract import verify_quote
 from .models import Role, TriageStatus
 
-DEFAULT_MODEL = "claude-haiku-5-5"
+# TRIAGE_MODEL="<provider>:<model>" switches vendor; see llm.py.
+DEFAULT_MODEL = "anthropic:claude-haiku-5-5"
 MAX_TOKENS = 500
 TIMEOUT_SEC = 10.0
 
@@ -150,7 +151,8 @@ def triage(text: str, *, sender_role: Role | None = None, client=None,
     if not isinstance(text, str) or not text.strip():
         return _failed("empty message")
 
-    model = model or os.environ.get("TRIAGE_MODEL") or DEFAULT_MODEL
+    provider, name = llm.parse_model(model or os.environ.get("TRIAGE_MODEL") or DEFAULT_MODEL)
+    model = f"{provider}:{name}"
     try:
         return _classify(text, sender_role, client, model)
     except Exception as e:  # noqa: BLE001 - see docstring
@@ -158,27 +160,17 @@ def triage(text: str, *, sender_role: Role | None = None, client=None,
 
 
 def _classify(text: str, sender_role: Role | None, client, model: str) -> Triage:
-    import anthropic
-
-    client = client or anthropic.Anthropic(timeout=TIMEOUT_SEC, max_retries=1)
-    response = client.messages.create(
-        model=model,
-        max_tokens=MAX_TOKENS,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": _user_message(text, sender_role)}],
-        output_config={
-            "effort": "low",  # the emergency reply must go out first
-            "format": {"type": "json_schema", "schema": SCHEMA},
-        },
-    )
-
-    if response.stop_reason in ("refusal", "max_tokens"):
-        return _failed(f"stop_reason={response.stop_reason}", model)
-    text_out = next((b.text for b in response.content if b.type == "text"), None)
     try:
-        raw = json.loads(text_out or "")
-    except json.JSONDecodeError:
-        return _failed(f"invalid JSON: {text_out!r}", model)
-    if not isinstance(raw, dict):
-        return _failed(f"output is not an object: {raw!r}", model)
+        raw = llm.complete_json(
+            system=SYSTEM_PROMPT,
+            user=_user_message(text, sender_role),
+            schema=SCHEMA,
+            model=model,
+            max_tokens=MAX_TOKENS,
+            timeout=TIMEOUT_SEC,
+            effort="low",  # the emergency reply must go out first
+            client=client,
+        )
+    except llm.LLMError as e:
+        return _failed(str(e), model)
     return validate(raw, text, model)

@@ -23,6 +23,18 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
+      # LLM vendor (backend/app/llm.py). Defaults to Anthropic; set the *_MODEL
+      # values to openai:<model> plus LLM_BASE_URL / LLM_API_KEY to switch.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: LLM_BASE_URL
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: EXTRACT_MODEL
+        sync: false
+      - key: TRIAGE_MODEL
+        sync: false
       - key: WHATSAPP_TOKEN
         sync: false
       - key: WHATSAPP_PHONE_NUMBER_ID
