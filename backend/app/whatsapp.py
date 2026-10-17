@@ -43,6 +43,12 @@ MSG_PROCESSING_UNAVAILABLE = (
     "Probá de nuevo más tarde."
 )
 MSG_UNEXPECTED = "Hubo un error inesperado al procesar tu reporte. ¿Podés enviarlo de nuevo?"
+MSG_QUEUED = "Guardé este reporte también. Primero decime de qué paciente es el anterior."
+MSG_NEXT_PENDING = "Tenés otro reporte esperando."
+MSG_EXPIRED = (
+    "{count} reporte(s) que enviaste quedaron sin registrar porque no elegiste el paciente a tiempo. "
+    "Por favor, volvé a enviarlos."
+)
 # Fixed rule (AGENTS.md section 7): added by code whenever red_flag is true, never by the model.
 MSG_RED_FLAG = "⚠️ Si es una emergencia, llamá a emergencias o al médico ahora."
 
@@ -236,29 +242,46 @@ class PendingChoice:
 
 
 class PendingChoices:
-    """In memory, per sender. Enough for a single instance; a lost choice only
-    means the bot asks again."""
+    """Reports waiting for "which patient?", queued per sender in arrival order.
+
+    In memory: enough for a single instance. Nothing is dropped silently: a new
+    report is queued behind the current one, and reports that expire are
+    counted so the caregiver is told to resend them.
+    """
 
     def __init__(self, ttl_seconds: int = 30 * 60):
         self.ttl = ttl_seconds
-        self._items: dict[str, PendingChoice] = {}
+        self._queues: dict[str, list[PendingChoice]] = {}
         self._lock = threading.Lock()
 
     def put(self, sender: str, choice: PendingChoice) -> None:
         with self._lock:
-            self._items[sender] = choice
+            self._queues.setdefault(sender, []).append(choice)
 
-    def get(self, sender: str) -> PendingChoice | None:
+    def first(self, sender: str) -> PendingChoice | None:
         with self._lock:
-            choice = self._items.get(sender)
-            if choice and time.monotonic() - choice.created > self.ttl:
-                del self._items[sender]
-                return None
-            return choice
+            queue = self._queues.get(sender)
+            return queue[0] if queue else None
 
-    def pop(self, sender: str) -> None:
+    def pop_first(self, sender: str) -> None:
         with self._lock:
-            self._items.pop(sender, None)
+            queue = self._queues.get(sender)
+            if queue:
+                queue.pop(0)
+            if not queue:
+                self._queues.pop(sender, None)
+
+    def take_expired(self, sender: str) -> int:
+        """Removes expired reports for this sender and returns how many there were."""
+        now = time.monotonic()
+        with self._lock:
+            queue = self._queues.get(sender, [])
+            alive = [c for c in queue if now - c.created <= self.ttl]
+            if alive:
+                self._queues[sender] = alive
+            else:
+                self._queues.pop(sender, None)
+            return len(queue) - len(alive)
 
 
 pending_choices = PendingChoices()
@@ -299,7 +322,7 @@ def pick_patient(answer: str | None, patients: list[tuple[str, str]]) -> tuple[s
 
 def which_patient_question(patients: list[tuple[str, str]]) -> str:
     options = "\n".join(f"{i}. {name}" for i, (_, name) in enumerate(patients, start=1))
-    return f"¿De qué paciente es el reporte? Respondé con el número:\n{options}"
+    return f"¿De qué paciente es el reporte? Respondé con el número o el nombre:\n{options}"
 
 
 def reply_for(result: dict) -> str:
@@ -322,35 +345,54 @@ def handle_message(message: IncomingMessage) -> None:
                 send_text(message.sender, MSG_UNKNOWN_NUMBER)
                 return
 
-            pending = pending_choices.get(message.sender)
+            expired = pending_choices.take_expired(message.sender)
+            if expired:
+                send_text(message.sender, MSG_EXPIRED.format(count=expired))
+
+            pending = pending_choices.first(message.sender)
             if pending and message.type == "text":
                 patient = pick_patient(message.text, pending.patients)
-                if patient is None:
+                if patient is not None:
+                    pending_choices.pop_first(message.sender)
+                    process(db, pending.message, person.id, patient)
+                    following = pending_choices.first(message.sender)
+                    if following:
+                        send_text(message.sender, f"{MSG_NEXT_PENDING} {which_patient_question(following.patients)}")
+                    return
+                if not _looks_like_report(message.text):
                     send_text(message.sender, which_patient_question(pending.patients))
                     return
-                pending_choices.pop(message.sender)
-                report = pending.message
-            else:
-                if not _is_report(message):
-                    send_text(message.sender, MSG_UNSUPPORTED)
-                    return
-                patients = reportable_patients(db, person.id)
-                if not patients:
-                    send_text(message.sender, MSG_NO_PATIENTS)
-                    return
-                if len(patients) > 1:
-                    pending_choices.put(message.sender, PendingChoice(message, patients, time.monotonic()))
-                    send_text(message.sender, which_patient_question(patients))
-                    return
-                patient = patients[0]
-                report = message
+                # A typed report while a choice is pending: queue it, don't drop it.
 
-            transcript = to_transcript(report, ingest.vocabulary_for(db, patient[0]))
-            if transcript is not None:
-                deliver(report, person.id, patient[0], transcript)
+            if not _is_report(message):
+                send_text(message.sender, MSG_UNSUPPORTED)
+                return
+            patients = reportable_patients(db, person.id)
+            if not patients:
+                send_text(message.sender, MSG_NO_PATIENTS)
+                return
+            if len(patients) == 1 and pending is None:
+                process(db, message, person.id, patients[0])
+                return
+            pending_choices.put(message.sender, PendingChoice(message, patients, time.monotonic()))
+            if pending is None:
+                send_text(message.sender, which_patient_question(patients))
+            else:
+                send_text(message.sender, f"{MSG_QUEUED}\n\n{which_patient_question(pending.patients)}")
     except Exception:
         log.exception("Unexpected error processing %s", message.id)
         send_text(message.sender, MSG_UNEXPECTED)
+
+
+def process(db: Session, report: IncomingMessage, caregiver_id: str, patient: tuple[str, str]) -> None:
+    transcript = to_transcript(report, ingest.vocabulary_for(db, patient[0]))
+    if transcript is not None:
+        deliver(report, caregiver_id, patient[0], transcript)
+
+
+def _looks_like_report(text: str | None) -> bool:
+    """An answer to "which patient?" is a number or a name; a report is a sentence."""
+    return len((text or "").split()) >= 4
 
 
 def _is_report(message: IncomingMessage) -> bool:

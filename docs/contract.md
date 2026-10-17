@@ -158,6 +158,7 @@ Bot behavior (all replies are WhatsApp text):
 - Sender phone not in `person.phone` → "number not registered" message; nothing processed.
 - No patient where the sender has `send_report` → "no patients assigned" message.
 - Several patients → numbered "¿De qué paciente es el reporte?" question; the report is kept (in memory, 30 min) and processed once the caregiver answers with the number or part of the name. `message_id` is the report's id, not the answer's.
+- Reports sent while a choice is pending (voice, or typed text of 4+ words) are queued, never dropped: the bot says it kept them and asks about each in arrival order. Reports that expire without a choice are announced on the caregiver's next message so they can resend them.
 - After `process_report`: `confirmation_text` (or the result's `message` for `needs_retry` / `unclear`). When `red_flag` is true, a fixed line written in code is prepended: "⚠️ Si es una emergencia, llamá a emergencias o al médico ahora."
 - `process_report` not deployed → the caregiver is told nothing was stored.
 

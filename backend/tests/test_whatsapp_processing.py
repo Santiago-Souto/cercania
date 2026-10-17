@@ -267,3 +267,43 @@ def test_malformed_message_logs_keys_not_content(caplog):
     payload = {"entry": [{"changes": [{"value": {"messages": [{"type": "text", "text": {"body": "dato privado"}}]}}]}]}
     assert whatsapp.parse_messages(payload) == []
     assert "dato privado" not in caplog.text
+
+
+def test_second_report_while_choosing_is_queued_not_lost(sent, brain, media):
+    whatsapp.handle_message(voice(BRUNO, "wamid.first"))
+    whatsapp.handle_message(voice(BRUNO, "wamid.second"))
+    assert brain == []
+    assert sent[-1][1].startswith(whatsapp.MSG_QUEUED)
+
+    whatsapp.handle_message(text(BRUNO, "1", "wamid.a1"))  # Elena for the first
+    assert [c["message_id"] for c in brain] == ["wamid.first"]
+    assert brain[0]["patient_id"] == "pat_elena"
+    assert sent[-1][1].startswith(whatsapp.MSG_NEXT_PENDING)
+
+    whatsapp.handle_message(text(BRUNO, "jorge", "wamid.a2"))
+    assert [c["message_id"] for c in brain] == ["wamid.first", "wamid.second"]
+    assert brain[1]["patient_id"] == "pat_jorge"
+    assert whatsapp.pending_choices.first(BRUNO) is None
+
+
+def test_typed_report_while_choosing_is_queued_not_taken_as_a_bad_answer(sent, brain, media):
+    whatsapp.handle_message(voice(BRUNO, "wamid.first"))
+    whatsapp.handle_message(text(BRUNO, "Jorge durmió mal toda la noche y no quiso cenar", "wamid.typed"))
+    assert sent[-1][1].startswith(whatsapp.MSG_QUEUED)
+    whatsapp.handle_message(text(BRUNO, "2", "wamid.a1"))
+    whatsapp.handle_message(text(BRUNO, "2", "wamid.a2"))
+    assert [c["message_id"] for c in brain] == ["wamid.first", "wamid.typed"]
+    assert brain[1]["transcript"] == "Jorge durmió mal toda la noche y no quiso cenar"
+
+
+def test_expired_reports_are_reported_to_the_caregiver(sent, brain, media, monkeypatch):
+    monkeypatch.setattr(whatsapp, "pending_choices", whatsapp.PendingChoices(ttl_seconds=-1))
+    whatsapp.handle_message(voice(BRUNO, "wamid.old"))
+    whatsapp.handle_message(text(BRUNO, "1", "wamid.late"))
+    assert brain == []
+    assert any(whatsapp.MSG_EXPIRED.format(count=1) == t for _, t in sent)
+
+
+def test_question_says_number_or_name(sent, brain, media):
+    whatsapp.handle_message(voice(BRUNO))
+    assert "Respondé con el número o el nombre" in sent[-1][1]
