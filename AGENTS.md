@@ -58,25 +58,29 @@ Appetite, sleep, urination/diuresis, medication, mood, mobility, pain, incidents
 
 ## 5. Data model (design rules)
 
-Entities: `patient`, `care_plan` (medication with schedule and dose, indications, allergies), `caregiver` (phone number = identity), `family_member`, `report`, `report_item`, `alert`.
+Schema lives in `backend/app/models.py`. Entities: `person` (caregiver or family member; phone number = identity), `patient_access` (person + patient + role), `patient`, `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `magic_link`.
 
 Rules:
-- `report` stores: original audio reference, transcript, timestamp, sender, **version**. Corrections create a **new version**; previous versions stay visible and immutable (this is the evidence trail).
-- `report_item` stores: item type, value, **verbatim supporting quote**, verification status.
+- Structured data in Postgres; binaries (audio, images, documents) in object storage. `file` stores only the storage path and metadata.
+- `report` stores what was received: audio (via `file`), transcript, timestamped segments, timestamp, sender, message id. Written once.
+- `report_version` stores what was recorded. Corrections create a **new version**; previous versions stay visible and immutable (this is the evidence trail).
+- `report_item` stores: item type, value, coarse `level` (for code comparison over time), item `details` (e.g. medication doses), **verbatim supporting quote**, verification status. One row per checklist item; `value` null = not mentioned.
 - `alert` types: `omission` (plan vs report), `change` (vs usual), `missing_item` (checklist).
 - Idempotency: processing the same WhatsApp message id twice must not create two reports.
 - All seed/demo data is **fictional**. Never commit real audio, names or health data.
 
 ## 6. Roles and access (keep it minimal)
 
-Two user roles, same data, different views. No separate apps.
+Four user roles, same data, different views. No separate apps. A person's role is per patient (`patient_access`); permissions live in `ROLE_PERMISSIONS` in `backend/app/models.py`.
 
 | Role | Can do |
 |---|---|
 | Caregiver | Send reports, confirm/correct, query, see patient timeline |
 | Family | Read-only summary and alerts |
+| Doctor | Read reports and alerts; the **only** role that edits the care plan (each edit = new plan version) |
+| Patient | Own profile and care plan only. **No access to reports or alerts about them.** |
 
-The patient is the subject of the profile, not a user with login.
+The patient is the subject of the profile; optionally they also have their own login with the `patient` role. The doctor writes dose text into the plan; code still never computes or suggests doses.
 
 Auth: phone number in -> bot sends a **single-use link with short expiry**. The user must start the WhatsApp conversation (outbound messages outside the 24h window need approved templates; verify with the provider's docs).
 
@@ -92,7 +96,7 @@ Auth: phone number in -> bot sends a **single-use link with short expiry**. The 
 
 - Backend: Python + FastAPI
 - Web: React or Next.js (two views: caregiver, family)
-- DB: Postgres (Supabase) or SQLite if time-constrained
+- DB: **decided** Postgres on Supabase via SQLAlchemy 2.0 + psycopg 3 (`DATABASE_URL`); SQLite is the local default and fallback (same models). Files in Supabase Storage, private bucket, signed URLs.
 - Transcription: Whisper-class API (OpenAI or Groq); fallback AWS Transcribe with custom vocabulary
 - LLM: Claude via API. Start with `claude-sonnet-5-5`; use `claude-haiku-5-5` if latency demands. Use structured JSON output / tool use.
 - WhatsApp: Twilio sandbox first, or Meta Cloud API test number. **Cut rule: if a real voice note does not flow end-to-end by 14:00 Sat, switch to a Telegram bot or a web recorder and list WhatsApp as Pending.**
@@ -129,7 +133,7 @@ Endpoints (initial): `GET /patients/:id`, `GET /patients/:id/reports`, `POST /pa
 
 ## 10. Out of scope (do not build)
 
-Health-system / clinical-record integration, push notifications, complex auth, voice replies from the agent (text confirmation first; audio reply only if time remains Sunday), a third user role, anything not on the critical path of "voice note in -> verified record + alerts out -> cited query".
+Health-system / clinical-record integration, push notifications, complex auth, voice replies from the agent (text confirmation first; audio reply only if time remains Sunday), roles beyond the four in section 6, anything not on the critical path of "voice note in -> verified record + alerts out -> cited query".
 
 ## 11. Quality check we must be able to show (AI quality, 20%)
 

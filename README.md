@@ -25,13 +25,15 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Versioned report storage | Pending | |
 | Web timeline (caregiver view) | Pending | |
 | Family read-only view | Pending | |
+| Doctor edits care plan (new version) | Pending | Role and permission in schema; no endpoint/view yet |
+| Patient view (own care plan, no reports) | Pending | Role and permission in schema; no endpoint/view yet |
 | Cited natural-language query | Pending | |
 | Single-use magic-link access | Pending | |
 | Eval script and 20 cases | Pending | |
 
 ### Simulated
 
-- Patient, care plan and history data are fictional seed data (`backend/app/seed.py`).
+- Patient, care plan and history data are fictional seed data (`backend/app/seed.py`). Seeded reports are marked `channel="seed"`, `model="seed"`: they are fixtures, not model output.
 
 ### Out of scope (declared)
 
@@ -43,15 +45,22 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 Backend (Python 3.12+):
 
 ```bash
-cp .env.example .env
+cp .env.example .env            # default DATABASE_URL is local SQLite
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
+python -m app.seed              # tables + fictional data (--reset drops all tables)
 uvicorn app.main:app --reload   # http://localhost:8000/health
 pytest                          # backend tests
 ```
 
 Deploy: `render.yaml` is a Render Blueprint (Render -> New -> Blueprint -> this repo). Health check at `/health`.
+
+Database on Supabase:
+1. Create a project at supabase.com (free plan). Save the database password.
+2. Dashboard -> **Connect** -> copy the **Session pooler** connection string (port 5432, user `postgres.<project-ref>`). Render is IPv4-only and the direct connection is IPv6, so use the pooler.
+3. Put it, with the password filled in, in `.env` as `DATABASE_URL` for local use, and in Render as the `DATABASE_URL` secret.
+4. `python -m app.seed` creates the tables and fictional data in Supabase. The backend adds `sslmode=require` itself.
 
 Web: run commands go here once `web/` is scaffolded.
 
