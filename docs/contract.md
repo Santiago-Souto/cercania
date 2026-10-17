@@ -145,11 +145,17 @@ Creates a new version. Does not modify the old one. The author of the new versio
 
 `confidence` is `answered` or `unclear`. If the records do not contain the answer, return `unclear` and say so; never guess. Every citation quote must verify against the cited transcript.
 
+### `GET /webhook/whatsapp`
+
+Meta Cloud API verification handshake. Query `hub.mode=subscribe`, `hub.verify_token`, `hub.challenge`. Returns the challenge as plain text when the token matches `WHATSAPP_VERIFY_TOKEN`, else 403 `verification_failed`.
+
 ### `POST /webhook/whatsapp`
+
+Meta Cloud API webhook (JSON). Requests without a valid `X-Hub-Signature-256` (HMAC-SHA256 of the body with `WHATSAPP_APP_SECRET`) get 403 `invalid_signature`. Response on success: `{ "status": "received" }`. Status updates (delivered/read) are acked and ignored. Voice notes are transcribed; text messages are treated as a typed report; other types get a reply asking for a voice note.
 
 Acknowledge immediately (HTTP 200), then process asynchronously. Dedupe by provider message id. Identify the caregiver by sender phone number. If the caregiver has several patients, ask "which patient?" before processing.
 
-Before anything else (including the ack), verify the provider signature on the raw request (Twilio: `X-Twilio-Signature` with `WHATSAPP_AUTH_TOKEN`; Meta Cloud API: `X-Hub-Signature-256`, an HMAC-SHA256 of the raw body with `META_APP_SECRET`), both from the environment, and check that the destination number is `WHATSAPP_FROM_NUMBER`. If either check fails, return `403` and process nothing. The sender phone is trusted only after this check.
+The signature check runs before the ack and before anything is processed; the sender phone is trusted only after it passes. The payload's `metadata.phone_number_id` must also equal `WHATSAPP_PHONE_NUMBER_ID`; other numbers are acked and ignored (pending in code).
 
 ## Roles (fixed enum)
 
