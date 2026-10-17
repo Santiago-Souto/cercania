@@ -39,10 +39,10 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 
 ### Simulated
 
-- **Caller identity:** until the login backend lands, the web app identifies the user with an `X-Person-Id` header (`backend/app/deps.py`). Anyone can claim any id, so it is honored only with `ALLOW_DEV_IDENTITY_HEADER=1` (local dev / demo with fictional data); otherwise every call gets 401. Not for real data.
+- **Caller identity:** until the login backend lands, the web app identifies the user with an `X-Person-Id` header (`backend/app/deps.py`). The web shows a **Simulado** persona picker (Ana caregiver / Carmen family, stored in a cookie) that sets it. Anyone can claim any id, so it is honored only with `ALLOW_DEV_IDENTITY_HEADER=1` (local dev / demo with fictional data); otherwise every call gets 401. Not for real data.
 - **Fake model clients** exist only in the backend tests. The running app calls the real models.
 - Patient, care plan and history data are fictional seed data (`backend/app/seed.py`). Seeded reports are marked `channel="seed"`, `model="seed"`: they are fixtures, not model output.
-- Web app screens show contract-shaped fake data (`web/lib/fake.ts`) until the backend endpoints land; a "Datos de prueba ficticios" banner is shown while it is on. Buttons that need the backend (record, send, help, invite, login) are not wired yet.
+- Web app screens show contract-shaped fake data (`web/lib/fake.ts`) until the backend endpoints land; a "Datos de prueba ficticios" banner is shown while it is on. With `NEXT_PUBLIC_USE_FAKE_DATA=0` the web reads the real backend; the text report form and emergency notifications (polled inbox, toast, browser Notification) are wired. Audio recording, help, invite and login are not.
 
 - **Audio:** no audio file is stored yet. `audio_url` is a placeholder path (`/media/{id}`) with no route behind it.
 
