@@ -95,7 +95,7 @@ Auth: sign up with name, email and WhatsApp number -> the bot sends a **6-digit 
 ## 8. Proposed stack (confirm or edit; update this section when decided)
 
 - Backend: Python + FastAPI
-- Web: **Next.js** (decided), mobile-first, usable on desktop at a centered ~480px column. UI copy in Spanish (Río de la Plata). **Design source of truth: `docs/design/DESIGN.md`** (tokens, components, screen → route → ticket map) with artboard snapshots in `docs/design/screens/`. UI changes start in the design, then the code.
+- Web: **Next.js** (decided), mobile-first, usable on desktop at a centered ~480px column. UI copy in Spanish (Río de la Plata). **Design source of truth: `docs/design/DESIGN.md`** (tokens, components, screen → route → ticket map) with artboard snapshots in `docs/design/screens/`. UI changes start in the design, then the code. **UI is shadcn/ui only** (themed with our tokens); no custom components or plain HTML unless strictly necessary.
 - DB: Postgres (Supabase) or SQLite if time-constrained
 - Transcription: Whisper-class API (OpenAI or Groq); fallback AWS Transcribe with custom vocabulary
 - LLM: Claude via API. Start with `claude-sonnet-5-5`; use `claude-haiku-5-5` if latency demands. Use structured JSON output / tool use.

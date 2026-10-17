@@ -8,7 +8,7 @@ Source of truth for the web app's look and screens. Build every screen from this
 
 ## Tokens
 
-Defined once as CSS variables in `web/app/globals.css`. Never hardcode a hex in a component.
+Defined once as CSS variables in `web/app/globals.css`, under shadcn's names where one exists (`--ground` → `--background`, `--ink` → `--foreground`, `--muted` → `--muted-foreground`, `--line` → `--border`, `--field` → `--input`, `--warn-bg` → `--warning`, `--warn-ink` → `--warning-foreground`, `--danger` → `--danger`/`--destructive`). Use them through Tailwind classes (`bg-warning`, `text-muted-foreground`…). Never hardcode a hex in a component.
 
 | Token | Value | Use |
 |---|---|---|
@@ -48,22 +48,34 @@ Spacing: page gutter 16px; gap between sections 16px; card padding 16px; row pad
 
 ## Components
 
-| Component | What it is | Seen in |
+**Use shadcn/ui only.** Do not write custom components or plain HTML when a shadcn component exists; compose shadcn primitives instead. If something custom is truly necessary, say why in the PR. Add components with `npx shadcn@latest add <name>` (from `web/`). Icons: `lucide-react`.
+
+The tokens above are wired as the shadcn theme in `web/app/globals.css` (`--primary`, `--destructive`, `--border`, … plus `warning`, `danger`, `danger-soft`, `success-soft`, `role-health`, `role-family`). CercanIA variants live inside the shadcn files:
+
+| Design element | shadcn component | Variant / usage |
 |---|---|---|
-| `AppShell` | centered 480px column, ground background, optional header and bottom nav | all |
-| `BottomNav` | 3 tabs: Inicio, Alertas, Preguntar; active tab in `--primary` and bold | Main, Alerts, Ask |
-| `TopBar` | 44px round back button + title + subtitle | Report, NewReport, AddPatient, Code, Messages |
-| `Card` | surface, 1px `--line`, radius 18 | all |
-| `Chip` | variants: `alert` (warn), `redflag` (danger, white text), `missing` (dashed), `ok` (primary-soft), `role-*` | Main, Patients, Report, Alerts |
-| `Button` | `primary` (52px pill), `secondary` (outlined), `danger`; always a real `<button>` or `<a>` | all |
-| `ReportItem` | label (caps), value, verbatim quote in italics, status: verified / unverified (warn tint + explanation) / not mentioned (dashed chip) | Report |
-| `AlertCard` | grouped by type: omission, change, missing_item; links to the report | Alerts |
-| `RedFlagBanner` | `role="alert"`, danger background, quote + the fixed text "Contactá a emergencias o al médico." | Alerts, Family (soft variant) |
-| `CitationButton` | play icon + quote + "report time · caregiver · start–end" | Ask |
-| `AudioBar` | dark player bar with the cited fragment marked | Ask, Report |
-| `RecordButton` | 112px round, red while recording, timer below | NewReport, Patient |
-| `CodeInput` | 6 numeric boxes, auto-advance, paste, `autocomplete="one-time-code"` | Code |
-| `Field` | `<label>` + input/select, 48px tall, error text below | SignIn, AddPatient |
+| Primary action (52px pill) | `Button` | `size="xl"` |
+| Secondary action | `Button` | `variant="outline-primary"` |
+| "Necesito ayuda", record | `Button` | `variant="danger"` |
+| Icon button, back | `Button` | `size="icon-touch"` (44px) |
+| Chips: alert / red flag / not mentioned / ok / roles | `Badge` | `warning`, `danger`, `missing`, `success`, `health`, `family`, `neutral` |
+| Red flag banner | `Alert` | `variant="danger"` (alerts), `"danger-soft"` (family) |
+| "Not for emergencies" notice | `Alert` | `variant="warning"` |
+| Cards | `Card` + `CardHeader` / `CardContent` | |
+| Lists and rows (reports, items, patients, citations) | `Item`, `ItemGroup`, `ItemSeparator` | |
+| Progress of checklist | `Progress` | |
+| Patient avatar | `Avatar` + `AvatarFallback` | |
+| Forms | `Field`, `FieldLabel`, `FieldDescription`, `Input`, `Select` | |
+| Search and chat composer | `InputGroup` | |
+| 6-digit code | `InputOTP` | |
+| Sign-up / login switch | `Tabs` | |
+| Help confirmation | `AlertDialog` | |
+| Chat (Ask, Messages) | `Bubble`, `Message` | |
+| Empty / error states | `Empty` | |
+| Loading | `Skeleton`, `Spinner` | |
+| Toasts | `Sonner` | |
+
+App chrome shared by all screens (centered 480px column, top bar, bottom nav, bottom action bar) is the only custom composition: `web/components/app/shell.tsx`, built from `Button` and `Badge`.
 
 ## Accessibility rules
 

@@ -32,6 +32,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 ### Simulated
 
 - Patient, care plan and history data are fictional seed data (`backend/app/seed.py`).
+- Web app screens show contract-shaped fake data (`web/lib/fake.ts`) until the backend endpoints land; a "Datos de prueba ficticios" banner is shown while it is on. Buttons that need the backend (record, send, help, invite, login) are not wired yet.
 
 ### Out of scope (declared)
 
@@ -53,7 +54,16 @@ pytest                          # backend tests
 
 Deploy: `render.yaml` is a Render Blueprint (Render -> New -> Blueprint -> this repo). Health check at `/health`.
 
-Web: run commands go here once `web/` is scaffolded.
+Web (Node 20+, Next.js 16 + shadcn/ui, mobile-first):
+
+```bash
+cd web
+npm install
+npm run dev     # http://localhost:3000 -> /login
+npm run lint && npm run build
+```
+
+`NEXT_PUBLIC_USE_FAKE_DATA` defaults to fake data (set it to `0` and `NEXT_PUBLIC_API_URL` to the backend to use real data). Design and screen map: `docs/design/DESIGN.md`.
 
 ## Evaluation
 
