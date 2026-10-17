@@ -7,7 +7,7 @@ Read this fully before changing code. Keep it updated: if reality and this file 
 
 A care-handoff assistant for caregivers of dependent people (e.g. older adults in a residential center).
 
-- A caregiver sends an end-of-shift **voice note via WhatsApp** to a bot. No app install.
+- A caregiver sends an end-of-shift **voice note via WhatsApp** to a bot. No app install. The same report can also be sent from the web app (audio or text); both go through the same pipeline.
 - The system transcribes it, extracts structured data, **compares it against the patient's care plan and history by code**, flags omissions/changes, and stores everything on a web app.
 - The next shift (or a family member) can **query the record in natural language** and gets answers **with a citation to the exact fragment of the original report**.
 
@@ -38,9 +38,11 @@ Rubric weights: working product 35%, problem and user value 25%, AI quality 20% 
 ## 4. Pipeline
 
 ```
-WhatsApp voice note
-  -> webhook (ack immediately, process async, dedupe by message id)
-  -> download audio
+WhatsApp voice note                     web app report (audio or text)
+  -> webhook (ack immediately,           -> POST /patients/:id/reports
+     process async, dedupe by message id)   (dedupe by client-generated id)
+  -> download audio                      -> (audio only) same transcription step
+     ... both continue identically ...
   -> transcription (with patient-specific vocabulary hint)
   -> extraction (LLM, JSON schema, quote per field, null if not mentioned)
   -> quote verification (code: substring/normalized match against transcript)
@@ -58,7 +60,7 @@ Appetite, sleep, urination/diuresis, medication, mood, mobility, pain, incidents
 
 ## 5. Data model (design rules)
 
-Entities: `patient`, `care_plan` (medication with schedule and dose, indications, allergies), `caregiver` (phone number = identity), `family_member`, `report`, `report_item`, `alert`.
+Entities: `patient`, `care_plan` (medication with schedule and dose, indications, allergies), `user` (name, email, WhatsApp number = identity), `membership` (user + patient + role, see section 6), `invite` (pending membership by phone or email), `login_code` (hashed 6-digit code, expiry, used flag), `report`, `report_item`, `alert`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient).
 
 Rules:
 - `report` stores: original audio reference, transcript, timestamp, sender, **version**. Corrections create a **new version**; previous versions stay visible and immutable (this is the evidence trail).
@@ -69,29 +71,31 @@ Rules:
 
 ## 6. Roles and access (keep it minimal)
 
-Two user roles, same data, different views. No separate apps.
+One web app, same data, a view per role. Roles are per patient (`membership`): the same person can be caregiver of one patient and family of another.
 
 | Role | Can do |
 |---|---|
-| Caregiver | Send reports, confirm/correct, query, see patient timeline |
-| Family | Read-only summary and alerts |
+| Caregiver | Send reports (WhatsApp or web), confirm/correct, query, see timeline and alerts, add patients and invite people |
+| Health team (doctor, nurse, hospital/institution) | See assigned patients, reports, alerts and query; reply to family messages |
+| Family | Read-only summary and alerts; message the health team |
+| Patient | Only two actions: tell how they feel (audio or text) and press "I need help" |
 
-The patient is the subject of the profile, not a user with login.
-
-Auth: phone number in -> bot sends a **single-use link with short expiry**. The user must start the WhatsApp conversation (outbound messages outside the 24h window need approved templates; verify with the provider's docs).
+Auth: sign up with name, email and WhatsApp number -> the bot sends a **6-digit code** to that WhatsApp -> code entered on the web. Codes are single-use, expire in 10 minutes, are stored hashed and are rate-limited per number. No passwords. Outbound WhatsApp messages outside the 24h window need an approved authentication template (or, in the sandbox, the user must join first); verify with the provider's docs. Invited users get the role from their invite after their first login.
 
 ## 7. Safety rules (non-negotiable)
 
 - **Never diagnose. Never suggest, change or compute doses.** Record, compare, alert.
 - If something is ambiguous, **ask or say "unclear"**. Never guess.
 - Red-flag phrases (fall, chest pain, breathing difficulty, etc.) trigger a **fixed-rule** message: "contact emergency services or the physician." This is a safety net, not the product's core.
+- Patient "I need help" is a **fixed rule**, never routed through the model: notify every caregiver and health-team member of that patient right away and show the patient "help is on the way; if it is an emergency, call emergency services". Patient "how I feel" messages go through the red-flag phrase list too.
+- Family <-> health team messages are human-to-human. The model never answers them, and the thread always shows "not for emergencies".
 - Do not claim legal protection. The product creates a *record of what was reported*.
 - Not a replacement for the clinical record. No integration with health-system records (out of scope, see section 10).
 
 ## 8. Proposed stack (confirm or edit; update this section when decided)
 
 - Backend: Python + FastAPI
-- Web: React or Next.js (two views: caregiver, family)
+- Web: **Next.js** (decided), mobile-first, usable on desktop at a centered ~480px column. UI copy in Spanish (Río de la Plata). Design: "CercanIA mobile screens" canvas (ask Dev B for access)
 - DB: Postgres (Supabase) or SQLite if time-constrained
 - Transcription: Whisper-class API (OpenAI or Groq); fallback AWS Transcribe with custom vocabulary
 - LLM: Claude via API. Start with `claude-sonnet-5-5`; use `claude-haiku-5-5` if latency demands. Use structured JSON output / tool use.
@@ -111,7 +115,10 @@ backend/app/
   query.py         cited natural-language answers            [brain owner]
   models.py        schema                                    [brain owner]
   seed.py          2-3 fictional patients + care plans       [brain owner]
-web/               caregiver and family views                [web owner]
+web/               Next.js app, one view per role            [web owner]
+                   sign-up + code, my patients, add patient + roles,
+                   patient home, report, alerts, ask, new report,
+                   family view, family<->health team messages, patient view
 eval/
   cases.csv        20 cases with expected output
   run_eval.py      runs cases, prints metrics                [infra/input owner]
@@ -129,7 +136,15 @@ Endpoints (initial): `GET /patients/:id`, `GET /patients/:id/reports`, `POST /pa
 
 ## 10. Out of scope (do not build)
 
-Health-system / clinical-record integration, push notifications, complex auth, voice replies from the agent (text confirmation first; audio reply only if time remains Sunday), a third user role, anything not on the critical path of "voice note in -> verified record + alerts out -> cited query".
+Health-system / clinical-record integration, push notifications (alerts and help requests go out by WhatsApp message), passwords / OAuth / SSO, voice replies from the agent (text confirmation first; audio reply only if time remains Sunday), roles beyond the four in section 6, AI answers inside family <-> health team messages.
+
+**Priority order (scope was widened on Sat 13:45; the critical path still comes first):**
+1. Critical path: voice note or web report in -> verified record + alerts -> cited query, and the views that show it.
+2. Sign-up with 6-digit code, my patients, add patient + roles.
+3. Patient view (how I feel + I need help).
+4. Family <-> health team messages (bonus: first to cut).
+
+If a lower item threatens a sync point in section 14, stop it and list it as Pending in the README.
 
 ## 11. Quality check we must be able to show (AI quality, 20%)
 
@@ -172,7 +187,8 @@ Problem: the shift handoff gets lost. Live demo: a juror dictates a report, sees
 
 ## 16. Open decisions
 
-- Stack confirmation (section 8).
+- Stack confirmation (section 8; web is decided: Next.js).
+- WhatsApp authentication template for the 6-digit code vs sandbox join (section 6).
 - Which transcription provider wins the 5-real-audio test.
 - WhatsApp provider vs fallback channel (decided at 14:00).
 - Final checklist item list (section 4) once validated with a caregiver contact.
