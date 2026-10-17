@@ -145,11 +145,17 @@ Creates a new version. Does not modify the old one. The author of the new versio
 
 `confidence` is `answered` or `unclear`. If the records do not contain the answer, return `unclear` and say so; never guess. Every citation quote must verify against the cited transcript.
 
+### `GET /webhook/whatsapp`
+
+Meta Cloud API verification handshake. Query `hub.mode=subscribe`, `hub.verify_token`, `hub.challenge`. Returns the challenge as plain text when the token matches `WHATSAPP_VERIFY_TOKEN`, else 403 `verification_failed`.
+
 ### `POST /webhook/whatsapp`
+
+Meta Cloud API webhook (JSON). Requests without a valid `X-Hub-Signature-256` (HMAC-SHA256 of the body with `WHATSAPP_APP_SECRET`) get 403 `invalid_signature`. Response on success: `{ "status": "received" }`. Status updates (delivered/read) are acked and ignored. Voice notes are transcribed; text messages are treated as a typed report; other types get a reply asking for a voice note.
 
 Acknowledge immediately (HTTP 200), then process asynchronously. Dedupe by provider message id. Identify the caregiver by sender phone number. If the caregiver has several patients, ask "which patient?" before processing.
 
-Before anything else (including the ack), verify the provider signature on the raw request (`X-Twilio-Signature` for Twilio, `X-Hub-Signature-256` for Meta Cloud API) with `WHATSAPP_AUTH_TOKEN` from the environment, and check that the destination number is `WHATSAPP_FROM_NUMBER`. If either check fails, return `403` and process nothing. The sender phone is trusted only after this check.
+The signature check runs before the ack and before anything is processed; the sender phone is trusted only after it passes. The payload's `metadata.phone_number_id` must also equal `WHATSAPP_PHONE_NUMBER_ID`; other numbers are acked and ignored (pending in code).
 
 ## Roles (fixed enum)
 
@@ -177,9 +183,9 @@ Both send a 6-digit code to the WhatsApp number and reply:
 { "status": "code_sent", "phone_last4": "0000", "expires_in_sec": 600, "resend_after_sec": 60 }
 ```
 
-Errors: `phone_invalid`, `too_many_requests`, `whatsapp_unreachable` (message tells the user to message the bot first).
+Errors: `phone_invalid`, `too_many_requests`. Neither is about whether the phone has an account.
 
-Anti-enumeration: these two endpoints must not reveal whether a phone or email is registered. `POST /auth/login` returns the same `code_sent` body for an unknown phone and sends nothing. `POST /auth/signup` for a phone that already has an account sends a normal login code instead of creating a second user. A conflicting email is reported only after the code is verified (`email_taken` from `POST /auth/verify`).
+Anti-enumeration: these two endpoints must not reveal whether a phone is registered. `POST /auth/login` returns the same `code_sent` body for an unknown phone and sends nothing. `POST /auth/signup` for a phone that already has an account sends a normal login code instead of creating a second user. If WhatsApp cannot deliver the code (e.g. the user has not messaged the bot yet), the response is still `code_sent`; the code screen always says "si no te llega, mandale \"hola\" al bot y pedí otro código". Email is contact info only: it is not verified, not unique, and never grants access, so there is no `email_taken`.
 
 ### `POST /auth/verify`
 
@@ -191,7 +197,7 @@ Anti-enumeration: these two endpoints must not reveal whether a phone or email i
 { "user": { "id": "usr_001", "name": "Ana Pérez (fictional)" }, "memberships": [ { "patient_id": "pat_001", "role": "caregiver" } ] }
 ```
 
-Codes are single-use, expire after `LOGIN_CODE_TTL_MINUTES` (default 10), are stored hashed, and lock after 5 wrong attempts. Errors: `code_invalid`, `code_expired`, `too_many_attempts`, `email_taken` (signup only: the email belongs to another account; the user is asked for a different one). Pending invites for that phone/email become memberships here.
+Codes are single-use, expire after `LOGIN_CODE_TTL_MINUTES` (default 10), are stored hashed, and lock after 5 wrong attempts. Errors: `code_invalid`, `code_expired`, `too_many_attempts`. Pending invites for the verified phone become memberships here. Invites are matched only on the phone proven by the code, never on email.
 
 ### `POST /auth/logout`
 
@@ -220,7 +226,7 @@ Patients the current user has a membership for, with what the list screen needs:
 }
 ```
 
-`missing_report` is computed by code (no report in the current shift window), never by the model.
+`missing_report` is computed by code (no report in the current shift window), never by the model. For memberships with role `patient`, `last_report_at`, `open_alerts`, `red_flag` and `missing_report` are `null`: the patient never sees reports or alerts about them.
 
 ### `POST /patients`
 
@@ -250,7 +256,7 @@ Returns the patient as in `GET /patients/{patient_id}`. The creator becomes `car
 { "contact": "+59899111111", "role": "family" }
 ```
 
-`contact` is a WhatsApp number or an email. Sends a WhatsApp/email invite; the membership is created when that person verifies a code (`POST /auth/verify`). Only `caregiver` memberships can invite (`403 forbidden` otherwise), matching `AGENTS.md` section 6. Health-team and family members cannot invite.
+`contact` is a WhatsApp number (E.164); emails are rejected with `phone_invalid` because email ownership is never verified. Sends a WhatsApp invite; the membership is created when that person verifies a code (`POST /auth/verify`). Only `caregiver` memberships can invite (`403 forbidden` otherwise), matching `AGENTS.md` section 6. Health-team and family members cannot invite.
 
 ## Reports from the web app
 
@@ -262,7 +268,23 @@ Same report a caregiver can send by WhatsApp. Either JSON text or multipart audi
 { "client_id": "web_7f3c", "text": "Casi no comió nada en la cena…" }
 ```
 
-Multipart: `client_id` + `audio` file (webm/ogg/m4a). Audio goes through the same transcription step. Returns `ProcessResult` exactly as `process_report`. Idempotent on `client_id` (used as the `message_id`).
+Multipart: `client_id` + `audio` file (webm/ogg/m4a). Audio goes through the same transcription step. Returns `ProcessResult` exactly as `process_report`. Idempotent on `client_id`: the `message_id` passed to `process_report` is `web:<person_id>:<client_id>`, so one user's id can never match another user's report or a WhatsApp message.
+
+Requires the `send_report` permission for that patient (`ROLE_PERMISSIONS` in `backend/app/models.py`; today only `caregiver`). Errors, all as `{ "error": { "code", "message" } }` with a message the UI can show as is:
+
+| HTTP | `code` | When |
+|---|---|---|
+| 400 | `client_id_missing`, `text_missing`, `audio_missing`, `audio_empty`, `invalid_json` | Bad input |
+| 401 | `unauthenticated` | No caller identity |
+| 403 | `forbidden` | Role lacks `send_report` for this patient |
+| 404 | `not_found` | Unknown patient |
+| 409 | `client_id_conflict` | Same `client_id` already used by this user for another patient |
+| 413 | `audio_too_large` | Audio over 4 MB (Vercel caps request bodies at 4.5 MB) |
+| 415 | `unsupported_audio`, `unsupported_media_type` | Not webm/ogg/m4a/mp3/wav, or neither JSON nor multipart |
+| 502 | `transcription_failed` | Transcription failed; ask to retry or type |
+| 503 | `processing_unavailable` | `process_report` not deployed yet; nothing was stored |
+
+A repeated `client_id` is not transcribed again; the stored report's result is returned.
 
 ## Patient messages
 

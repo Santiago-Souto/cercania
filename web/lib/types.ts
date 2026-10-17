@@ -78,10 +78,11 @@ export type MyPatient = {
   display_name: string;
   location: string;
   role: Role;
+  // null for memberships with role "patient": the patient never sees reports or alerts.
   last_report_at: string | null;
-  open_alerts: number;
-  red_flag: boolean;
-  missing_report: boolean;
+  open_alerts: number | null;
+  red_flag: boolean | null;
+  missing_report: boolean | null;
 };
 
 export type Member = { user_id: string; name: string; role: Role };

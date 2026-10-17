@@ -91,6 +91,8 @@ class Role(str, enum.Enum):
     caregiver = "caregiver"
     family = "family"
     doctor = "doctor"
+    nurse = "nurse"  # health team, like doctor but cannot edit the care plan
+    institution = "institution"  # health team, like nurse
     patient = "patient"  # the patient's own login, linked to their profile
 
 
@@ -109,6 +111,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
     Role.family: frozenset({Permission.read_reports, Permission.read_care_plan}),
     Role.doctor: frozenset({Permission.read_reports, Permission.read_care_plan,
                             Permission.edit_care_plan}),
+    Role.nurse: frozenset({Permission.read_reports, Permission.read_care_plan}),
+    Role.institution: frozenset({Permission.read_reports, Permission.read_care_plan}),
     # The patient sees their profile and care plan, never reports about them.
     Role.patient: frozenset({Permission.read_care_plan}),
 }

@@ -101,8 +101,9 @@ export default async function AddPatientPage() {
               <CardContent>
                 <FieldGroup className="gap-3">
                   <Field>
-                    <FieldLabel htmlFor="invite">WhatsApp o email</FieldLabel>
-                    <Input id="invite" placeholder="+598 9X XXX XXX" className="h-12 bg-card text-base" />
+                    <FieldLabel htmlFor="invite">WhatsApp</FieldLabel>
+                    <Input id="invite" type="tel" placeholder="+598 9X XXX XXX" className="h-12 bg-card text-base" />
+                    <FieldDescription>Le llega la invitación por WhatsApp. No se invita por email.</FieldDescription>
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="role">Rol</FieldLabel>

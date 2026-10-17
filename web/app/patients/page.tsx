@@ -17,9 +17,9 @@ export default async function PatientsPage() {
   // Red flags first, then by open alerts, then missing reports.
   const sorted = [...patients].sort(
     (a, b) =>
-      Number(b.red_flag) - Number(a.red_flag) ||
-      b.open_alerts - a.open_alerts ||
-      Number(b.missing_report) - Number(a.missing_report),
+      Number(b.red_flag ?? false) - Number(a.red_flag ?? false) ||
+      (b.open_alerts ?? 0) - (a.open_alerts ?? 0) ||
+      Number(b.missing_report ?? false) - Number(a.missing_report ?? false),
   );
 
   return (
@@ -67,13 +67,13 @@ export default async function PatientsPage() {
                 <ItemActions className="text-[13px] text-muted-foreground">{p.location}</ItemActions>
                 <ItemFooter className="justify-start gap-1.5 pl-14">
                   {p.red_flag && <Badge variant="danger">Señal de alarma</Badge>}
-                  {p.open_alerts > 0 && (
+                  {(p.open_alerts ?? 0) > 0 && (
                     <Badge variant="warning">
                       {p.open_alerts} {p.open_alerts === 1 ? "alerta" : "alertas"}
                     </Badge>
                   )}
                   {p.missing_report && <Badge variant="missing">Falta el reporte del turno</Badge>}
-                  {!p.red_flag && p.open_alerts === 0 && !p.missing_report && (
+                  {p.role !== "patient" && !p.red_flag && !p.open_alerts && !p.missing_report && (
                     <Badge variant="success">Al día{p.last_report_at ? ` · ${dayTime(p.last_report_at).toLowerCase()}` : ""}</Badge>
                   )}
                 </ItemFooter>

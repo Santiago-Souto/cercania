@@ -16,23 +16,25 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 
 | Capability | Status | Notes |
 |---|---|---|
-| Voice note received from WhatsApp | Pending | Fallback: Telegram bot or web recorder |
-| Audio transcription | Pending | |
+| Voice note received from WhatsApp | In progress | Meta Cloud API, bot number +1 555-674-0716 (test number: only allowed phones can write). Inbound voice notes verified against a real Meta payload; end-to-end with transcription pending the Groq key |
+| Audio transcription | In progress | Groq Whisper with a care-vocabulary prompt; live test pending |
 | Structured extraction with verbatim quotes | Pending | |
 | Quote verification (code) | Pending | |
 | Comparison vs care plan / history / checklist (code) | Pending | |
 | Confirmation reply to caregiver ("I recorded...") | Pending | |
+| Report from the web app (text or audio) | In progress | `POST /patients/{id}/reports` built and tested; returns `processing_unavailable` until `process_report` (CIA-7) merges |
 | Versioned report storage | Pending | |
 | Web timeline (caregiver view) | Pending | |
 | Family read-only view | Pending | |
 | Doctor edits care plan (new version) | Pending | Role and permission in schema; no endpoint/view yet |
-| Patient view (own care plan, no reports) | Pending | Role and permission in schema; no endpoint/view yet |
+| Patient view (how I feel + I need help; no reports or alerts) | Pending | Role and permission in schema; no endpoint/view yet |
 | Cited natural-language query | Pending | |
 | Login with 6-digit WhatsApp code | Pending | |
 | Eval script and 20 cases | Pending | |
 
 ### Simulated
 
+- **Caller identity:** until the login backend lands, the web app identifies the user with an `X-Person-Id` header (`backend/app/deps.py`). Anyone can claim any id, so it is honored only with `ALLOW_DEV_IDENTITY_HEADER=1` (local dev / demo with fictional data); otherwise every call gets 401. Not for real data.
 - Patient, care plan and history data are fictional seed data (`backend/app/seed.py`). Seeded reports are marked `channel="seed"`, `model="seed"`: they are fixtures, not model output.
 - Web app screens show contract-shaped fake data (`web/lib/fake.ts`) until the backend endpoints land; a "Datos de prueba ficticios" banner is shown while it is on. Buttons that need the backend (record, send, help, invite, login) are not wired yet.
 

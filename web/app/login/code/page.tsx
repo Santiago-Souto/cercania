@@ -27,7 +27,7 @@ export default function CodePage() {
               ))}
             </InputOTPGroup>
           </InputOTP>
-          <FieldDescription>El código vence en 10 minutos y sirve una sola vez.</FieldDescription>
+          <FieldDescription>El código vence en 10 minutos y sirve una sola vez. Si no te llega, mandale “hola” al bot y pedí otro código.</FieldDescription>
         </Field>
 
         <div className="flex items-center justify-between text-sm">
