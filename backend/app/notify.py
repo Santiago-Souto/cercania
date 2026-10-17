@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import whatsapp
+from app.query import _local_tz
 from app.models import (
     Alert,
     AlertType,
@@ -50,7 +51,8 @@ def _local_time(report: Report) -> str:
     created = report.created_at
     if created.tzinfo is None:  # SQLite returns naive UTC
         created = created.replace(tzinfo=timezone.utc)
-    return created.astimezone().strftime("%H:%M")
+    # Servers run in UTC; the reader is in APP_TIMEZONE.
+    return created.astimezone(_local_tz()).strftime("%H:%M")
 
 
 def build_message(session: Session, report: Report, patient: Patient, alert: Alert) -> tuple[str, str]:
