@@ -13,6 +13,7 @@ import logging
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app import ingest
 from app.deps import current_person_id, get_db
@@ -76,10 +77,13 @@ async def create_report(
 
     if not isinstance(client_id, str) or not client_id.strip() or len(client_id) > MAX_CLIENT_ID:
         return error(400, "client_id_missing", "Falta `client_id` (o es demasiado largo).")
-    client_id = client_id.strip()
+    message_id = ingest.web_message_id(person_id, client_id.strip())
 
     # A repeated client_id never transcribes again: process_report returns the stored result.
-    transcript = ingest.existing_transcript(db, client_id)
+    existing = ingest.existing_report(db, message_id)
+    if existing is not None and existing.patient_id != patient_id:
+        return error(409, "client_id_conflict", "Ese identificador ya se usó para otro paciente. Generá uno nuevo.")
+    transcript = existing.transcript if existing is not None else None
     if transcript is None and audio is not None:
         mime = (audio.content_type or "").split(";")[0].strip()
         if mime not in AUDIO_TYPES:
@@ -90,29 +94,32 @@ async def create_report(
         if len(data) > MAX_AUDIO_BYTES:
             return error(413, "audio_too_large", "El audio es demasiado largo. Grabá un reporte más corto.")
         try:
-            result = transcribe(
+            # Blocking network call: run it off the event loop so other requests keep flowing.
+            result = await run_in_threadpool(
+                transcribe,
                 data,
                 filename=AUDIO_TYPES[mime],
                 mime_type=mime,
                 vocabulary=ingest.vocabulary_for(db, patient_id),
             )
         except TranscriptionError as exc:
-            log.error("Web report %s: transcription failed: %s", client_id, exc)
+            log.error("Web report %s: transcription failed: %s", message_id, exc)
             return error(502, "transcription_failed", exc.user_message)
         transcript = result.text
     elif transcript is None:
         transcript = text.strip()
 
     try:
-        return ingest.process_report(
+        return await run_in_threadpool(
+            ingest.process_report,
             patient_id=patient_id,
             caregiver_id=person_id,
             transcript=transcript,
             audio_ref=None,
-            message_id=client_id,
+            message_id=message_id,
         )
     except ingest.ProcessingUnavailable:
-        log.error("Web report %s: process_report is not available yet", client_id)
+        log.error("Web report %s: process_report is not available yet", message_id)
         return error(
             503,
             "processing_unavailable",

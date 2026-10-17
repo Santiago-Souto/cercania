@@ -22,6 +22,11 @@ from app.transcribe import Transcript, TranscriptionError
 URL = "/patients/pat_x/reports"
 
 
+@pytest.fixture(autouse=True)
+def dev_identity(monkeypatch):
+    monkeypatch.setenv("ALLOW_DEV_IDENTITY_HEADER", "1")
+
+
 @pytest.fixture
 def db():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
@@ -75,7 +80,7 @@ def test_text_report_goes_to_process_report(db, brain):
     assert r.json()["status"] == "ok"
     assert brain == [{
         "patient_id": "pat_x", "caregiver_id": "cg", "transcript": "durmió bien",
-        "audio_ref": None, "message_id": "web_1",
+        "audio_ref": None, "message_id": "web:cg:web_1",
     }]
 
 
@@ -91,11 +96,11 @@ def test_audio_report_is_transcribed_with_patient_vocabulary(db, brain, groq):
     assert groq[0]["filename"] == "voice.webm"
     assert groq[0]["vocabulary"] == ["andador", "Enalapril"]
     assert brain[0]["transcript"] == "comió poco en la cena"
-    assert brain[0]["message_id"] == "web_2"
+    assert brain[0]["message_id"] == "web:cg:web_2"
 
 
 def test_repeated_client_id_reuses_stored_transcript_without_transcribing(db, brain, groq):
-    db.add(Report(id="rep_1", patient_id="pat_x", caregiver_id="cg", message_id="web_3", transcript="ya guardado"))
+    db.add(Report(id="rep_1", patient_id="pat_x", caregiver_id="cg", message_id="web:cg:web_3", transcript="ya guardado"))
     db.commit()
     r = client.post(
         URL, data={"client_id": "web_3"}, files={"audio": ("rec.ogg", b"OggS", "audio/ogg")}, headers=AS_CAREGIVER
@@ -103,7 +108,7 @@ def test_repeated_client_id_reuses_stored_transcript_without_transcribing(db, br
     assert r.status_code == 200
     assert groq == []
     assert brain[0]["transcript"] == "ya guardado"
-    assert brain[0]["message_id"] == "web_3"
+    assert brain[0]["message_id"] == "web:cg:web_3"
 
 
 @pytest.mark.parametrize("person", ["fam", "doc", "stranger"])
@@ -182,3 +187,34 @@ def test_without_process_report_returns_503_not_a_fake_result(db):
     r = client.post(URL, json={"client_id": "w10", "text": "hola"}, headers=AS_CAREGIVER)
     assert r.status_code == 503
     assert r.json()["error"]["code"] == "processing_unavailable"
+
+
+def test_client_id_of_another_user_never_reaches_their_report(db, brain):
+    # Another caregiver's report stored with raw id "shared".
+    db.add(Person(id="other", phone="+15550109998", display_name="other"))
+    db.add(Patient(id="pat_y", display_name="Otro (ficticio)"))
+    db.add(Report(id="rep_y", patient_id="pat_y", caregiver_id="other", message_id="web:other:shared",
+                  transcript="datos de otro paciente"))
+    db.commit()
+    r = client.post(URL, json={"client_id": "shared", "text": "mi reporte"}, headers=AS_CAREGIVER)
+    assert r.status_code == 200
+    assert brain[0]["message_id"] == "web:cg:shared"
+    assert brain[0]["transcript"] == "mi reporte"
+
+
+def test_same_client_id_for_another_patient_is_a_conflict(db, brain):
+    db.add(Patient(id="pat_z", display_name="Z (ficticio)"))
+    db.add(Report(id="rep_z", patient_id="pat_z", caregiver_id="cg", message_id="web:cg:dup", transcript="de Z"))
+    db.commit()
+    r = client.post(URL, json={"client_id": "dup", "text": "hola"}, headers=AS_CAREGIVER)
+    assert r.status_code == 409
+    assert r.json()["error"]["code"] == "client_id_conflict"
+    assert brain == []
+
+
+def test_identity_header_is_ignored_unless_explicitly_enabled(db, brain, monkeypatch):
+    monkeypatch.delenv("ALLOW_DEV_IDENTITY_HEADER")
+    r = client.post(URL, json={"client_id": "w11", "text": "hola"}, headers=AS_CAREGIVER)
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "unauthenticated"
+    assert brain == []

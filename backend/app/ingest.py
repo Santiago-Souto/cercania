@@ -29,9 +29,14 @@ def vocabulary_for(session: Session, patient_id: str) -> list[str]:
     return words
 
 
-def existing_transcript(session: Session, message_id: str) -> str | None:
-    """Transcript of a report already stored under this message id, if any."""
-    return session.scalar(select(Report.transcript).where(Report.message_id == message_id))
+def web_message_id(person_id: str, client_id: str) -> str:
+    """Web client ids are chosen by the browser; namespacing by person keeps one
+    user's id from ever matching another user's report or a WhatsApp message id."""
+    return f"web:{person_id}:{client_id}"
+
+
+def existing_report(session: Session, message_id: str) -> Report | None:
+    return session.scalar(select(Report).where(Report.message_id == message_id))
 
 
 def process_report(patient_id: str, caregiver_id: str, transcript: str, audio_ref: str | None, message_id: str) -> dict:

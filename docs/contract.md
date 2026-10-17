@@ -164,7 +164,7 @@ Same report a caregiver can send by WhatsApp. Either JSON text or multipart audi
 { "client_id": "web_7f3c", "text": "Casi no comió nada en la cena…" }
 ```
 
-Multipart: `client_id` + `audio` file (webm/ogg/m4a). Audio goes through the same transcription step. Returns `ProcessResult` exactly as `process_report`. Idempotent on `client_id` (used as the `message_id`).
+Multipart: `client_id` + `audio` file (webm/ogg/m4a). Audio goes through the same transcription step. Returns `ProcessResult` exactly as `process_report`. Idempotent on `client_id`: the `message_id` passed to `process_report` is `web:<person_id>:<client_id>`, so one user's id can never match another user's report or a WhatsApp message.
 
 Requires the `send_report` permission for that patient (`ROLE_PERMISSIONS` in `backend/app/models.py`; today only `caregiver`). Errors, all as `{ "error": { "code", "message" } }` with a message the UI can show as is:
 
@@ -174,6 +174,7 @@ Requires the `send_report` permission for that patient (`ROLE_PERMISSIONS` in `b
 | 401 | `unauthenticated` | No caller identity |
 | 403 | `forbidden` | Role lacks `send_report` for this patient |
 | 404 | `not_found` | Unknown patient |
+| 409 | `client_id_conflict` | Same `client_id` already used by this user for another patient |
 | 413 | `audio_too_large` | Audio over 4 MB (Vercel caps request bodies at 4.5 MB) |
 | 415 | `unsupported_audio`, `unsupported_media_type` | Not webm/ogg/m4a/mp3/wav, or neither JSON nor multipart |
 | 502 | `transcription_failed` | Transcription failed; ask to retry or type |
