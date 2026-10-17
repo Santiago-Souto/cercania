@@ -135,7 +135,7 @@ Auth: sign up with name, email and WhatsApp number -> the bot sends a **6-digit 
 ## 8. Proposed stack (confirm or edit; update this section when decided)
 
 - Backend: Python + FastAPI
-- Web: **Next.js** (decided), mobile-first, usable on desktop at a centered ~480px column. UI copy in Spanish (Río de la Plata). Design: "CercanIA mobile screens" canvas (ask Dev B for access)
+- Web: **Next.js** (decided), mobile-first, usable on desktop at a centered ~480px column. UI copy in Spanish (Río de la Plata). **Design source of truth: `docs/design/DESIGN.md`** (tokens, components, screen → route → ticket map) with artboard snapshots in `docs/design/screens/`. UI changes start in the design, then the code. **UI is shadcn/ui only** (themed with our tokens); no custom components or plain HTML unless strictly necessary.
 - DB: **decided** Postgres on Supabase via SQLAlchemy 2.0 + psycopg 3 (`DATABASE_URL`); SQLite is the local default and fallback (same models). Files in Supabase Storage, private bucket, signed URLs.
 - Transcription: Groq Whisper (`whisper-large-v3-turbo`, env `GROQ_API_KEY`) with a vocabulary prompt; CIA-18 compares providers on real audio
 - LLM: Claude via API, structured JSON output (`output_config.format`). **Decided per task:**
@@ -172,6 +172,7 @@ eval/
   cases.csv        20 cases with expected output
   run_eval.py      runs cases, prints metrics                [infra/input owner]
 docs/contract.md   endpoints and data shapes (source of truth for integration)
+docs/design/       DESIGN.md + screen snapshots (source of truth for the UI)  [web owner]
 README.md          Functional / Simulated / Pending
 .agents/skills/    shared agent skills, tool-agnostic (.claude/skills is a symlink here)
 ```

@@ -38,6 +38,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 
 - **Caller identity:** until the login backend lands, the web app identifies the user with an `X-Person-Id` header (`backend/app/deps.py`). Anyone can claim any id, so it is honored only with `ALLOW_DEV_IDENTITY_HEADER=1` (local dev / demo with fictional data); otherwise every call gets 401. Not for real data.
 - Patient, care plan and history data are fictional seed data (`backend/app/seed.py`). Seeded reports are marked `channel="seed"`, `model="seed"`: they are fixtures, not model output.
+- Web app screens show contract-shaped fake data (`web/lib/fake.ts`) until the backend endpoints land; a "Datos de prueba ficticios" banner is shown while it is on. Buttons that need the backend (record, send, help, invite, login) are not wired yet.
 
 ### Out of scope (declared)
 
@@ -68,7 +69,17 @@ Database on Supabase:
 3. Put it, with the password filled in, in `.env` as `DATABASE_URL` for local use, and in Render as the `DATABASE_URL` secret.
 4. `python -m app.seed` creates the tables and fictional data in Supabase. The backend adds `sslmode=require` itself.
 
-Web: run commands go here once `web/` is scaffolded.
+Web (Node 20+, Next.js 16 + shadcn/ui, mobile-first):
+
+```bash
+cd web
+npm install
+npm run dev       # fake data, http://localhost:3000 -> /login
+npm run dev:real  # real backend at NEXT_PUBLIC_API_URL
+npm run lint && npm run build
+```
+
+Fake data is opt-in: only `NEXT_PUBLIC_USE_FAKE_DATA=1` (set by `npm run dev`) shows it. Without it the app calls the backend at `NEXT_PUBLIC_API_URL`, so a deploy never shows fabricated patients by accident. Design and screen map: `docs/design/DESIGN.md`.
 
 ## Evaluation
 

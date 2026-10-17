@@ -1,0 +1,139 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+
+@theme inline {
+    --font-heading: var(--font-display);
+    --font-sans: var(--font-sans);
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-warning: var(--warning);
+    --color-warning-foreground: var(--warning-foreground);
+    --color-warning-tint: var(--warning-tint);
+    --color-danger: var(--danger);
+    --color-danger-foreground: var(--danger-foreground);
+    --color-danger-soft: var(--danger-soft);
+    --color-danger-soft-foreground: var(--danger-soft-foreground);
+    --color-danger-ring: var(--danger-ring);
+    --color-success-soft: var(--success-soft);
+    --color-role-health: var(--role-health);
+    --color-role-health-foreground: var(--role-health-foreground);
+    --color-role-family: var(--role-family);
+    --color-role-family-foreground: var(--role-family-foreground);
+    --color-player: var(--player);
+    --color-player-mark: var(--player-mark);
+    --color-ink-2: var(--ink-2);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-primary-hover: var(--primary-hover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+    /* CercanIA tokens: docs/design/DESIGN.md. Light theme only. */
+    --background: #f5f6f2;
+    --foreground: #16201c;
+    --card: #ffffff;
+    --card-foreground: #16201c;
+    --popover: #ffffff;
+    --popover-foreground: #16201c;
+    --primary: #0e5a55;
+    --primary-foreground: #ffffff;
+    --primary-hover: #0a4440;
+    --secondary: #e3efec;
+    --secondary-foreground: #0e5a55;
+    --muted: #e7ebe6;
+    --muted-foreground: #4f5b56;
+    --accent: #ecefea;
+    --accent-foreground: #16201c;
+    --destructive: #a61b1b;
+    --border: #dde2dc;
+    --input: #c9d0c9;
+    --ring: #0e5a55;
+    --radius: 0.75rem;
+
+    --ink-2: #3c4843;
+    --dashed: #7d8783;
+    --warning: #fbefd9;
+    --warning-foreground: #7a4106;
+    --warning-tint: #fff8ec;
+    --danger: #a61b1b;
+    --danger-foreground: #ffffff;
+    --danger-soft: #fce8e6;
+    --danger-soft-foreground: #7e1414;
+    --danger-ring: #f6d5d2;
+    --success-soft: #e3efec;
+    --role-health: #e6eaf5;
+    --role-health-foreground: #2b3f7a;
+    --role-family: #f3e8f2;
+    --role-family-foreground: #6b2a63;
+    --player: #16201c;
+    --player-mark: #f2b66b;
+
+    --chart-1: #0e5a55;
+    --chart-2: #7a4106;
+    --chart-3: #2b3f7a;
+    --chart-4: #6b2a63;
+    --chart-5: #4f5b56;
+    --sidebar: #ffffff;
+    --sidebar-foreground: #16201c;
+    --sidebar-primary: #0e5a55;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #ecefea;
+    --sidebar-accent-foreground: #16201c;
+    --sidebar-border: #dde2dc;
+    --sidebar-ring: #0e5a55;
+}
+
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    }
+  body {
+    @apply bg-background text-foreground;
+    }
+  button:not(:disabled), [role="button"]:not(:disabled) {
+    cursor: pointer;
+    }
+  html {
+    @apply font-sans;
+    }
+  h1, h2, h3 {
+    @apply font-heading;
+    }
+}
