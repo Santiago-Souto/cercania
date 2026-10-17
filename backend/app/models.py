@@ -88,6 +88,28 @@ class ChecklistItem(str, enum.Enum):
 class Role(str, enum.Enum):
     caregiver = "caregiver"
     family = "family"
+    doctor = "doctor"
+    patient = "patient"  # the patient's own login, linked to their profile
+
+
+class Permission(str, enum.Enum):
+    send_report = "send_report"
+    correct_report = "correct_report"
+    read_reports = "read_reports"  # reports, items, alerts, cited query
+    read_care_plan = "read_care_plan"
+    edit_care_plan = "edit_care_plan"  # creates a new care_plan version
+
+
+# Checked by the API, per patient (a person's role comes from patient_access).
+ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
+    Role.caregiver: frozenset({Permission.send_report, Permission.correct_report,
+                               Permission.read_reports, Permission.read_care_plan}),
+    Role.family: frozenset({Permission.read_reports, Permission.read_care_plan}),
+    Role.doctor: frozenset({Permission.read_reports, Permission.read_care_plan,
+                            Permission.edit_care_plan}),
+    # The patient sees their profile and care plan, never reports about them.
+    Role.patient: frozenset({Permission.read_care_plan}),
+}
 
 
 class AlertType(str, enum.Enum):
@@ -164,6 +186,7 @@ class PatientAccess(TimestampMixin, Base):
     """Who can see which patient, and in which role.
 
     One person can be caregiver for one patient and family for another.
+    A patient who logs in has a `person` row with role `patient` on their own profile.
     """
 
     __tablename__ = "patient_access"
@@ -193,7 +216,10 @@ class MagicLink(TimestampMixin, Base):
 
 
 class CarePlan(TimestampMixin, Base):
-    """Versioned like reports: a change adds a new plan; old plans stay."""
+    """Versioned like reports: a change adds a new plan; old plans stay.
+
+    Only a person with `edit_care_plan` (doctor) may create a version.
+    """
 
     __tablename__ = "care_plan"
     __table_args__ = (UniqueConstraint("patient_id", "version"),)
@@ -201,6 +227,7 @@ class CarePlan(TimestampMixin, Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("plan"))
     patient_id: Mapped[str] = mapped_column(ForeignKey("patient.id"), nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("person.id"))
     indications: Mapped[list] = mapped_column(default=list, nullable=False)  # list[str]
     allergies: Mapped[list] = mapped_column(default=list, nullable=False)  # list[str]
 
@@ -394,6 +421,19 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 def init_db() -> None:
     """Create missing tables. Safe to call repeatedly; never drops anything."""
     Base.metadata.create_all(engine)
+
+
+def role_for(session: Session, person_id: str, patient_id: str) -> Role | None:
+    return session.scalar(
+        select(PatientAccess.role).where(
+            PatientAccess.person_id == person_id, PatientAccess.patient_id == patient_id
+        )
+    )
+
+
+def can(session: Session, person_id: str, patient_id: str, permission: Permission) -> bool:
+    role = role_for(session, person_id, patient_id)
+    return role is not None and permission in ROLE_PERMISSIONS[role]
 
 
 def active_care_plan(session: Session, patient_id: str) -> CarePlan | None:

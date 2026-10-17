@@ -8,6 +8,8 @@ History is shaped so code-based comparison has something to find:
 - Jorge (pat_002): poor sleep 2 nights, knee pain since 2 days ago.
 - Elena (pat_003): 20:00 medication skipped / not mentioned; low urination twice.
 - Ana (cg_001) cares for two patients, to exercise the "which patient?" question.
+- Dra. Marta (doc_001) is the doctor for all three and authored their care plans.
+- Jorge has his own login (ptl_002, role patient): he can read his care plan, not reports.
 
 Seeded reports use channel="seed" and model="seed" so they are never mistaken
 for model output. Alerts are not hand-written here; compare.py produces them.
@@ -47,6 +49,8 @@ PEOPLE = [
     ("fam_001", "+15550100011", "Carmen (ficticia)"),
     ("fam_002", "+15550100012", "Diego (ficticio)"),
     ("fam_003", "+15550100013", "Lucía (ficticia)"),
+    ("doc_001", "+15550100021", "Dra. Marta (ficticia)"),
+    ("ptl_002", "+15550100031", "Jorge (ficticio)"),  # Jorge's own login
 ]
 
 PATIENTS = [
@@ -55,7 +59,7 @@ PATIENTS = [
         "display_name": "Rosa (ficticia)",
         "birth_year": 1941,
         "vocabulary": ["Rosa", "andador"],
-        "access": [("cg_001", Role.caregiver), ("fam_001", Role.family)],
+        "access": [("cg_001", Role.caregiver), ("fam_001", Role.family), ("doc_001", Role.doctor)],
         "indications": ["Estimular la hidratación", "Acompañar al caminar"],
         "allergies": ["Penicilina"],
         "medications": [
@@ -68,7 +72,8 @@ PATIENTS = [
         "display_name": "Jorge (ficticio)",
         "birth_year": 1938,
         "vocabulary": ["Jorge", "andador"],
-        "access": [("cg_001", Role.caregiver), ("fam_002", Role.family)],
+        "access": [("cg_001", Role.caregiver), ("fam_002", Role.family), ("doc_001", Role.doctor),
+                   ("ptl_002", Role.patient)],
         "indications": ["Recordarle usar el andador", "Levotiroxina en ayunas"],
         "allergies": [],
         "medications": [
@@ -81,7 +86,7 @@ PATIENTS = [
         "display_name": "Elena (ficticia)",
         "birth_year": 1945,
         "vocabulary": ["Elena"],
-        "access": [("cg_002", Role.caregiver), ("fam_003", Role.family)],
+        "access": [("cg_002", Role.caregiver), ("fam_003", Role.family), ("doc_001", Role.doctor)],
         "indications": ["Ofrecer agua cada 2 horas", "Dieta blanda"],
         "allergies": ["Ibuprofeno"],
         "medications": [
@@ -299,6 +304,7 @@ def seed() -> None:
             for person_id, role in p["access"]:
                 s.add(PatientAccess(person_id=person_id, patient_id=p["id"], role=role))
             plan = CarePlan(id=f"plan_{p['id'][4:]}", patient_id=p["id"], version=1,
+                            created_by="doc_001",
                             indications=p["indications"], allergies=p["allergies"])
             s.add(plan)
             for med_id, name, dose_text, times in p["medications"]:

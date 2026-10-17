@@ -25,6 +25,8 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Versioned report storage | Pending | |
 | Web timeline (caregiver view) | Pending | |
 | Family read-only view | Pending | |
+| Doctor edits care plan (new version) | Pending | Role and permission in schema; no endpoint/view yet |
+| Patient view (own care plan, no reports) | Pending | Role and permission in schema; no endpoint/view yet |
 | Cited natural-language query | Pending | |
 | Single-use magic-link access | Pending | |
 | Eval script and 20 cases | Pending | |

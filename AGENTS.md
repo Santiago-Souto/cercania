@@ -71,14 +71,16 @@ Rules:
 
 ## 6. Roles and access (keep it minimal)
 
-Two user roles, same data, different views. No separate apps.
+Four user roles, same data, different views. No separate apps. A person's role is per patient (`patient_access`); permissions live in `ROLE_PERMISSIONS` in `backend/app/models.py`.
 
 | Role | Can do |
 |---|---|
 | Caregiver | Send reports, confirm/correct, query, see patient timeline |
 | Family | Read-only summary and alerts |
+| Doctor | Read reports and alerts; the **only** role that edits the care plan (each edit = new plan version) |
+| Patient | Own profile and care plan only. **No access to reports or alerts about them.** |
 
-The patient is the subject of the profile, not a user with login.
+The patient is the subject of the profile; optionally they also have their own login with the `patient` role. The doctor writes dose text into the plan; code still never computes or suggests doses.
 
 Auth: phone number in -> bot sends a **single-use link with short expiry**. The user must start the WhatsApp conversation (outbound messages outside the 24h window need approved templates; verify with the provider's docs).
 
@@ -131,7 +133,7 @@ Endpoints (initial): `GET /patients/:id`, `GET /patients/:id/reports`, `POST /pa
 
 ## 10. Out of scope (do not build)
 
-Health-system / clinical-record integration, push notifications, complex auth, voice replies from the agent (text confirmation first; audio reply only if time remains Sunday), a third user role, anything not on the critical path of "voice note in -> verified record + alerts out -> cited query".
+Health-system / clinical-record integration, push notifications, complex auth, voice replies from the agent (text confirmation first; audio reply only if time remains Sunday), roles beyond the four in section 6, anything not on the critical path of "voice note in -> verified record + alerts out -> cited query".
 
 ## 11. Quality check we must be able to show (AI quality, 20%)
 

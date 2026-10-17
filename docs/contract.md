@@ -150,7 +150,7 @@ Acknowledge immediately (HTTP 200), then process asynchronously. Dedupe by provi
 
 ### Magic link
 
-`POST /auth/link` is triggered when a user messages the bot. The bot replies with a single-use URL that expires after `MAGIC_LINK_TTL_MINUTES`. Roles: `caregiver`, `family` (read-only).
+`POST /auth/link` is triggered when a user messages the bot. The bot replies with a single-use URL that expires after `MAGIC_LINK_TTL_MINUTES`. Roles: `caregiver`, `family` (read-only), `doctor` (only role that edits the care plan), `patient` (own profile and care plan; no reports or alerts). A role is per patient. Endpoints return `403` with an error `code: "forbidden"` when the role lacks the permission.
 
 ## Seed data
 
