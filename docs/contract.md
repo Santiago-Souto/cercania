@@ -154,6 +154,13 @@ Meta Cloud API webhook (JSON). Requests without a valid `X-Hub-Signature-256` (H
 
 Acknowledge immediately (HTTP 200), then process asynchronously. Dedupe by provider message id. Identify the caregiver by sender phone number. If the caregiver has several patients, ask "which patient?" before processing.
 
+Bot behavior (all replies are WhatsApp text):
+- Sender phone not in `person.phone` → "number not registered" message; nothing processed.
+- No patient where the sender has `send_report` → "no patients assigned" message.
+- Several patients → numbered "¿De qué paciente es el reporte?" question; the report is kept (in memory, 30 min) and processed once the caregiver answers with the number or part of the name. `message_id` is the report's id, not the answer's.
+- After `process_report`: `confirmation_text` (or the result's `message` for `needs_retry` / `unclear`). When `red_flag` is true, a fixed line written in code is prepended: "⚠️ Si es una emergencia, llamá a emergencias o al médico ahora."
+- `process_report` not deployed → the caregiver is told nothing was stored.
+
 ## Reports from the web app
 
 ### `POST /patients/{patient_id}/reports`
