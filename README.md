@@ -30,7 +30,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Patient view (own care plan, no reports) | Pending | Role and permission in schema; no endpoint/view yet |
 | Cited natural-language query | Pending | |
 | Single-use magic-link access | Pending | |
-| Eval script and 20 cases | Pending | |
+| Eval script and 20 cases | In progress | `eval/run_eval.py` built and tested; needs `process_report` (CIA-7) to run and the 20 cases (CIA-24); 2 cases so far, 0 unseen |
 
 ### Simulated
 
@@ -69,7 +69,12 @@ Web: run commands go here once `web/` is scaffolded.
 ## Evaluation
 
 ```bash
-# python eval/run_eval.py
+cd backend && source .venv/bin/activate && cd ..
+python eval/run_eval.py                 # all cases, seen and unseen reported separately
+python eval/run_eval.py --split unseen  # only the held-out cases
+python eval/run_eval.py --json out.json # per-case details
 ```
 
-Reports: fields extracted correctly, omissions detected, missing checklist items detected, false alarms, quote-verification pass rate.
+Runs every case in `eval/cases.csv` through the real `process_report` on a fresh temporary SQLite database with the fictional seed data (the team database is never touched). Needs `ANTHROPIC_API_KEY`.
+
+Reports: fields extracted (value + verified quote), omissions detected, missing checklist items detected, false alarms (unexpected alerts, items reported but not mentioned, items flagged missing but mentioned), quote-verification pass rate, and latency per report. Change alerts are expected as `change:<item>` in `expected_alerts`. A case where `process_report` raises or returns a status other than `ok` counts as failed: its expected counts stay in every ratio with zero detections, and the run exits with code 1. The wording of extracted values is not judged. Cases with `split=unseen` are held out from prompt tuning (keep at least 5).

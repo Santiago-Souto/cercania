@@ -47,6 +47,7 @@ process_report(patient_id, caregiver_id, transcript, audio_ref, message_id) -> P
     },
     {
       "type": "change",
+      "item": "appetite",
       "detail": "Appetite low for 3 consecutive shifts.",
       "report_refs": ["rep_121", "rep_122", "rep_123"]
     }
