@@ -40,12 +40,20 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 
 ## Run locally
 
-Fill in after the stack is confirmed (see `AGENTS.md`, section 8).
+Backend (Python 3.12+):
 
 ```bash
 cp .env.example .env
-# backend and web run commands go here
+cd backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+uvicorn app.main:app --reload   # http://localhost:8000/health
+pytest                          # backend tests
 ```
+
+Deploy: `render.yaml` is a Render Blueprint (Render -> New -> Blueprint -> this repo). Health check at `/health`.
+
+Web: run commands go here once `web/` is scaffolded.
 
 ## Evaluation
 

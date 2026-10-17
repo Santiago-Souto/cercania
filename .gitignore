@@ -1,0 +1,26 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Local data and media (never commit audio or real health data)
+*.db
+*.sqlite3
+media/
+*.ogg
+*.opus
+*.mp3
+*.m4a
+*.wav
+
+# Node
+node_modules/
+.next/
+dist/
+
+.DS_Store
