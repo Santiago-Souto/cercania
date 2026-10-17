@@ -111,7 +111,7 @@ def test_bad_patient_id_fails_one_case_not_the_run(monkeypatch):
         return "cg"
 
     monkeypatch.setattr(ev, "caregiver_for", caregiver)
-    scores = ev.run([C001, other], lambda **kw: ok_result, models=None)
+    scores = ev.run([C001, other], lambda *args: ok_result, models=None)
     assert [s.case_id for s in scores] == ["c001", "c002"]
     assert scores[0].error and "no caregiver" in scores[0].error
     assert scores[1].error is None and scores[1].fields_detected == 1

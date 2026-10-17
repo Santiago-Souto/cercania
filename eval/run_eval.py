@@ -201,20 +201,24 @@ def format_summary(title: str, summary: dict) -> str:
 
 
 def prepare_backend(db_path: Path):
-    """Points the backend at a fresh SQLite file, seeds it, returns (process_report, models)."""
+    """Points the backend at a fresh SQLite file, seeds it, returns (process_report, models).
+
+    Goes through app.ingest.process_report, the same single entry point the
+    WhatsApp and web channels use, so the eval measures exactly that path.
+    """
     os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"  # before app.models creates its engine
     sys.path.insert(0, str(ROOT / "backend"))
-    from app import models, seed
+    from app import ingest, models, seed
 
     seed.seed()
     try:
-        from app.process import process_report
-    except ImportError as exc:
+        __import__(ingest.PROCESS_REPORT_MODULE, fromlist=["process_report"]).process_report
+    except (ImportError, AttributeError) as exc:
         raise SystemExit(
-            "process_report is not available yet (expected in backend/app/process.py, CIA-7). "
+            f"process_report is not available yet (expected in {ingest.PROCESS_REPORT_MODULE}, CIA-7). "
             f"Nothing was evaluated. ({exc})"
         ) from exc
-    return process_report, models
+    return ingest.process_report, models
 
 
 def caregiver_for(models, patient_id: str) -> str:
@@ -238,12 +242,14 @@ def run(cases: list[Case], process_report, models) -> list[CaseScore]:
     for case in cases:
         start = time.perf_counter()
         try:
+            # Positional on purpose: the sender parameter is being renamed
+            # (caregiver_id -> sender_id, CIA-5); the order is the contract's.
             result = process_report(
-                patient_id=case.patient_id,
-                caregiver_id=caregiver_for(models, case.patient_id),
-                transcript=case.transcript,
-                audio_ref=None,
-                message_id=f"eval-{run_id}-{case.case_id}",
+                case.patient_id,
+                caregiver_for(models, case.patient_id),
+                case.transcript,
+                None,
+                f"eval-{run_id}-{case.case_id}",
             )
             score = score_case(case, result, time.perf_counter() - start)
         except Exception as exc:  # one broken case must not hide the others
