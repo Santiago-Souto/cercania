@@ -7,7 +7,7 @@ Read this fully before changing code. Keep it updated: if reality and this file 
 
 A care-handoff assistant for caregivers of dependent people (e.g. older adults in a residential center).
 
-- A caregiver sends an end-of-shift **voice note via WhatsApp** to a bot. No app install.
+- A caregiver sends an end-of-shift **voice note via WhatsApp** to a bot. No app install. The same report can also be sent from the web app (audio or text); both go through the same pipeline.
 - The system transcribes it, extracts structured data, **compares it against the patient's care plan and history by code**, flags omissions/changes, and stores everything on a web app.
 - The next shift (or a family member) can **query the record in natural language** and gets answers **with a citation to the exact fragment of the original report**.
 
@@ -40,7 +40,8 @@ Rubric weights: working product 35%, problem and user value 25%, AI quality 20% 
 ## 4. Pipeline
 
 ```
-WhatsApp message (voice note or text)
+WhatsApp message (voice note or text)  |  or web app report (POST /patients/:id/reports, audio or text)
+  (web: sender = session user, dedupe by client id, patient from the URL; joins at transcription)
   -> webhook (ack immediately, process async, dedupe by message id)
   -> identify sender by phone number (code)
        unknown number -> fixed reply, stop (see 4.1)
@@ -92,7 +93,7 @@ Appetite, sleep, urination/diuresis, medication, mood, mobility, pain, incidents
 
 ## 5. Data model (design rules)
 
-Schema lives in `backend/app/models.py`. Entities: `person` (anyone who logs in or messages the bot; phone number = identity), `patient_access` (person + patient + role), `patient` (optionally a registered health provider contact: name + phone, used only for emergency notifications), `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `magic_link`.
+Schema lives in `backend/app/models.py`. Entities: `person` (anyone who logs in or messages the bot; name, email, WhatsApp number = identity; "user" in the contract), `patient_access` (person + patient + role; "membership" in the contract, see section 6), `invite` (pending membership by WhatsApp number), `login_code` (hashed 6-digit code, expiry, used flag), `patient` (optionally a registered health provider contact: name + phone, used only for emergency notifications), `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient). Pending in code: `login_code`, `invite`, `patient_message`, `message`; `magic_link` goes away with the 6-digit code login.
 
 Rules:
 - Structured data in Postgres; binaries (audio, images, documents) in object storage. `file` stores only the storage path and metadata.
@@ -105,20 +106,20 @@ Rules:
 
 ## 6. Roles and access (keep it minimal)
 
-Four user roles, same data, different views. No separate apps. A person's role is per patient (`patient_access`); permissions live in `ROLE_PERMISSIONS` in `backend/app/models.py`.
+One web app, same data, a view per role. Roles are per patient (`patient_access`, "membership"): the same person can be caregiver of one patient and family of another. Permissions live in `ROLE_PERMISSIONS` in `backend/app/models.py`; endpoints return `403 forbidden` when the role lacks one.
 
 | Role | Can do |
 |---|---|
-| Caregiver | Send reports, confirm/correct, query, see patient timeline |
-| Family | Read-only summary and alerts |
-| Doctor | Read reports and alerts; the **only** role that edits the care plan (each edit = new plan version) |
-| Patient | Own profile and care plan only. **No access to reports or alerts about them.** |
+| Caregiver | Send reports (WhatsApp or web), confirm/correct, query, see timeline and alerts, add patients (with their initial care plan) and invite people |
+| Health team (doctor, nurse, hospital/institution) | See assigned patients, reports, alerts and query; reply to family messages. The **doctor** is the only role that edits the care plan after creation (each edit = new plan version) |
+| Family | Read-only summary and alerts; message the health team |
+| Patient | Only two actions: tell how they feel (audio or text) and press "I need help". **No access to reports or alerts about them.** |
 
 Any registered role can raise an emergency over WhatsApp (section 4.1); only caregivers send shift reports. Raising an emergency gives the sender no extra read access.
 
-The patient is the subject of the profile; optionally they also have their own login with the `patient` role. The doctor writes dose text into the plan; code still never computes or suggests doses.
+The patient is the subject of the profile; optionally they also have their own login with the `patient` role. Dose text is written by people (caregiver at creation, doctor afterwards); code never computes or suggests doses.
 
-Auth: phone number in -> bot sends a **single-use link with short expiry**. The user must start the WhatsApp conversation (outbound messages outside the 24h window need approved templates; verify with the provider's docs).
+Auth: sign up with name, email and WhatsApp number -> the bot sends a **6-digit code** to that WhatsApp -> code entered on the web. Codes are single-use, expire in 10 minutes, are stored hashed and are rate-limited per number. No passwords. Outbound WhatsApp messages outside the 24h window need an approved authentication template (or, in the sandbox, the user must join first); verify with the provider's docs. Invited users get the role from their invite after their first login. Only caregivers can invite, by WhatsApp number only (email is not verified, so it never grants access). Email is contact info, not identity, and need not be unique. Login and sign-up never reveal whether a phone is registered. The WhatsApp webhook verifies the provider signature before trusting the sender phone; corrections and reports take the author from the session or the verified sender, never from the request body.
 
 ## 7. Safety rules (non-negotiable)
 
@@ -126,13 +127,15 @@ Auth: phone number in -> bot sends a **single-use link with short expiry**. The 
 - If something is ambiguous, **ask or say "unclear"**. Never guess.
 - Emergencies (the patient needs immediate help or their health is at risk: a fall, injury, chest pain, breathing difficulty, etc.) are detected by the **model in the triage step** (section 4.2). The reply is a **fixed message** written in code: "contact emergency services or the physician." The bot never gives first-aid or clinical instructions. This is a safety net, not the product's core.
 - When in doubt, triage leans to emergency: a false alarm costs less than a missed one.
+- Patient "I need help" is a **fixed rule**, never routed through the model: notify every caregiver and health-team member of that patient right away and show the patient "help is on the way; if it is an emergency, call emergency services". Patient "how I feel" messages go through the same triage step, text or audio (audio is triaged on its transcript).
+- Family <-> health team messages are human-to-human. The model never answers them, and the thread always shows "not for emergencies".
 - Do not claim legal protection. The product creates a *record of what was reported*.
 - Not a replacement for the clinical record. No integration with health-system records (out of scope, see section 10).
 
 ## 8. Proposed stack (confirm or edit; update this section when decided)
 
 - Backend: Python + FastAPI
-- Web: React or Next.js (two views: caregiver, family)
+- Web: **Next.js** (decided), mobile-first, usable on desktop at a centered ~480px column. UI copy in Spanish (Río de la Plata). **Design source of truth: `docs/design/DESIGN.md`** (tokens, components, screen → route → ticket map) with artboard snapshots in `docs/design/screens/`. UI changes start in the design, then the code. **UI is shadcn/ui only** (themed with our tokens); no custom components or plain HTML unless strictly necessary.
 - DB: **decided** Postgres on Supabase via SQLAlchemy 2.0 + psycopg 3 (`DATABASE_URL`); SQLite is the local default and fallback (same models). Files in Supabase Storage, private bucket, signed URLs.
 - Transcription: Groq Whisper (`whisper-large-v3-turbo`, env `GROQ_API_KEY`) with a vocabulary prompt; CIA-18 compares providers on real audio
 - LLM: Claude via API, structured JSON output (`output_config.format`). **Decided per task:**
@@ -167,11 +170,16 @@ backend/app/
   seed.py          2-3 fictional patients + care plans       [brain owner]
 backend/scripts/
   setup_whatsapp.py  registers the webhook with Meta         [infra/input owner]
-web/               caregiver and family views                [web owner]
+web/               Next.js app, one view per role            [web owner]
+                   sign-up + code, my patients, add patient + roles,
+                   patient home, report, alerts, ask, new report,
+                   family view, family<->health team messages, patient view
 eval/
   cases.csv        20 cases with expected output
   run_eval.py      runs cases, prints metrics                [infra/input owner]
 docs/contract.md   endpoints and data shapes (source of truth for integration)
+docs/deploy.md     Render URLs, env vars, troubleshooting
+docs/design/       DESIGN.md + screen snapshots (source of truth for the UI)  [web owner]
 README.md          Functional / Simulated / Pending
 .agents/skills/    shared agent skills, tool-agnostic (.claude/skills is a symlink here)
 ```
@@ -185,7 +193,15 @@ Endpoints (initial): `GET /patients/:id`, `GET /patients/:id/reports`, `POST /pa
 
 ## 10. Out of scope (do not build)
 
-Health-system / clinical-record integration, app/browser push notifications (WhatsApp emergency notifications in section 4.2 are in scope; the in-app web inbox, polled every ~5 s, and the browser Notification API while the tab is open are in scope as the interim channel while WhatsApp is not approved), complex auth, voice replies from the agent (text confirmation first; audio reply only if time remains Sunday), roles beyond the four in section 6, anything not on the critical path of "voice note in -> verified record + alerts out -> cited query".
+Health-system / clinical-record integration, app/browser push notifications (alerts, help requests and the emergency notifications in section 4.2 go out by WhatsApp; until Meta approves the number, the in-app web inbox, polled every ~5 s, plus the browser Notification API while the tab is open, is the interim channel), passwords / OAuth / SSO, voice replies from the agent (text confirmation first; audio reply only if time remains Sunday), roles beyond the six in section 6 (caregiver, family, patient, doctor, nurse, institution), AI answers inside family <-> health team messages.
+
+**Priority order (scope was widened on Sat 13:45; the critical path still comes first):**
+1. Critical path: voice note or web report in -> verified record + alerts -> cited query, and the views that show it.
+2. Sign-up with 6-digit code, my patients, add patient + roles.
+3. Patient view (how I feel + I need help).
+4. Family <-> health team messages (bonus: first to cut).
+
+If a lower item threatens a sync point in section 14, stop it and list it as Pending in the README.
 
 ## 11. Quality check we must be able to show (AI quality, 20%)
 
@@ -229,7 +245,8 @@ Problem: the shift handoff gets lost. Live demo: a juror dictates a report, sees
 
 ## 16. Open decisions
 
-- Stack confirmation (section 8).
+- Stack confirmation (section 8; web is decided: Next.js).
+- WhatsApp authentication template for the 6-digit code vs sandbox join (section 6).
 - Which transcription provider wins the 5-real-audio test.
 - Final checklist item list (section 4) once validated with a caregiver contact.
 - Emergency triage criteria (section 4.2): the prompt in `triage.py` is provisional. It currently treats a past event the message says was attended, with the patient now fine ("se cayó a la mañana, la vio el médico, está bien"), as **not** an emergency, and anything unclear as an emergency. Confirm or change.

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Vista del paciente</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&amp;family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0E5A55}a:hover{color:#0A4440}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; padding: 32px 20px 28px; background: #F5F6F2; color: #16201C; font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; font-size: 19px; line-height: 1.4">
+  <section style="display: flex; flex-direction: column; gap: 4px">
+    <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 34px; line-height: 1.1">Hola, Rosa</h1>
+    <p style="margin: 0; color: #3C4843">¿Cómo te sentís hoy?</p>
+  </section>
+
+  <button type="button" style="font: inherit; flex: 1; max-height: 260px; border: 0; border-radius: 28px; background: #0E5A55; color: #FFFFFF; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; cursor: pointer">
+    <span aria-hidden="true" style="width: 88px; height: 88px; border-radius: 44px; background: #FFFFFF; color: #0E5A55; display: flex; align-items: center; justify-content: center">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path><path d="M12 18v3"></path></svg>
+    </span>
+    <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 24px">Contar cómo me siento</span>
+    <span style="font-size: 16px; opacity: 0.9">Tocá y hablá</span>
+  </button>
+
+  <button type="button" style="font: inherit; min-height: 64px; border-radius: 20px; border: 2px solid #0E5A55; background: #FFFFFF; color: #0E5A55; font-weight: 700; cursor: pointer">Prefiero escribir</button>
+
+  <button type="button" style="font: inherit; min-height: 88px; border-radius: 24px; border: 0; background: #A61B1B; color: #FFFFFF; display: flex; align-items: center; justify-content: center; gap: 12px; cursor: pointer">
+    <svg aria-hidden="true" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+    <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 24px">Necesito ayuda</span>
+  </button>
+
+  <section style="background: #FFFFFF; border: 1px solid #DDE2DC; border-radius: 18px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; font-size: 16px">
+    <span style="color: #4F5B56">Tu último mensaje · hoy 10:20</span>
+    <span style="font-style: italic">“me duele un poco la rodilla”</span>
+    <span style="font-weight: 700; color: #0E5A55">Lo vio Ana ✓</span>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

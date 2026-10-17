@@ -135,8 +135,7 @@ def serialize_patient(session: Session, patient: Patient) -> dict:
             "indications": list(plan.indications or []),
             "allergies": list(plan.allergies or []),
         }
-    # location: there is no column for it yet.
-    return {"id": patient.id, "display_name": patient.display_name, "location": None,
+    return {"id": patient.id, "display_name": patient.display_name, "location": patient.location,
             "care_plan": care_plan}
 
 

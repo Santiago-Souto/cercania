@@ -33,8 +33,8 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Web timeline (caregiver view) | Pending | Web owner |
 | Family read-only view | Pending | Web owner |
 | Doctor edits care plan (new version) | Pending | Role and permission in schema; no endpoint/view yet |
-| Patient view (own care plan, no reports) | Pending | Role and permission in schema; no endpoint/view yet |
-| Single-use magic-link access | Pending | No `/auth/link` route yet |
+| Patient view (how I feel + I need help; no reports or alerts) | Pending | Role and permission in schema; no endpoint/view yet |
+| Login with 6-digit WhatsApp code | Pending | |
 | Eval script and 20 cases | In progress | `eval/run_eval.py` built and tested; 2 cases so far, 0 unseen. The run against the real `process_report` and query is still to do |
 
 ### Simulated
@@ -42,11 +42,13 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 - **Caller identity:** until the login backend lands, the web app identifies the user with an `X-Person-Id` header (`backend/app/deps.py`). Anyone can claim any id, so it is honored only with `ALLOW_DEV_IDENTITY_HEADER=1` (local dev / demo with fictional data); otherwise every call gets 401. Not for real data.
 - **Fake model clients** exist only in the backend tests. The running app calls the real models.
 - Patient, care plan and history data are fictional seed data (`backend/app/seed.py`). Seeded reports are marked `channel="seed"`, `model="seed"`: they are fixtures, not model output.
+- Web app screens show contract-shaped fake data (`web/lib/fake.ts`) until the backend endpoints land; a "Datos de prueba ficticios" banner is shown while it is on. Buttons that need the backend (record, send, help, invite, login) are not wired yet.
+
 - **Audio:** no audio file is stored yet. `audio_url` is a placeholder path (`/media/{id}`) with no route behind it.
 
 ### Pending
 
-- Real auth (CIA-26/32). Magic-link login is not built.
+- Real auth: login with the 6-digit WhatsApp code (CIA-32) is not built.
 - WhatsApp emergency notifications, pending Meta approval. `NOTIFY_WHATSAPP=0` by default, so they are recorded as `skipped`; the web inbox is the channel in use.
 - Audio storage and `audio_url` (Supabase Storage, signed URLs).
 - Transcript segments: citations have no audio times yet (`audio_start_sec` / `audio_end_sec` are `null`).
@@ -75,7 +77,7 @@ uvicorn app.main:app --reload   # http://localhost:8000/health
 pytest                          # backend tests
 ```
 
-Deploy: `render.yaml` is a Render Blueprint (Render -> New -> Blueprint -> this repo). Health check at `/health`.
+Deploy: live URLs, env vars and troubleshooting in [`docs/deploy.md`](docs/deploy.md). `render.yaml` is a Render Blueprint (Render -> New -> Blueprint -> this repo). Health check at `/health`. It creates two services: `cercania-api` (backend) and `cercania-web` (Next.js). On first deploy Render asks for the secrets; set `NEXT_PUBLIC_API_URL` on the web to the API's public URL (`https://cercania-api.onrender.com` or whatever Render assigns). The web ships with `NEXT_PUBLIC_USE_FAKE_DATA=1` (fictional data, banner shown) until the read endpoints land. Free services sleep: open both URLs a minute before a demo.
 
 Database on Supabase:
 1. Create a project at supabase.com (free plan). Save the database password.
@@ -83,7 +85,17 @@ Database on Supabase:
 3. Put it, with the password filled in, in `.env` as `DATABASE_URL` for local use, and in Render as the `DATABASE_URL` secret.
 4. `python -m app.seed` creates the tables and fictional data in Supabase. The backend adds `sslmode=require` itself.
 
-Web: run commands go here once `web/` is scaffolded.
+Web (Node 20+, Next.js 16 + shadcn/ui, mobile-first):
+
+```bash
+cd web
+npm install
+npm run dev       # fake data, http://localhost:3000 -> /login
+npm run dev:real  # real backend at NEXT_PUBLIC_API_URL
+npm run lint && npm run build
+```
+
+Fake data is opt-in: only `NEXT_PUBLIC_USE_FAKE_DATA=1` (set by `npm run dev`) shows it. Without it the app calls the backend at `NEXT_PUBLIC_API_URL`, so a deploy never shows fabricated patients by accident. Design and screen map: `docs/design/DESIGN.md`.
 
 ## Evaluation
 

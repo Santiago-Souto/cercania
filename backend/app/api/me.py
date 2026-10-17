@@ -58,7 +58,7 @@ def get_my_patients(person_id: str = Depends(current_person_id), db: Session = D
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     out = []
     for access, patient in _memberships(db, person_id):
-        entry = {"id": patient.id, "display_name": patient.display_name, "location": None,
+        entry = {"id": patient.id, "display_name": patient.display_name, "location": patient.location,
                  "role": access.role.value, "last_report_at": None, "open_alerts": None,
                  "red_flag": None, "missing_report": None}
         if access.role != Role.patient:

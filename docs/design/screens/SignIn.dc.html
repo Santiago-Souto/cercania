@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Crear cuenta</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&amp;family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0E5A55}a:hover{color:#0A4440}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; gap: 28px; padding: 32px 24px 32px; background: #F5F6F2; color: #16201C; font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; font-size: 16px; line-height: 1.45">
+  <div style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 24px; color: #0E5A55">CercanIA</div>
+
+  <section style="display: flex; flex-direction: column; gap: 8px">
+    <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 30px; line-height: 1.15">Crear cuenta</h1>
+    <p style="margin: 0; color: #3C4843">Te mandamos un código de 6 dígitos por WhatsApp para entrar. Sin contraseñas.</p>
+  </section>
+
+  <div role="tablist" aria-label="Tipo de acceso" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 4px; border-radius: 14px; background: #E7EBE6">
+    <button type="button" role="tab" aria-selected="true" style="font: inherit; font-weight: 700; min-height: 44px; border: 0; border-radius: 10px; background: #FFFFFF; color: #16201C">Crear cuenta</button>
+    <button type="button" role="tab" aria-selected="false" style="font: inherit; min-height: 44px; border: 0; border-radius: 10px; background: transparent; color: #4F5B56">Ya tengo cuenta</button>
+  </div>
+
+  <form style="display: flex; flex-direction: column; gap: 16px">
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <label for="name" style="font-weight: 700; font-size: 14px">Nombre</label>
+      <input id="name" type="text" autocomplete="name" placeholder="Ana Pérez" style="font: inherit; min-height: 48px; padding: 0 14px; border-radius: 12px; border: 1px solid #C9D0C9; background: #FFFFFF; color: #16201C">
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <label for="email" style="font-weight: 700; font-size: 14px">Email</label>
+      <input id="email" type="email" autocomplete="email" placeholder="ana@ejemplo.com" style="font: inherit; min-height: 48px; padding: 0 14px; border-radius: 12px; border: 1px solid #C9D0C9; background: #FFFFFF; color: #16201C">
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <label for="phone" style="font-weight: 700; font-size: 14px">WhatsApp</label>
+      <input id="phone" type="tel" autocomplete="tel" placeholder="+598 9X XXX XXX" style="font: inherit; min-height: 48px; padding: 0 14px; border-radius: 12px; border: 1px solid #C9D0C9; background: #FFFFFF; color: #16201C">
+      <span style="font-size: 13px; color: #4F5B56">Ahí te llega el código y ahí mandás los reportes.</span>
+    </div>
+  </form>
+
+  <div style="margin-top: auto; display: flex; flex-direction: column; gap: 12px">
+    <a href="Code.dc.html" style="text-decoration: none; min-height: 52px; border-radius: 26px; background: #0E5A55; color: #FFFFFF; font-weight: 700; display: flex; align-items: center; justify-content: center">Enviar código por WhatsApp</a>
+    <p style="margin: 0; font-size: 13px; color: #4F5B56; text-align: center">Al continuar aceptás recibir mensajes de CercanIA por WhatsApp.</p>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

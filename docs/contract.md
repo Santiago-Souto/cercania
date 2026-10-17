@@ -185,7 +185,7 @@ Permission: `read_care_plan` (all roles). Errors: `401`, `404 not_found`.
 {
   "id": "pat_001",
   "display_name": "Rosa (fictional)",
-  "location": null,
+  "location": "Room 12",
   "care_plan": {
     "medications": [
       { "id": "med_002", "name": "Example-med", "dose": "as prescribed", "times": ["08:00", "20:00"] }
@@ -268,6 +268,7 @@ Permission: `correct_report` (caregiver only). The author is the caller; there i
 - `corrections`: one or more `{ item, value }`. `item` must be a checklist item. `value` is a string; `null` or an empty string means "not mentioned". If an item appears twice, the last one wins.
 - Creates a **new version** (`source: "correction"`, `created_by` = caller). The previous version is not modified.
 - Corrected items have `source: "correction"` and no quote. Other items are carried over unchanged. Omission and missing-item alerts are recomputed; the emergency alert and the change alerts of items that were not corrected are carried over, with their notification log.
+- The author is the session user, never a field in the body. Only `caregiver` memberships can correct.
 - Returns the **Report shape** with the new latest version.
 
 Errors: `401`; `404 not_found`; `403 forbidden` (role is not caregiver); `409 not_correctable` (the report is an emergency or has no version to correct); `409 version_conflict` (two corrections raced for the same version; retry); `422 invalid_request` (unknown item, empty `corrections`).
@@ -331,7 +332,7 @@ Any authenticated person. One entry per membership, for the dashboard. Status fi
     {
       "id": "pat_001",
       "display_name": "Rosa (fictional)",
-      "location": null,
+      "location": "Room 12",
       "role": "family",
       "last_report_at": "2026-10-18T00:05:00Z",
       "open_alerts": 1,
@@ -393,6 +394,86 @@ Triggered when triage says emergency (AGENTS.md 4.2), from any registered sender
 - **Status meaning**: `sent` for WhatsApp means Meta accepted the request. Delivery receipts are not tracked yet.
 - `alert.notifications` on the alert carries the summary `{ to, person_id, channel, status, error }` of all rows.
 
+The signature check runs before the ack and before anything is processed; the sender phone is trusted only after it passes. The payload's `metadata.phone_number_id` must also equal `WHATSAPP_PHONE_NUMBER_ID`; other numbers are acked and ignored (pending in code).
+
+## Roles (fixed enum)
+
+`caregiver`, `family`, `patient`, `doctor`, `nurse`, `institution`. `doctor`, `nurse` and `institution` share the "health team" permissions in `AGENTS.md` section 6. A role belongs to a membership (user + patient), not to the user. Only `doctor` edits the care plan after creation (each edit is a new plan version); `patient` never sees reports or alerts. Endpoints return `403` with error `code: "forbidden"` when the role lacks the permission (`ROLE_PERMISSIONS` in `backend/app/models.py`).
+
+## Auth (6-digit code by WhatsApp)
+
+No passwords. The web app keeps the session in a cookie set by `POST /auth/verify` with `HttpOnly`, `Secure` and `SameSite=Lax`; every endpoint below except `/auth/*` and `/webhook/*` requires it and returns `401 { "error": { "code": "unauthenticated" } }` without it.
+
+### `POST /auth/signup`
+
+```json
+{ "name": "Ana Pérez (fictional)", "email": "ana@example.com", "phone": "+59899000000" }
+```
+
+### `POST /auth/login`
+
+```json
+{ "phone": "+59899000000" }
+```
+
+Both send a 6-digit code to the WhatsApp number and reply:
+
+```json
+{ "status": "code_sent", "phone_last4": "0000", "expires_in_sec": 600, "resend_after_sec": 60 }
+```
+
+Errors: `phone_invalid`, `too_many_requests`. Neither is about whether the phone has an account.
+
+Anti-enumeration: these two endpoints must not reveal whether a phone is registered. `POST /auth/login` returns the same `code_sent` body for an unknown phone and sends nothing. `POST /auth/signup` for a phone that already has an account sends a normal login code instead of creating a second user. If WhatsApp cannot deliver the code (e.g. the user has not messaged the bot yet), the response is still `code_sent`; the code screen always says "si no te llega, mandale \"hola\" al bot y pedí otro código". Email is contact info only: it is not verified, not unique, and never grants access, so there is no `email_taken`.
+
+### `POST /auth/verify`
+
+```json
+{ "phone": "+59899000000", "code": "470123" }
+```
+
+```json
+{ "user": { "id": "usr_001", "name": "Ana Pérez (fictional)" }, "memberships": [ { "patient_id": "pat_001", "role": "caregiver" } ] }
+```
+
+Codes are single-use, expire after `LOGIN_CODE_TTL_MINUTES` (default 10), are stored hashed, and lock after 5 wrong attempts. Errors: `code_invalid`, `code_expired`, `too_many_attempts`. Pending invites for the verified phone become memberships here. Invites are matched only on the phone proven by the code, never on email.
+
+### `POST /auth/logout`
+
+Clears the session.
+
+## Patients and team
+
+### `POST /patients`
+
+```json
+{
+  "display_name": "Rosa (fictional)",
+  "location": "Room 12",
+  "care_plan": {
+    "medications": [ { "name": "Example-med", "dose": "as prescribed", "times": ["08:00", "20:00"] } ],
+    "indications": ["Encourage fluids"],
+    "allergies": []
+  }
+}
+```
+
+`location` is optional free text and is `null` when not set. Returns the patient as in `GET /patients/{patient_id}`. The creator becomes `caregiver` and sets the initial care plan; after that only a `doctor` can edit it. Doses are stored as entered; nothing is computed.
+
+### `GET /patients/{patient_id}/members`
+
+```json
+{ "members": [ { "user_id": "usr_001", "name": "Ana Pérez (fictional)", "role": "caregiver" } ], "invites": [ { "id": "inv_001", "contact": "+59899111111", "role": "family", "status": "pending" } ] }
+```
+
+### `POST /patients/{patient_id}/invites`
+
+```json
+{ "contact": "+59899111111", "role": "family" }
+```
+
+`contact` is a WhatsApp number (E.164); emails are rejected with `phone_invalid` because email ownership is never verified. Sends a WhatsApp invite; the membership is created when that person verifies a code (`POST /auth/verify`). Only `caregiver` memberships can invite (`403 forbidden` otherwise), matching `AGENTS.md` section 6. Health-team and family members cannot invite.
+
 ## Reports from the web app
 
 ### `POST /patients/{patient_id}/reports`
@@ -422,10 +503,6 @@ Requires the `send_report` permission for that patient (today only `caregiver`).
 
 A repeated `client_id` is not transcribed again; the stored report's result is returned.
 
-### Magic link (Pending)
-
-Not built: there is no `POST /auth/link` route yet. Planned: a user who messages the bot gets a single-use URL that expires after `MAGIC_LINK_TTL_MINUTES`. Roles: `caregiver`, `family` (read-only), `doctor` (only role that edits the care plan), `patient` (own profile and care plan; no reports or alerts). A role is per patient.
-
 ## Webhook and WhatsApp
 
 ### `GET /webhook/whatsapp`
@@ -450,6 +527,54 @@ Bot behavior (all replies are WhatsApp text):
 - After `process_report`: `confirmation_text` (or the result's `message` for `needs_retry` / `not_a_report` / `forbidden`). When `red_flag` is true, a fixed line written in code is prepended: "⚠️ Si es una emergencia, llamá a emergencias o al médico ahora." Then the emergency notifications are dispatched.
 - If `process_report` cannot be imported, the caregiver is told nothing was stored.
 
+## Patient messages
+
+### `POST /patients/{patient_id}/patient-messages`
+
+Only for the `patient` role (and caregivers testing).
+
+```json
+{ "kind": "feeling", "text": "me duele un poco la rodilla" }
+```
+
+```json
+{ "kind": "help" }
+```
+
+`kind` is `feeling` or `help`. `feeling` accepts `text` or multipart `audio`. Response:
+
+```json
+{ "id": "pm_001", "kind": "help", "notified": ["usr_001", "usr_004"], "red_flag": false, "message_for_patient": "Ya avisamos a tu equipo. Si es una emergencia, llamá a emergencias." }
+```
+
+`help` is a fixed rule: notify every caregiver and health-team member by WhatsApp immediately; the model is never involved.
+
+`feeling` goes through the same triage step as WhatsApp messages (`triage.py`, model decides `red_flag`): the `text` field, or for `audio` the transcript, before replying. Audio must never skip triage; if triage fails, the reply still includes the fixed emergency line; if transcription fails, return `transcription_failed` and the UI asks the patient to retry or type, always showing "si es una emergencia, llamá a emergencias". When `red_flag` is `true`, the team is notified as for `help` and `message_for_patient` is this fixed text written in code (the model only decides `red_flag`, never the wording):
+
+```json
+{ "id": "pm_002", "kind": "feeling", "notified": ["usr_001", "usr_004"], "red_flag": true, "message_for_patient": "Avisamos a tu equipo. Si es una emergencia, llamá a emergencias o a tu médico ahora." }
+```
+
+### `GET /patients/{patient_id}/patient-messages`
+
+Latest first: `{ "messages": [ { "id", "kind", "text", "created_at", "seen_by": [ { "user_id", "name" } ] } ] }`.
+
+## Family <-> health team messages (bonus)
+
+### `GET /patients/{patient_id}/messages`
+
+```json
+{ "messages": [ { "id": "msg_001", "from": { "user_id": "usr_005", "name": "Marta (fictional)", "role": "family" }, "text": "…", "created_at": "2026-10-17T15:02:00-03:00", "read": true } ] }
+```
+
+### `POST /patients/{patient_id}/messages`
+
+```json
+{ "text": "Hola doctora…" }
+```
+
+Only `family` and health-team roles. Human-to-human: no model call. The UI always shows "not for emergencies".
+
 ## Seed data
 
-`backend/app/seed.py` creates 2-3 fictional patients, each with a care plan, one caregiver, one family member, and a few days of history so that `change` alerts can be demonstrated. Seeded reports have `channel: "seed"` and `triage: null`. No real names or data.
+`backend/app/seed.py` creates 2-3 fictional patients, each with a care plan, and fictional users (caregivers, one doctor, one nurse, family members, and one patient login; no `institution` user yet), each with a fictional `@example.com` email, plus a few days of history so that `change` alerts can be demonstrated. No real names or data.
