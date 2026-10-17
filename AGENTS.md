@@ -60,7 +60,7 @@ Appetite, sleep, urination/diuresis, medication, mood, mobility, pain, incidents
 
 ## 5. Data model (design rules)
 
-Schema lives in `backend/app/models.py`. Entities: `person` (name, email, WhatsApp number = identity; "user" in the contract), `patient_access` (person + patient + role; "membership" in the contract, see section 6), `invite` (pending membership by WhatsApp number), `login_code` (hashed 6-digit code, expiry, used flag), `patient`, `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient). Pending in code: `login_code`, `invite`, `patient_message`, `message`, `magic_link` goes away with the 6-digit code login.
+Schema lives in `backend/app/models.py`. Entities: `person` (name, email, WhatsApp number = identity; "user" in the contract), `patient_access` (person + patient + role; "membership" in the contract, see section 6), `invite` (pending membership by WhatsApp number), `login_code` (hashed 6-digit code, expiry, used flag), `patient`, `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient). Pending in code: `login_code`, `invite`, `patient_message`, `message`; `magic_link` goes away with the 6-digit code login.
 
 Rules:
 - Structured data in Postgres; binaries (audio, images, documents) in object storage. `file` stores only the storage path and metadata.
@@ -114,6 +114,9 @@ backend/app/
   main.py          API + webhook (ack fast, process async)
   whatsapp.py      receive, download audio, reply            [infra/input owner]
   transcribe.py    audio -> text with vocabulary hint        [infra/input owner]
+  web_reports.py   POST /patients/{id}/reports (text/audio)  [infra/input owner]
+  ingest.py        single hand-off from channels to process_report [infra/input owner]
+  deps.py          DB session + current person dependencies  [shared]
 backend/scripts/
   setup_whatsapp.py  registers the webhook with Meta         [infra/input owner]
   extract.py       text -> JSON with quotes                  [brain owner]

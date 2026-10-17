@@ -3,19 +3,28 @@
 import json
 import logging
 
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from app import whatsapp
+from app import web_reports, whatsapp
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger(__name__)
 
 app = FastAPI(title="CercanIA API")
+app.include_router(web_reports.router)
 
 
 def error(status: int, code: str, message: str) -> JSONResponse:
     return JSONResponse(status_code=status, content={"error": {"code": code, "message": message}})
+
+
+@app.exception_handler(HTTPException)
+async def http_error(request: Request, exc: HTTPException) -> JSONResponse:
+    """Errors raised by dependencies use the contract's `{error: {code, message}}` shape."""
+    if isinstance(exc.detail, dict) and "code" in exc.detail:
+        return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
+    return error(exc.status_code, "http_error", str(exc.detail))
 
 
 @app.get("/health")
