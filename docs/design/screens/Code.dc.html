@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Código de acceso</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&amp;family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0E5A55}a:hover{color:#0A4440}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; gap: 28px; padding: 24px 24px 32px; background: #F5F6F2; color: #16201C; font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; font-size: 16px; line-height: 1.45">
+  <a href="SignIn.dc.html" aria-label="Volver" style="width: 44px; height: 44px; border-radius: 22px; display: flex; align-items: center; justify-content: center; color: #16201C; background: #FFFFFF; border: 1px solid #DDE2DC">
+    <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+  </a>
+
+  <section style="display: flex; flex-direction: column; gap: 8px">
+    <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 30px; line-height: 1.15">Ingresá el código</h1>
+    <p style="margin: 0; color: #3C4843">Lo mandamos por WhatsApp al número terminado en <span style="font-weight: 700">4821</span>.</p>
+  </section>
+
+  <fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px">
+    <legend style="font-weight: 700; font-size: 14px; margin-bottom: 10px">Código de 6 dígitos</legend>
+    <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px">
+      <input aria-label="Dígito 1" inputmode="numeric" maxlength="1" value="4" style="font: inherit; font-family: 'Bricolage Grotesque', sans-serif; font-size: 26px; font-weight: 700; text-align: center; height: 60px; min-width: 0; border-radius: 12px; border: 2px solid #0E5A55; background: #FFFFFF; color: #16201C">
+      <input aria-label="Dígito 2" inputmode="numeric" maxlength="1" value="7" style="font: inherit; font-family: 'Bricolage Grotesque', sans-serif; font-size: 26px; font-weight: 700; text-align: center; height: 60px; min-width: 0; border-radius: 12px; border: 2px solid #0E5A55; background: #FFFFFF; color: #16201C">
+      <input aria-label="Dígito 3" inputmode="numeric" maxlength="1" value="0" style="font: inherit; font-family: 'Bricolage Grotesque', sans-serif; font-size: 26px; font-weight: 700; text-align: center; height: 60px; min-width: 0; border-radius: 12px; border: 2px solid #0E5A55; background: #FFFFFF; color: #16201C">
+      <input aria-label="Dígito 4" inputmode="numeric" maxlength="1" style="font: inherit; font-family: 'Bricolage Grotesque', sans-serif; font-size: 26px; font-weight: 700; text-align: center; height: 60px; min-width: 0; border-radius: 12px; border: 1px solid #C9D0C9; background: #FFFFFF; color: #16201C">
+      <input aria-label="Dígito 5" inputmode="numeric" maxlength="1" style="font: inherit; font-family: 'Bricolage Grotesque', sans-serif; font-size: 26px; font-weight: 700; text-align: center; height: 60px; min-width: 0; border-radius: 12px; border: 1px solid #C9D0C9; background: #FFFFFF; color: #16201C">
+      <input aria-label="Dígito 6" inputmode="numeric" maxlength="1" style="font: inherit; font-family: 'Bricolage Grotesque', sans-serif; font-size: 26px; font-weight: 700; text-align: center; height: 60px; min-width: 0; border-radius: 12px; border: 1px solid #C9D0C9; background: #FFFFFF; color: #16201C">
+    </div>
+    <span style="font-size: 13px; color: #4F5B56">El código vence en 10 minutos y sirve una sola vez.</span>
+  </fieldset>
+
+  <div style="display: flex; justify-content: space-between; font-size: 14px">
+    <span style="color: #4F5B56">Reenviar en 0:42</span>
+    <a href="SignIn.dc.html" style="font-weight: 700; min-height: 44px; display: flex; align-items: center">Cambiar número</a>
+  </div>
+
+  <a href="Patients.dc.html" style="margin-top: auto; text-decoration: none; min-height: 52px; border-radius: 26px; background: #0E5A55; color: #FFFFFF; font-weight: 700; display: flex; align-items: center; justify-content: center">Entrar</a>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

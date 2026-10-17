@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Mensajes con el equipo de salud</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&amp;family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0E5A55}a:hover{color:#0A4440}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: #F5F6F2; color: #16201C; font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; font-size: 16px; line-height: 1.4">
+  <header style="padding: 16px 16px 12px; display: flex; align-items: center; gap: 10px; background: #FFFFFF; border-bottom: 1px solid #DDE2DC">
+    <a href="Family.dc.html" aria-label="Volver" style="width: 44px; height: 44px; border-radius: 22px; display: flex; align-items: center; justify-content: center; color: #16201C; background: #F5F6F2">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+    </a>
+    <span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 20px; background: #E6EAF5; color: #2B3F7A; display: flex; align-items: center; justify-content: center; font-weight: 700">L</span>
+    <div style="display: flex; flex-direction: column">
+      <h1 style="margin: 0; font-size: 17px; font-weight: 700">Dra. López (ficticia)</h1>
+      <span style="font-size: 13px; color: #4F5B56">Médica de Rosa · responde en horario</span>
+    </div>
+  </header>
+
+  <main style="flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+    <div style="align-self: center; font-size: 13px; color: #7A4106; background: #FBEFD9; padding: 8px 12px; border-radius: 12px; text-align: center">No es para urgencias. Ante una urgencia, llamá a emergencias.</div>
+    <div style="align-self: center; font-size: 12px; color: #4F5B56">Hoy</div>
+    <div style="align-self: flex-end; max-width: 80%; display: flex; flex-direction: column; gap: 4px; align-items: flex-end">
+      <div style="background: #0E5A55; color: #FFFFFF; padding: 10px 14px; border-radius: 18px 18px 4px 18px">Hola doctora, vi que mamá viene comiendo poco. ¿Hay que preocuparse?</div>
+      <span style="font-size: 12px; color: #4F5B56">Marta · 15:02</span>
+    </div>
+    <div style="align-self: flex-start; max-width: 80%; display: flex; flex-direction: column; gap: 4px">
+      <div style="background: #FFFFFF; border: 1px solid #DDE2DC; padding: 10px 14px; border-radius: 18px 18px 18px 4px">Hola Marta, lo vi en los reportes. Mañana paso a verla en la ronda de la mañana.</div>
+      <span style="font-size: 12px; color: #4F5B56">Dra. López · 16:40</span>
+    </div>
+    <div style="align-self: flex-end; max-width: 80%; display: flex; flex-direction: column; gap: 4px; align-items: flex-end">
+      <div style="background: #0E5A55; color: #FFFFFF; padding: 10px 14px; border-radius: 18px 18px 4px 18px">Gracias.</div>
+      <span style="font-size: 12px; color: #4F5B56">Marta · 16:45 · Leído</span>
+    </div>
+  </main>
+
+  <form style="display: flex; gap: 8px; padding: 10px 12px 24px; background: #FFFFFF; border-top: 1px solid #DDE2DC">
+    <label for="msg" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Mensaje</label>
+    <input id="msg" type="text" placeholder="Escribí un mensaje…" style="font: inherit; flex: 1; min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid #C9D0C9; background: #F5F6F2; color: #16201C">
+    <button type="submit" aria-label="Enviar mensaje" style="width: 44px; height: 44px; border-radius: 22px; border: 0; background: #0E5A55; color: #FFFFFF; display: flex; align-items: center; justify-content: center; cursor: pointer">
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg>
+    </button>
+  </form>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

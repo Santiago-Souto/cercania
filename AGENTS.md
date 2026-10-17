@@ -95,7 +95,7 @@ Auth: sign up with name, email and WhatsApp number -> the bot sends a **6-digit 
 ## 8. Proposed stack (confirm or edit; update this section when decided)
 
 - Backend: Python + FastAPI
-- Web: **Next.js** (decided), mobile-first, usable on desktop at a centered ~480px column. UI copy in Spanish (Río de la Plata). Design: "CercanIA mobile screens" canvas (ask Dev B for access)
+- Web: **Next.js** (decided), mobile-first, usable on desktop at a centered ~480px column. UI copy in Spanish (Río de la Plata). **Design source of truth: `docs/design/DESIGN.md`** (tokens, components, screen → route → ticket map) with artboard snapshots in `docs/design/screens/`. UI changes start in the design, then the code.
 - DB: Postgres (Supabase) or SQLite if time-constrained
 - Transcription: Whisper-class API (OpenAI or Groq); fallback AWS Transcribe with custom vocabulary
 - LLM: Claude via API. Start with `claude-sonnet-5-5`; use `claude-haiku-5-5` if latency demands. Use structured JSON output / tool use.
@@ -123,6 +123,7 @@ eval/
   cases.csv        20 cases with expected output
   run_eval.py      runs cases, prints metrics                [infra/input owner]
 docs/contract.md   endpoints and data shapes (source of truth for integration)
+docs/design/       DESIGN.md + screen snapshots (source of truth for the UI)  [web owner]
 README.md          Functional / Simulated / Pending
 .agents/skills/    shared agent skills, tool-agnostic (.claude/skills is a symlink here)
 ```
