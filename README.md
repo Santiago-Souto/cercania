@@ -16,12 +16,13 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 
 | Capability | Status | Notes |
 |---|---|---|
-| Voice note received from WhatsApp | Pending | Fallback: Telegram bot or web recorder |
-| Audio transcription | Pending | |
+| Voice note received from WhatsApp | In progress | Meta Cloud API, bot number +1 555-674-0716 (test number: only allowed phones can write). Inbound voice notes verified against a real Meta payload; end-to-end with transcription pending the Groq key |
+| Audio transcription | In progress | Groq Whisper with a care-vocabulary prompt; live test pending |
 | Structured extraction with verbatim quotes | Pending | |
 | Quote verification (code) | Pending | |
 | Comparison vs care plan / history / checklist (code) | Pending | |
-| Confirmation reply to caregiver ("I recorded...") | Pending | |
+| Confirmation reply to caregiver ("I recorded...") | In progress | Caregiver identified by phone, "which patient?" when several, `confirmation_text` reply with fixed red-flag line; waits on `process_report` (CIA-7) |
+| Report from the web app (text or audio) | In progress | `POST /patients/{id}/reports` built and tested; returns `processing_unavailable` until `process_report` (CIA-7) merges |
 | Versioned report storage | Pending | |
 | Web timeline (caregiver view) | Pending | |
 | Family read-only view | Pending | |
@@ -33,6 +34,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 
 ### Simulated
 
+- **Caller identity:** until the login backend lands, the web app identifies the user with an `X-Person-Id` header (`backend/app/deps.py`). Anyone can claim any id, so it is honored only with `ALLOW_DEV_IDENTITY_HEADER=1` (local dev / demo with fictional data); otherwise every call gets 401. Not for real data.
 - Patient, care plan and history data are fictional seed data (`backend/app/seed.py`). Seeded reports are marked `channel="seed"`, `model="seed"`: they are fixtures, not model output.
 
 ### Out of scope (declared)

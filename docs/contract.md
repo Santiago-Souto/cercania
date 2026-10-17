@@ -145,9 +145,51 @@ Creates a new version. Does not modify the old one.
 
 `confidence` is `answered` or `unclear`. If the records do not contain the answer, return `unclear` and say so; never guess. Every citation quote must verify against the cited transcript.
 
+### `GET /webhook/whatsapp`
+
+Meta Cloud API verification handshake. Query `hub.mode=subscribe`, `hub.verify_token`, `hub.challenge`. Returns the challenge as plain text when the token matches `WHATSAPP_VERIFY_TOKEN`, else 403 `verification_failed`.
+
 ### `POST /webhook/whatsapp`
 
+Meta Cloud API webhook (JSON). Requests without a valid `X-Hub-Signature-256` (HMAC-SHA256 of the body with `WHATSAPP_APP_SECRET`) get 403 `invalid_signature`. Response on success: `{ "status": "received" }`. Status updates (delivered/read) are acked and ignored. Voice notes are transcribed; text messages are treated as a typed report; other types get a reply asking for a voice note.
+
 Acknowledge immediately (HTTP 200), then process asynchronously. Dedupe by provider message id. Identify the caregiver by sender phone number. If the caregiver has several patients, ask "which patient?" before processing.
+
+Bot behavior (all replies are WhatsApp text):
+- Sender phone not in `person.phone` → "number not registered" message; nothing processed.
+- No patient where the sender has `send_report` → "no patients assigned" message.
+- Several patients → numbered "¿De qué paciente es el reporte?" question; the report is kept (in memory, 30 min) and processed once the caregiver answers with the number or part of the name. `message_id` is the report's id, not the answer's.
+- Reports sent while a choice is pending (voice, or typed text of 4+ words) are queued, never dropped: the bot says it kept them and asks about each in arrival order. Reports that expire without a choice are announced on the caregiver's next message so they can resend them.
+- After `process_report`: `confirmation_text` (or the result's `message` for `needs_retry` / `unclear`). When `red_flag` is true, a fixed line written in code is prepended: "⚠️ Si es una emergencia, llamá a emergencias o al médico ahora."
+- `process_report` not deployed → the caregiver is told nothing was stored.
+
+## Reports from the web app
+
+### `POST /patients/{patient_id}/reports`
+
+Same report a caregiver can send by WhatsApp. Either JSON text or multipart audio:
+
+```json
+{ "client_id": "web_7f3c", "text": "Casi no comió nada en la cena…" }
+```
+
+Multipart: `client_id` + `audio` file (webm/ogg/m4a). Audio goes through the same transcription step. Returns `ProcessResult` exactly as `process_report`. Idempotent on `client_id`: the `message_id` passed to `process_report` is `web:<person_id>:<client_id>`, so one user's id can never match another user's report or a WhatsApp message.
+
+Requires the `send_report` permission for that patient (`ROLE_PERMISSIONS` in `backend/app/models.py`; today only `caregiver`). Errors, all as `{ "error": { "code", "message" } }` with a message the UI can show as is:
+
+| HTTP | `code` | When |
+|---|---|---|
+| 400 | `client_id_missing`, `text_missing`, `audio_missing`, `audio_empty`, `invalid_json` | Bad input |
+| 401 | `unauthenticated` | No caller identity |
+| 403 | `forbidden` | Role lacks `send_report` for this patient |
+| 404 | `not_found` | Unknown patient |
+| 409 | `client_id_conflict` | Same `client_id` already used by this user for another patient |
+| 413 | `audio_too_large` | Audio over 4 MB (Vercel caps request bodies at 4.5 MB) |
+| 415 | `unsupported_audio`, `unsupported_media_type` | Not webm/ogg/m4a/mp3/wav, or neither JSON nor multipart |
+| 502 | `transcription_failed` | Transcription failed; ask to retry or type |
+| 503 | `processing_unavailable` | `process_report` not deployed yet; nothing was stored |
+
+A repeated `client_id` is not transcribed again; the stored report's result is returned.
 
 ### Magic link
 
