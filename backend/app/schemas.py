@@ -22,7 +22,8 @@ datetime = Annotated[_datetime, AfterValidator(_as_utc)]
 ChecklistItemName = Literal[
     "appetite", "sleep", "urination", "medication", "mood", "mobility", "pain", "incidents"
 ]
-RoleName = Literal["caregiver", "family", "doctor", "patient"]
+# Same values as models.Role.
+RoleName = Literal["caregiver", "family", "patient", "doctor", "nurse", "institution"]
 
 
 class Medication(BaseModel):

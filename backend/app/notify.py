@@ -100,7 +100,7 @@ def _send_whatsapp(sender, phone: str, text: str) -> tuple[NotificationStatus, s
 def dispatch_emergency(report_id: str, *, session_factory=SessionLocal, whatsapp_sender=None) -> list[dict]:
     """Notify everyone who must know about an emergency report. Never raises.
 
-    Idempotent: if the alert already has notification rows, returns them without sending.
+    Idempotent per recipient and channel: rows that already exist are never sent again.
     `whatsapp_sender` needs `send_text_result(to, text)` and `send_template(to, name, lang)`;
     defaults to the `whatsapp` module.
     """
@@ -120,16 +120,23 @@ def _dispatch(report_id: str, session_factory, sender) -> list[dict]:
         alert = _emergency_alert(session, report_id)
         if alert is None:
             return []
-        existing = session.scalars(
+        rows = list(session.scalars(
             select(Notification).where(Notification.alert_id == alert.id)
             .order_by(Notification.created_at, Notification.id)
-        ).all()
-        if existing:
-            return [_summary(n) for n in existing]
+        ).all())
+        # Idempotent per (recipient, channel): a dispatch that died between the web
+        # commit and the WhatsApp commit still sends the missing WhatsApp rows on retry.
+        done = {(n.recipient, n.person_id, n.channel) for n in rows}
+        recipients = emergency_recipients(session, report.patient_id, report.sender_id)
+        todo_web = [r for r in recipients if r["person_id"]
+                    and (r["to"], r["person_id"], NotificationChannel.web) not in done]
+        todo_whatsapp = [r for r in recipients
+                         if (r["to"], r["person_id"], NotificationChannel.whatsapp) not in done]
+        if not todo_web and not todo_whatsapp:
+            return [_summary(n) for n in rows]
 
         patient = session.get(Patient, report.patient_id)
         title, body = build_message(session, report, patient, alert)
-        recipients = emergency_recipients(session, report.patient_id, report.sender_id)
 
         def row(r: dict, channel: NotificationChannel, status: NotificationStatus,
                 error: str | None) -> Notification:
@@ -139,13 +146,12 @@ def _dispatch(report_id: str, session_factory, sender) -> list[dict]:
             session.add(n)
             return n
 
-        rows = [row(r, NotificationChannel.web, NotificationStatus.sent, None)
-                for r in recipients if r["person_id"]]
+        rows += [row(r, NotificationChannel.web, NotificationStatus.sent, None) for r in todo_web]
         alert.notifications = [_summary(n) for n in rows]
         session.commit()  # the web inbox is complete before any slow Meta call
 
         enabled = whatsapp_enabled()
-        for r in recipients:
+        for r in todo_whatsapp:
             if enabled:
                 status, error = _send_whatsapp(sender, r["phone"], f"{title}\n{body}")
             else:

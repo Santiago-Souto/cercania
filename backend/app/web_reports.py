@@ -17,7 +17,7 @@ from starlette.concurrency import run_in_threadpool
 from app import ingest, notify
 from app.deps import current_person_id, get_db
 from app.errors import error_response
-from app.models import Patient, Permission, can
+from app.models import Patient, Permission, can, role_for
 from app.transcribe import TranscriptionError, transcribe
 
 log = logging.getLogger(__name__)
@@ -48,7 +48,8 @@ async def create_report(
     person_id: str = Depends(current_person_id),
     db: Session = Depends(get_db),
 ):
-    if db.get(Patient, patient_id) is None:
+    # No membership at all -> 404, like deps.patient_access: never confirm a patient exists.
+    if db.get(Patient, patient_id) is None or role_for(db, person_id, patient_id) is None:
         return error_response(404, "not_found", "No encontramos a ese paciente.")
     if not can(db, person_id, patient_id, Permission.send_report):
         return error_response(403, "forbidden", "Tu rol no permite enviar reportes para este paciente.")

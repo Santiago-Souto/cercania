@@ -143,6 +143,21 @@ def test_second_dispatch_sends_nothing(engine, factory, monkeypatch):
     assert a == b
 
 
+def test_retry_after_partial_dispatch_sends_the_missing_whatsapp(engine, factory, monkeypatch):
+    """A dispatch that died after the web commit must not lose the WhatsApp sends."""
+    monkeypatch.setenv("NOTIFY_WHATSAPP", "1")
+    notify.dispatch_emergency("rep_1", session_factory=factory, whatsapp_sender=FakeSender())
+    with Session(engine) as s:  # simulate the crash: WhatsApp rows never committed
+        for n in s.scalars(select(Notification).where(Notification.channel == NotificationChannel.whatsapp)):
+            s.delete(n)
+        s.commit()
+    retry = FakeSender()
+    summary = notify.dispatch_emergency("rep_1", session_factory=factory, whatsapp_sender=retry)
+    assert len(retry.texts) == 3  # health provider, cg2, fam; web rows not duplicated
+    assert len(rows(engine)) == 5
+    assert sorted(x["channel"] for x in summary) == ["web", "web", "whatsapp", "whatsapp", "whatsapp"]
+
+
 def test_alert_notifications_summary_is_persisted(engine, factory):
     summary = notify.dispatch_emergency("rep_1", session_factory=factory, whatsapp_sender=FakeSender())
     with Session(engine) as s:
