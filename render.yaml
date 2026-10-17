@@ -11,3 +11,6 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.7
+      # Secret: Render asks for the value on first deploy (Supabase session pooler URL).
+      - key: DATABASE_URL
+        sync: false

@@ -60,25 +60,29 @@ Appetite, sleep, urination/diuresis, medication, mood, mobility, pain, incidents
 
 ## 5. Data model (design rules)
 
-Entities: `patient`, `care_plan` (medication with schedule and dose, indications, allergies), `user` (name, email, WhatsApp number = identity), `membership` (user + patient + role, see section 6), `invite` (pending membership by phone or email), `login_code` (hashed 6-digit code, expiry, used flag), `report`, `report_item`, `alert`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient).
+Schema lives in `backend/app/models.py`. Entities: `person` (name, email, WhatsApp number = identity; "user" in the contract), `patient_access` (person + patient + role; "membership" in the contract, see section 6), `invite` (pending membership by phone or email), `login_code` (hashed 6-digit code, expiry, used flag), `patient`, `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient). Pending in code: `login_code`, `invite`, `patient_message`, `message`, and the `nurse` / `institution` roles; `magic_link` goes away with the 6-digit code login.
 
 Rules:
-- `report` stores: original audio reference, transcript, timestamp, sender, **version**. Corrections create a **new version**; previous versions stay visible and immutable (this is the evidence trail).
-- `report_item` stores: item type, value, **verbatim supporting quote**, verification status.
+- Structured data in Postgres; binaries (audio, images, documents) in object storage. `file` stores only the storage path and metadata.
+- `report` stores what was received: audio (via `file`), transcript, timestamped segments, timestamp, sender, message id. Written once.
+- `report_version` stores what was recorded. Corrections create a **new version**; previous versions stay visible and immutable (this is the evidence trail).
+- `report_item` stores: item type, value, coarse `level` (for code comparison over time), item `details` (e.g. medication doses), **verbatim supporting quote**, verification status. One row per checklist item; `value` null = not mentioned.
 - `alert` types: `omission` (plan vs report), `change` (vs usual), `missing_item` (checklist).
 - Idempotency: processing the same WhatsApp message id twice must not create two reports.
 - All seed/demo data is **fictional**. Never commit real audio, names or health data.
 
 ## 6. Roles and access (keep it minimal)
 
-One web app, same data, a view per role. Roles are per patient (`membership`): the same person can be caregiver of one patient and family of another.
+One web app, same data, a view per role. Roles are per patient (`patient_access`, "membership"): the same person can be caregiver of one patient and family of another. Permissions live in `ROLE_PERMISSIONS` in `backend/app/models.py`; endpoints return `403 forbidden` when the role lacks one.
 
 | Role | Can do |
 |---|---|
-| Caregiver | Send reports (WhatsApp or web), confirm/correct, query, see timeline and alerts, add patients and invite people |
-| Health team (doctor, nurse, hospital/institution) | See assigned patients, reports, alerts and query; reply to family messages |
+| Caregiver | Send reports (WhatsApp or web), confirm/correct, query, see timeline and alerts, add patients (with their initial care plan) and invite people |
+| Health team (doctor, nurse, hospital/institution) | See assigned patients, reports, alerts and query; reply to family messages. The **doctor** is the only role that edits the care plan after creation (each edit = new plan version) |
 | Family | Read-only summary and alerts; message the health team |
-| Patient | Only two actions: tell how they feel (audio or text) and press "I need help" |
+| Patient | Only two actions: tell how they feel (audio or text) and press "I need help". **No access to reports or alerts about them.** |
+
+The patient is the subject of the profile; optionally they also have their own login with the `patient` role. Dose text is written by people (caregiver at creation, doctor afterwards); code never computes or suggests doses.
 
 Auth: sign up with name, email and WhatsApp number -> the bot sends a **6-digit code** to that WhatsApp -> code entered on the web. Codes are single-use, expire in 10 minutes, are stored hashed and are rate-limited per number. No passwords. Outbound WhatsApp messages outside the 24h window need an approved authentication template (or, in the sandbox, the user must join first); verify with the provider's docs. Invited users get the role from their invite after their first login. Only caregivers can invite. Login and sign-up never reveal whether a phone or email is registered. The WhatsApp webhook verifies the provider signature before trusting the sender phone; corrections and reports take the author from the session or the verified sender, never from the request body.
 
@@ -96,7 +100,7 @@ Auth: sign up with name, email and WhatsApp number -> the bot sends a **6-digit 
 
 - Backend: Python + FastAPI
 - Web: **Next.js** (decided), mobile-first, usable on desktop at a centered ~480px column. UI copy in Spanish (Río de la Plata). Design: "CercanIA mobile screens" canvas (ask Dev B for access)
-- DB: Postgres (Supabase) or SQLite if time-constrained
+- DB: **decided** Postgres on Supabase via SQLAlchemy 2.0 + psycopg 3 (`DATABASE_URL`); SQLite is the local default and fallback (same models). Files in Supabase Storage, private bucket, signed URLs.
 - Transcription: Whisper-class API (OpenAI or Groq); fallback AWS Transcribe with custom vocabulary
 - LLM: Claude via API. Start with `claude-sonnet-5-5`; use `claude-haiku-5-5` if latency demands. Use structured JSON output / tool use.
 - WhatsApp: Twilio sandbox first, or Meta Cloud API test number. **Cut rule: if a real voice note does not flow end-to-end by 14:00 Sat, switch to a Telegram bot or a web recorder and list WhatsApp as Pending.**

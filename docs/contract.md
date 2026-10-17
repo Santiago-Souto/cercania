@@ -25,12 +25,14 @@ process_report(patient_id, caregiver_id, transcript, audio_ref, message_id) -> P
     {
       "item": "appetite",
       "value": "ate little at dinner",
+      "level": "low",
       "quote": "casi no comio nada en la cena",
       "quote_verified": true
     },
     {
       "item": "sleep",
       "value": null,
+      "level": null,
       "quote": null,
       "quote_verified": null
     }
@@ -57,6 +59,7 @@ process_report(patient_id, caregiver_id, transcript, audio_ref, message_id) -> P
 Rules:
 - `quote` must be a substring (after normalization: case, accents, whitespace) of `transcript`. If not, set `quote_verified: false` and do not use the value for alerts.
 - Items not mentioned: `value: null`, `quote: null`. Never infer.
+- `level` is a coarse category used by code to compare over time (e.g. appetite `normal` / `low` / `none`). Optional for display.
 - `red_flag: true` is set by a fixed-rule phrase list (code), not by the model.
 
 ## Alert types
@@ -150,7 +153,7 @@ Before anything else (including the ack), verify the provider signature on the r
 
 ## Roles (fixed enum)
 
-`caregiver`, `family`, `patient`, `doctor`, `nurse`, `institution`. `doctor`, `nurse` and `institution` share the "health team" permissions in `AGENTS.md` section 6. A role belongs to a membership (user + patient), not to the user.
+`caregiver`, `family`, `patient`, `doctor`, `nurse`, `institution`. `doctor`, `nurse` and `institution` share the "health team" permissions in `AGENTS.md` section 6. A role belongs to a membership (user + patient), not to the user. Only `doctor` edits the care plan after creation (each edit is a new plan version); `patient` never sees reports or alerts. Endpoints return `403` with error `code: "forbidden"` when the role lacks the permission (`ROLE_PERMISSIONS` in `backend/app/models.py`).
 
 ## Auth (6-digit code by WhatsApp)
 
@@ -233,7 +236,7 @@ Patients the current user has a membership for, with what the list screen needs:
 }
 ```
 
-Returns the patient as in `GET /patients/{patient_id}`. The creator becomes `caregiver`. Doses are stored as entered; nothing is computed.
+Returns the patient as in `GET /patients/{patient_id}`. The creator becomes `caregiver` and sets the initial care plan; after that only a `doctor` can edit it. Doses are stored as entered; nothing is computed.
 
 ### `GET /patients/{patient_id}/members`
 
