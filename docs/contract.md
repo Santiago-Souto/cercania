@@ -57,7 +57,8 @@ process_report(patient_id, caregiver_id, transcript, audio_ref, message_id) -> P
 ```
 
 Rules:
-- `quote` must be a substring (after normalization: case, accents, whitespace) of `transcript`. If not, set `quote_verified: false` and do not use the value for alerts.
+- `quote` must be a substring (after normalization: case, accents, punctuation, whitespace; whole words only) of `transcript`. If not, set `quote_verified: false` and do not use the value for alerts.
+- `medication` items carry `details.doses`: `[{ "plan_ref": "med_002", "time": "08:00", "given": true | false | null, "quote": "…", "quote_verified": true }]`. Only medications and times in the active care plan are accepted; `given: null` means unclear.
 - Items not mentioned: `value: null`, `quote: null`. Never infer.
 - `level` is a coarse category used by code to compare over time (e.g. appetite `normal` / `low` / `none`). Optional for display.
 - `red_flag: true` is set by a fixed-rule phrase list (code), not by the model.

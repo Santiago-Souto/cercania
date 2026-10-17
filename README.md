@@ -18,8 +18,8 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 |---|---|---|
 | Voice note received from WhatsApp | Pending | Fallback: Telegram bot or web recorder |
 | Audio transcription | Pending | |
-| Structured extraction with verbatim quotes | Pending | |
-| Quote verification (code) | Pending | |
+| Structured extraction with verbatim quotes | In progress | `backend/app/extract.py`, Claude Haiku 5.5 structured output. Unit-tested; live call not yet verified |
+| Quote verification (code) | Functional | Normalized whole-word substring match; unit-tested (`tests/test_extract.py`) |
 | Comparison vs care plan / history / checklist (code) | Pending | |
 | Confirmation reply to caregiver ("I recorded...") | Pending | |
 | Versioned report storage | Pending | |
