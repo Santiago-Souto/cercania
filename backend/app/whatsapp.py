@@ -178,11 +178,23 @@ def download_media(media_id: str, client: httpx.Client | None = None) -> tuple[b
             client.close()
 
 
-def send_text(to: str, text: str, client: httpx.Client | None = None) -> bool:
-    """Sends a text reply. Returns False (and logs) instead of raising."""
+@dataclass
+class SendResult:
+    ok: bool
+    error_code: int | None = None
+    error: str | None = None
+
+
+# Graph API error: outside the 24h customer-service window, only approved templates deliver.
+OUTSIDE_WINDOW = 131047
+
+
+def _send_payload(to: str, payload: dict, client: httpx.Client | None) -> SendResult:
+    """POST one message to the Graph API, retrying the allowed-list number variants.
+    Never raises; failures come back in the result."""
     if not os.environ.get("WHATSAPP_TOKEN") or not os.environ.get("WHATSAPP_PHONE_NUMBER_ID"):
         log.error("Cannot reply to %s: WHATSAPP_TOKEN or WHATSAPP_PHONE_NUMBER_ID is not set", mask(to))
-        return False
+        return SendResult(False, None, "WhatsApp no está configurado (faltan credenciales).")
     owns_client = client is None
     client = client or httpx.Client(timeout=15)
     url = graph_url(f"{os.environ['WHATSAPP_PHONE_NUMBER_ID']}/messages")
@@ -191,29 +203,42 @@ def send_text(to: str, text: str, client: httpx.Client | None = None) -> bool:
             response = client.post(
                 url,
                 headers=_auth_headers(),
-                json={
-                    "messaging_product": "whatsapp",
-                    "to": recipient,
-                    "type": "text",
-                    "text": {"body": text},
-                },
+                json={"messaging_product": "whatsapp", "to": recipient, **payload},
             )
             if response.status_code == 200:
-                return True
+                return SendResult(True)
             try:
-                code = (response.json().get("error") or {}).get("code")
+                err = response.json().get("error") or {}
             except ValueError:  # HTML or empty error body (proxy 5xx, Meta error page)
-                code = None
+                err = {}
+            code = err.get("code")
             if code != RECIPIENT_NOT_ALLOWED:
                 break
         log.error("WhatsApp send to %s failed: %s %s", mask(to), response.status_code, response.text[:300])
-        return False
+        message = err.get("message") or f"HTTP {response.status_code}"
+        return SendResult(False, code, message)
     except httpx.HTTPError as exc:
         log.error("WhatsApp send to %s failed: %s", mask(to), exc)
-        return False
+        return SendResult(False, None, f"Error de red: {exc.__class__.__name__}")
     finally:
         if owns_client:
             client.close()
+
+
+def send_text_result(to: str, text: str, client: httpx.Client | None = None) -> SendResult:
+    return _send_payload(to, {"type": "text", "text": {"body": text}}, client)
+
+
+def send_template(to: str, name: str, lang: str = "es", client: httpx.Client | None = None) -> SendResult:
+    """Approved template without parameters (used when free text is outside the 24h window)."""
+    return _send_payload(
+        to, {"type": "template", "template": {"name": name, "language": {"code": lang}}}, client
+    )
+
+
+def send_text(to: str, text: str, client: httpx.Client | None = None) -> bool:
+    """Sends a text reply. Returns False (and logs) instead of raising."""
+    return send_text_result(to, text, client).ok
 
 
 def _recipient_candidates(wa_id: str) -> list[str]:
@@ -445,3 +470,11 @@ def deliver(message: IncomingMessage, caregiver_id: str, patient_id: str, transc
         send_text(message.sender, MSG_PROCESSING_UNAVAILABLE)
         return
     send_text(message.sender, reply_for(result))
+    if result.get("red_flag") and (result.get("report") or {}).get("id"):
+        # After the reply, so the sender sees the emergency message first.
+        try:
+            from app import notify
+
+            notify.dispatch_emergency(result["report"]["id"])
+        except Exception:  # noqa: BLE001 - the reply path must never break
+            log.exception("Emergency notification dispatch failed for message %s", message.id)

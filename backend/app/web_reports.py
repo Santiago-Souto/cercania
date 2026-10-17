@@ -10,11 +10,11 @@ from __future__ import annotations
 import json
 import logging
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from app import ingest
+from app import ingest, notify
 from app.deps import current_person_id, get_db
 from app.errors import error_response
 from app.models import Patient, Permission, can
@@ -44,6 +44,7 @@ MAX_CLIENT_ID = 100
 async def create_report(
     patient_id: str,
     request: Request,
+    background: BackgroundTasks,
     person_id: str = Depends(current_person_id),
     db: Session = Depends(get_db),
 ):
@@ -106,7 +107,7 @@ async def create_report(
         transcript = text.strip()
 
     try:
-        return await run_in_threadpool(
+        result = await run_in_threadpool(
             ingest.process_report,
             patient_id=patient_id,
             sender_id=person_id,
@@ -121,3 +122,8 @@ async def create_report(
             "processing_unavailable",
             "No pudimos registrar el reporte: el análisis todavía no está disponible. Probá de nuevo más tarde.",
         )
+    report_id = (result.get("report") or {}).get("id") if isinstance(result, dict) else None
+    if isinstance(result, dict) and result.get("red_flag") and report_id:
+        # Runs after the response is sent; dispatch is idempotent, so repeats are harmless.
+        background.add_task(notify.dispatch_emergency, report_id)
+    return result
