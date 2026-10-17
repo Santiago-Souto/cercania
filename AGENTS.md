@@ -99,7 +99,7 @@ Auth: phone number in -> bot sends a **single-use link with short expiry**. The 
 - DB: **decided** Postgres on Supabase via SQLAlchemy 2.0 + psycopg 3 (`DATABASE_URL`); SQLite is the local default and fallback (same models). Files in Supabase Storage, private bucket, signed URLs.
 - Transcription: Groq Whisper (`whisper-large-v3-turbo`, env `GROQ_API_KEY`) with a vocabulary prompt; CIA-18 compares providers on real audio
 - LLM: Claude via API. Start with `claude-sonnet-5-5`; use `claude-haiku-5-5` if latency demands. Use structured JSON output / tool use.
-- WhatsApp: **Meta Cloud API** webhook is built (`docs/whatsapp-setup.md`, `backend/scripts/setup_whatsapp.py`) but **paused**: Meta locked the new business account and asks for company legal documents (Twilio trial does not allow WhatsApp either). WhatsApp is listed as Pending; reports come in through the web app (`POST /patients/{id}/reports`) meanwhile.
+- WhatsApp: **decided** Meta Cloud API, bot number **+1 555-674-0716** (Meta test number; only numbers on its allowed list can write to it). Setup: `docs/whatsapp-setup.md`, automated by `backend/scripts/setup_whatsapp.py`. Twilio trial does not allow WhatsApp.
 - Deploy: any host with a stable public URL (Render, Railway, Fly). Deploy "hello world" first.
 - Secrets only via environment variables. `.env` is gitignored; commit `.env.example` only.
 

@@ -53,7 +53,7 @@ The temporary token stops working after ~24 h. To get one that does not expire:
    ```
 
    The script checks the server is up, checks the verify token matches, registers the webhook URL with Meta, subscribes the app to the business account, and sends you the `hello_world` test message. It stops with a clear reason at the first step that fails.
-3. Reply to the test message with a voice note. Render's logs show `Transcript for message ...`.
+3. Reply to the test message with a voice note. The server logs show `Transcript ready for message ...` (the text itself is never logged).
 
 To test without deploying, run the API locally and expose it with a tunnel (`ngrok http 8000`), then use the tunnel URL as `PUBLIC_BASE_URL`.
 

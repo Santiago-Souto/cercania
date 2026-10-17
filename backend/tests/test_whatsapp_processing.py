@@ -126,3 +126,27 @@ def test_send_text_returns_false_on_other_errors():
 def test_send_text_without_credentials_logs_instead_of_crashing(monkeypatch):
     monkeypatch.delenv("WHATSAPP_PHONE_NUMBER_ID")
     assert whatsapp.send_text("5491122334455", "hola") is False
+
+
+def test_send_text_returns_false_on_non_json_error_body():
+    def handler(request):
+        return httpx.Response(502, content=b"<html>Bad gateway</html>")
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as c:
+        assert whatsapp.send_text("5491122334455", "hola", client=c) is False
+
+
+def test_transcript_and_full_phone_never_reach_the_logs(caplog):
+    caplog.set_level("DEBUG")
+    message = IncomingMessage(id="wamid.9", sender="5491122334455", type="audio")
+    whatsapp.handle_transcript(message, Transcript(text="tiene dolor en el pecho"))
+    assert "dolor" not in caplog.text
+    assert "5491122334455" not in caplog.text
+    assert "***4455" in caplog.text
+
+
+def test_malformed_message_logs_keys_not_content(caplog):
+    caplog.set_level("DEBUG")
+    payload = {"entry": [{"changes": [{"value": {"messages": [{"type": "text", "text": {"body": "dato privado"}}]}}]}]}
+    assert whatsapp.parse_messages(payload) == []
+    assert "dato privado" not in caplog.text

@@ -70,12 +70,15 @@ def main() -> None:
             health = http.get(f"{base}/health")
             step("Server health", health.status_code == 200, f"{base}/health -> {health.status_code}")
         except httpx.HTTPError as exc:
-            step("Server health", False, f"{base}/health unreachable ({exc}). Is the deploy up? (Render free sleeps; retry)")
+            step("Server health", False, f"{base}/health unreachable ({exc}). Is the server (or tunnel) up?")
 
-        handshake = http.get(
-            callback,
-            params={"hub.mode": "subscribe", "hub.verify_token": verify_token, "hub.challenge": "cercania-check"},
-        )
+        try:
+            handshake = http.get(
+                callback,
+                params={"hub.mode": "subscribe", "hub.verify_token": verify_token, "hub.challenge": "cercania-check"},
+            )
+        except httpx.HTTPError as exc:
+            step("Webhook handshake", False, f"{callback} unreachable ({exc})")
         step(
             "Webhook handshake",
             handshake.text == "cercania-check",
@@ -126,7 +129,7 @@ def main() -> None:
                 sent.text[:300] if sent.status_code != 200 else "check the phone, then reply with a voice note",
             )
 
-    print("\nDone. Send a voice note to the test number and watch the server logs for 'Transcript for message'.")
+    print("\nDone. Send a voice note to the test number and watch the server logs for 'Transcript ready for message'.")
 
 
 if __name__ == "__main__":

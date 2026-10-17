@@ -30,6 +30,11 @@ MSG_UNSUPPORTED = "Por ahora solo puedo registrar notas de voz o texto. Enviá e
 MSG_DOWNLOAD_FAILED = "No pude descargar tu nota de voz. ¿Podés enviarla de nuevo?"
 
 
+def mask(phone: str) -> str:
+    """Phone numbers are personal data: logs only keep the last 4 digits."""
+    return "***" + phone[-4:] if phone else "***"
+
+
 def graph_url(path: str) -> str:
     version = os.environ.get("WHATSAPP_GRAPH_VERSION", DEFAULT_GRAPH_VERSION)
     return f"https://graph.facebook.com/{version}/{path.lstrip('/')}"
@@ -79,7 +84,7 @@ def parse_messages(payload: dict) -> list[IncomingMessage]:
         for change in entry.get("changes") or []:
             for raw in (change.get("value") or {}).get("messages") or []:
                 if not raw.get("id") or not raw.get("from"):
-                    log.warning("Skipping malformed WhatsApp message: %s", raw)
+                    log.warning("Skipping malformed WhatsApp message with keys %s", sorted(raw))
                     continue
                 audio = raw.get("audio") or {}
                 messages.append(
@@ -150,7 +155,7 @@ def download_media(media_id: str, client: httpx.Client | None = None) -> tuple[b
 def send_text(to: str, text: str, client: httpx.Client | None = None) -> bool:
     """Sends a text reply. Returns False (and logs) instead of raising."""
     if not os.environ.get("WHATSAPP_TOKEN") or not os.environ.get("WHATSAPP_PHONE_NUMBER_ID"):
-        log.error("Cannot reply to %s: WHATSAPP_TOKEN or WHATSAPP_PHONE_NUMBER_ID is not set", to)
+        log.error("Cannot reply to %s: WHATSAPP_TOKEN or WHATSAPP_PHONE_NUMBER_ID is not set", mask(to))
         return False
     owns_client = client is None
     client = client or httpx.Client(timeout=15)
@@ -169,13 +174,16 @@ def send_text(to: str, text: str, client: httpx.Client | None = None) -> bool:
             )
             if response.status_code == 200:
                 return True
-            code = (response.json().get("error") or {}).get("code")
+            try:
+                code = (response.json().get("error") or {}).get("code")
+            except ValueError:  # HTML or empty error body (proxy 5xx, Meta error page)
+                code = None
             if code != RECIPIENT_NOT_ALLOWED:
                 break
-        log.error("WhatsApp send to %s failed: %s %s", to, response.status_code, response.text[:300])
+        log.error("WhatsApp send to %s failed: %s %s", mask(to), response.status_code, response.text[:300])
         return False
     except httpx.HTTPError as exc:
-        log.error("WhatsApp send to %s failed: %s", to, exc)
+        log.error("WhatsApp send to %s failed: %s", mask(to), exc)
         return False
     finally:
         if owns_client:
@@ -226,12 +234,15 @@ def handle_message(message: IncomingMessage) -> None:
 
 def handle_transcript(message: IncomingMessage, transcript: Transcript) -> None:
     """Hand-off point to the brain. CIA-19/CIA-20 replace the log with
-    process_report() and the confirmation reply."""
+    process_report() and the confirmation reply.
+
+    The transcript is health data: it goes to the database, never to the logs.
+    """
     log.info(
-        "Transcript for message %s from %s (%s, %d segments): %s",
+        "Transcript ready for message %s from %s (%s, %d chars, %d segments)",
         message.id,
-        message.sender,
+        mask(message.sender),
         message.type,
+        len(transcript.text),
         len(transcript.segments),
-        transcript.text,
     )

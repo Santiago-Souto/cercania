@@ -33,9 +33,11 @@ def test_sends_model_language_and_vocabulary_hint():
     assert "Enalapril" in sent and "diuresis" in sent
 
 
-def test_prompt_is_bounded():
-    prompt = t.build_prompt(["x" * 50] * 100)
-    assert len(prompt) <= t.MAX_PROMPT_CHARS
+def test_prompt_is_bounded_and_keeps_the_end():
+    words = [f"palabra{i:03d}" for i in range(200)]  # distinct, so dedupe keeps them all
+    prompt = t.build_prompt(words)
+    assert len(prompt) == t.MAX_PROMPT_CHARS
+    assert prompt.endswith("palabra199.")  # Whisper reads the end of the prompt
 
 
 def test_missing_key_gives_user_message(monkeypatch):
