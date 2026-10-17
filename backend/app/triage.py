@@ -151,9 +151,10 @@ def triage(text: str, *, sender_role: Role | None = None, client=None,
     if not isinstance(text, str) or not text.strip():
         return _failed("empty message")
 
-    provider, name = llm.parse_model(model or os.environ.get("TRIAGE_MODEL") or DEFAULT_MODEL)
-    model = f"{provider}:{name}"
+    model = model or os.environ.get("TRIAGE_MODEL") or DEFAULT_MODEL
     try:
+        provider, name = llm.parse_model(model)
+        model = f"{provider}:{name}"
         return _classify(text, sender_role, client, model)
     except Exception as e:  # noqa: BLE001 - see docstring
         return _failed(f"{type(e).__name__}: {e}", model)

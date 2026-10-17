@@ -175,6 +175,12 @@ def test_extract_defaults_to_groq(monkeypatch):
     assert result.model == "groq:openai/gpt-oss-120b"
 
 
+def test_extract_unknown_provider_is_a_clear_config_error():
+    with pytest.raises(ExtractionError) as e:
+        extract(TRANSCRIPT, MEDS, model="grok:grok-4")
+    assert e.value.retryable is False
+
+
 @pytest.mark.parametrize("kind, retryable", [
     ("config", False), ("auth", False), ("bad_request", False), ("unavailable", True),
     ("refused", False), ("truncated", False), ("bad_output", True),

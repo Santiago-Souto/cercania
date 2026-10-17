@@ -249,9 +249,10 @@ def extract(transcript: str, medications: list[dict], *, client=None, model: str
     if not transcript or not transcript.strip():
         raise ExtractionError("El reporte llegó vacío; no hay nada para registrar.", retryable=False)
 
-    provider, name = llm.parse_model(model or os.environ.get("EXTRACT_MODEL") or DEFAULT_MODEL)
-    model = f"{provider}:{name}"
+    model = model or os.environ.get("EXTRACT_MODEL") or DEFAULT_MODEL
     try:
+        provider, name = llm.parse_model(model)
+        model = f"{provider}:{name}"
         raw = llm.complete_json(
             system=SYSTEM_PROMPT,
             user=_user_message(transcript, medications),

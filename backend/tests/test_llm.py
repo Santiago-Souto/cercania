@@ -11,6 +11,11 @@ SCHEMA = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required
           "additionalProperties": False}
 
 
+@pytest.fixture(autouse=True)
+def no_retry_delay(monkeypatch):
+    monkeypatch.setattr("app.llm.RETRY_DELAY_SEC", 0)
+
+
 def call(model: str, client):
     return complete_json(system="sys", user="usr", schema=SCHEMA, model=model,
                          max_tokens=100, timeout=5, effort="low", client=client)
@@ -28,6 +33,21 @@ def call(model: str, client):
 ])
 def test_parse_model(spec, expected):
     assert parse_model(spec) == expected
+
+
+@pytest.mark.parametrize("spec", ["grok:grok-4", "groq:", "deepseek:deepseek-chat"])
+def test_parse_model_rejects_unknown_provider_instead_of_sending_to_anthropic(spec):
+    with pytest.raises(LLMError) as e:
+        parse_model(spec)
+    assert e.value.kind == "config"
+
+
+def test_anthropic_missing_key_is_a_config_error(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    with pytest.raises(LLMError) as e:
+        call("anthropic:claude-haiku-5-5", None)  # real SDK path, fails before any request
+    assert e.value.kind == "config"
 
 
 # --- Anthropic adapter (fake client: tests only) --------------------------------
@@ -126,6 +146,31 @@ def test_openai_failures_map_to_kinds(openai_env, response, kind):
     with pytest.raises(LLMError) as e:
         call("openai:gpt-x", openai_client(lambda request: response))
     assert e.value.kind == kind
+
+
+def test_openai_retries_once_on_transient_errors(openai_env):
+    responses = iter([httpx.Response(503), chat_response('{"ok": true}')])
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return next(responses)
+
+    assert call("openai:gpt-x", openai_client(handler)) == {"ok": True}
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("status, attempts", [(429, 2), (503, 2), (400, 1), (401, 1)])
+def test_openai_retries_only_transient_statuses(openai_env, status, attempts):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(status)
+
+    with pytest.raises(LLMError):
+        call("openai:gpt-x", openai_client(handler))
+    assert len(calls) == attempts
 
 
 def test_openai_network_error_is_unavailable(openai_env):

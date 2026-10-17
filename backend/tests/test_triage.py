@@ -102,8 +102,14 @@ def test_triage_runs_on_openai_compatible_model(monkeypatch):
     assert t.model == "openai:gpt-x"
 
 
+def test_triage_bad_model_spec_fails_without_raising():
+    t = triage(TEXT, model="grok:grok-4")
+    assert t.status is TriageStatus.failed and t.reply == TRIAGE_FAILED_LINE
+
+
 def test_triage_openai_http_error_fails_with_fixed_line(monkeypatch):
     monkeypatch.setenv("LLM_BASE_URL", "http://llm.test/v1")
+    monkeypatch.setattr("app.llm.RETRY_DELAY_SEC", 0)
     client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(503)))
     t = triage(TEXT, client=client, model="openai:gpt-x")
     assert t.status is TriageStatus.failed and t.reply == TRIAGE_FAILED_LINE

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 
 import httpx
 
@@ -24,6 +25,7 @@ API_KEY_ENV = {"groq": "GROQ_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "openai
 PROVIDERS = tuple(API_KEY_ENV)
 OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1"
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+RETRY_DELAY_SEC = 0.5  # one retry on transient errors, like the Anthropic SDK with max_retries=1
 
 
 class LLMError(Exception):
@@ -38,12 +40,16 @@ class LLMError(Exception):
 def parse_model(spec: str) -> tuple[str, str]:
     """Split a model spec, e.g. "openai:llama3.1:8b" -> ("openai", "llama3.1:8b").
 
-    A bare name or unknown prefix means Anthropic: "claude-haiku-5-5" -> ("anthropic", ...).
+    A bare name (no colon) means Anthropic: "claude-haiku-5-5" -> ("anthropic", ...).
+    An unknown prefix ("grok:grok-4") raises LLMError("config") instead of being
+    sent to Anthropic as a model name.
     """
     provider, sep, name = spec.partition(":")
-    if sep and provider in PROVIDERS and name:
-        return provider, name
-    return "anthropic", spec
+    if not sep:
+        return "anthropic", spec
+    if provider not in PROVIDERS or not name:
+        raise LLMError("config", f"bad model spec {spec!r}; use <provider>:<model> with one of {PROVIDERS}")
+    return provider, name
 
 
 def complete_json(*, system: str, user: str, schema: dict, model: str, max_tokens: int,
@@ -83,10 +89,10 @@ def _anthropic(system, user, schema, name, max_tokens, timeout, effort, client) 
     import anthropic
 
     if client is None:
-        try:
-            client = anthropic.Anthropic(timeout=timeout, max_retries=1)
-        except anthropic.AnthropicError as e:
-            raise LLMError("config", "ANTHROPIC_API_KEY is not set") from e
+        # The SDK only notices a missing key at request time, as a bare TypeError.
+        if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
+            raise LLMError("config", "ANTHROPIC_API_KEY is not set")
+        client = anthropic.Anthropic(timeout=timeout, max_retries=1)
     output_config: dict = {"format": {"type": "json_schema", "schema": schema}}
     if effort:
         output_config["effort"] = effort
@@ -127,14 +133,24 @@ def _openai(system, user, schema, name, max_tokens, timeout, client, base_url, a
             "json_schema": {"name": "output", "strict": True, "schema": schema},
         },
     }
+    url = f"{base_url}/chat/completions"
+    own_client = client is None
+    client = client or httpx.Client(timeout=timeout)
     try:
-        if client is None:
-            with httpx.Client(timeout=timeout) as c:
-                response = c.post(f"{base_url}/chat/completions", json=body, headers=headers)
-        else:
-            response = client.post(f"{base_url}/chat/completions", json=body, headers=headers)
-    except httpx.HTTPError as e:
-        raise LLMError("unavailable", str(e)) from e
+        for attempt in range(2):
+            try:
+                response = client.post(url, json=body, headers=headers)
+            except httpx.HTTPError as e:
+                if attempt:
+                    raise LLMError("unavailable", str(e)) from e
+            else:
+                transient = response.status_code == 429 or response.status_code >= 500
+                if attempt or not transient:
+                    break
+            time.sleep(RETRY_DELAY_SEC)
+    finally:
+        if own_client:
+            client.close()
 
     status = response.status_code
     if status in (401, 403):
