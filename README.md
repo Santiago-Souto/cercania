@@ -23,7 +23,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Emergency triage (model decides) | In progress | `backend/app/triage.py`, Claude Haiku 5.5, every message from a registered sender. Fixed reply text and recipients in code. Unit-tested; live call not yet verified; criteria provisional |
 | Emergency notifications by WhatsApp | Pending | Recipients chosen in code (`models.emergency_recipients`); sending not built. Needs templates or sandbox join |
 | Comparison vs care plan / history / checklist (code) | Pending | |
-| Confirmation reply to caregiver ("I recorded...") | Pending | |
+| Confirmation reply to caregiver ("I recorded...") | In progress | Caregiver identified by phone, "which patient?" when several, `confirmation_text` reply with fixed red-flag line; waits on `process_report` (CIA-7) |
 | Report from the web app (text or audio) | In progress | `POST /patients/{id}/reports` built and tested; returns `processing_unavailable` until `process_report` (CIA-7) merges |
 | Versioned report storage | Pending | |
 | Web timeline (caregiver view) | Pending | |
