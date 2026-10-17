@@ -182,8 +182,8 @@ def test_unsupported_content_type(db, brain):
     assert r.status_code == 415
 
 
-def test_without_process_report_returns_503_not_a_fake_result(db):
-    # Real ingest.process_report: app.process does not exist until CIA-7 merges.
+def test_without_process_report_returns_503_not_a_fake_result(db, monkeypatch):
+    monkeypatch.setattr(ingest, "PROCESS_REPORT_MODULE", "app.process_not_deployed")
     r = client.post(URL, json={"client_id": "w10", "text": "hola"}, headers=AS_CAREGIVER)
     assert r.status_code == 503
     assert r.json()["error"]["code"] == "processing_unavailable"
