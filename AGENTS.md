@@ -117,6 +117,7 @@ eval/
   run_eval.py      runs cases, prints metrics                [infra/input owner]
 docs/contract.md   endpoints and data shapes (source of truth for integration)
 README.md          Functional / Simulated / Pending
+.agents/skills/    shared agent skills, tool-agnostic (.claude/skills is a symlink here)
 ```
 
 Contract first: the web owner builds against fake data from `docs/contract.md` and must not wait on the backend. Change the contract only by editing `docs/contract.md` in the same commit as the code.
@@ -146,6 +147,7 @@ Rule: never tune the prompt against the same cases we will demo with and then ca
 ## 13. Working agreements for agents
 
 - Make small commits with clear messages. Never commit secrets, audio, or real personal/health data.
+- Agent config lives in `.agents/` so it works with any coding agent. Add skills to `.agents/skills/<name>/SKILL.md`; do not put them under a tool-specific folder. Use `linear-ticket-writer` when creating or rewriting Linear tickets, and `ticket-to-pr` to take a ticket from worktree to a PR that closes it.
 - Prefer the simplest thing that keeps the critical path working. If a task threatens the critical path, stop and flag it.
 - Do not add dependencies without need; note any new one in the commit message.
 - Handle errors visibly: the user must get a clear message instead of a silent failure.
