@@ -58,11 +58,13 @@ Appetite, sleep, urination/diuresis, medication, mood, mobility, pain, incidents
 
 ## 5. Data model (design rules)
 
-Entities: `patient`, `care_plan` (medication with schedule and dose, indications, allergies), `caregiver` (phone number = identity), `family_member`, `report`, `report_item`, `alert`.
+Schema lives in `backend/app/models.py`. Entities: `person` (caregiver or family member; phone number = identity), `patient_access` (person + patient + role), `patient`, `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `magic_link`.
 
 Rules:
-- `report` stores: original audio reference, transcript, timestamp, sender, **version**. Corrections create a **new version**; previous versions stay visible and immutable (this is the evidence trail).
-- `report_item` stores: item type, value, **verbatim supporting quote**, verification status.
+- Structured data in Postgres; binaries (audio, images, documents) in object storage. `file` stores only the storage path and metadata.
+- `report` stores what was received: audio (via `file`), transcript, timestamped segments, timestamp, sender, message id. Written once.
+- `report_version` stores what was recorded. Corrections create a **new version**; previous versions stay visible and immutable (this is the evidence trail).
+- `report_item` stores: item type, value, coarse `level` (for code comparison over time), item `details` (e.g. medication doses), **verbatim supporting quote**, verification status. One row per checklist item; `value` null = not mentioned.
 - `alert` types: `omission` (plan vs report), `change` (vs usual), `missing_item` (checklist).
 - Idempotency: processing the same WhatsApp message id twice must not create two reports.
 - All seed/demo data is **fictional**. Never commit real audio, names or health data.
@@ -92,7 +94,7 @@ Auth: phone number in -> bot sends a **single-use link with short expiry**. The 
 
 - Backend: Python + FastAPI
 - Web: React or Next.js (two views: caregiver, family)
-- DB: Postgres (Supabase) or SQLite if time-constrained
+- DB: **decided** Postgres on Supabase via SQLAlchemy 2.0 + psycopg 3 (`DATABASE_URL`); SQLite is the local default and fallback (same models). Files in Supabase Storage, private bucket, signed URLs.
 - Transcription: Whisper-class API (OpenAI or Groq); fallback AWS Transcribe with custom vocabulary
 - LLM: Claude via API. Start with `claude-sonnet-5-5`; use `claude-haiku-5-5` if latency demands. Use structured JSON output / tool use.
 - WhatsApp: Twilio sandbox first, or Meta Cloud API test number. **Cut rule: if a real voice note does not flow end-to-end by 14:00 Sat, switch to a Telegram bot or a web recorder and list WhatsApp as Pending.**

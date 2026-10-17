@@ -31,7 +31,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 
 ### Simulated
 
-- Patient, care plan and history data are fictional seed data (`backend/app/seed.py`).
+- Patient, care plan and history data are fictional seed data (`backend/app/seed.py`). Seeded reports are marked `channel="seed"`, `model="seed"`: they are fixtures, not model output.
 
 ### Out of scope (declared)
 
@@ -43,10 +43,11 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 Backend (Python 3.12+):
 
 ```bash
-cp .env.example .env
+cp .env.example .env            # default DATABASE_URL is local SQLite
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
+python -m app.seed              # tables + fictional data (--reset drops all tables)
 uvicorn app.main:app --reload   # http://localhost:8000/health
 pytest                          # backend tests
 ```

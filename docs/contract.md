@@ -25,12 +25,14 @@ process_report(patient_id, caregiver_id, transcript, audio_ref, message_id) -> P
     {
       "item": "appetite",
       "value": "ate little at dinner",
+      "level": "low",
       "quote": "casi no comio nada en la cena",
       "quote_verified": true
     },
     {
       "item": "sleep",
       "value": null,
+      "level": null,
       "quote": null,
       "quote_verified": null
     }
@@ -57,6 +59,7 @@ process_report(patient_id, caregiver_id, transcript, audio_ref, message_id) -> P
 Rules:
 - `quote` must be a substring (after normalization: case, accents, whitespace) of `transcript`. If not, set `quote_verified: false` and do not use the value for alerts.
 - Items not mentioned: `value: null`, `quote: null`. Never infer.
+- `level` is a coarse category used by code to compare over time (e.g. appetite `normal` / `low` / `none`). Optional for display.
 - `red_flag: true` is set by a fixed-rule phrase list (code), not by the model.
 
 ## Alert types
