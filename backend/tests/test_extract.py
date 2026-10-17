@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.extract import (
+    DEFAULT_MODEL,
     ExtractionError,
     ITEM_LEVELS,
     build_schema,
@@ -24,6 +25,9 @@ TRANSCRIPT = (
     "Hoy Rosa casi no comió nada en la cena. Le di el enalapril a las ocho. "
     "Se quejó de la rodilla, no sé qué más."
 )
+
+
+ANTHROPIC = "anthropic:test-model"  # the FakeClient below mimics the Anthropic SDK
 
 
 def empty_raw() -> dict:
@@ -154,6 +158,23 @@ def test_extract_sends_schema_and_returns_validated_items():
     assert result.model == "anthropic:test-model"
 
 
+def test_extract_defaults_to_groq(monkeypatch):
+    import httpx
+
+    monkeypatch.delenv("EXTRACT_MODEL", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "gk")
+    seen = {}
+
+    def handler(request):
+        seen["url"] = str(request.url)
+        return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {
+            "role": "assistant", "content": json.dumps(empty_raw())}}]})
+
+    result = extract(TRANSCRIPT, MEDS, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert seen["url"].startswith("https://api.groq.com/")
+    assert result.model == "groq:openai/gpt-oss-120b"
+
+
 @pytest.mark.parametrize("kind, retryable", [
     ("config", False), ("auth", False), ("bad_request", False), ("unavailable", True),
     ("refused", False), ("truncated", False), ("bad_output", True),
@@ -171,14 +192,14 @@ def test_extract_maps_every_llm_error_kind(monkeypatch, kind, retryable):
 @pytest.mark.parametrize("stop_reason", ["refusal", "max_tokens"])
 def test_extract_raises_clear_error_on_bad_stop(stop_reason):
     with pytest.raises(ExtractionError) as e:
-        extract(TRANSCRIPT, MEDS, client=FakeClient("{}", stop_reason=stop_reason))
+        extract(TRANSCRIPT, MEDS, client=FakeClient("{}", stop_reason=stop_reason), model=ANTHROPIC)
     assert e.value.message
 
 
 @pytest.mark.parametrize("text", ["[1, 2]", '"texto"', "42", "null"])
 def test_extract_raises_extraction_error_on_non_object_json(text):
     with pytest.raises(ExtractionError):
-        extract(TRANSCRIPT, MEDS, client=FakeClient(text))
+        extract(TRANSCRIPT, MEDS, client=FakeClient(text), model=ANTHROPIC)
 
 
 def test_validate_drops_wrong_types_instead_of_raising():
@@ -202,15 +223,15 @@ def test_validate_drops_wrong_types_instead_of_raising():
 
 def test_extract_raises_on_invalid_json_and_empty_transcript():
     with pytest.raises(ExtractionError):
-        extract(TRANSCRIPT, MEDS, client=FakeClient("not json"))
+        extract(TRANSCRIPT, MEDS, client=FakeClient("not json"), model=ANTHROPIC)
     with pytest.raises(ExtractionError):
-        extract("   ", MEDS, client=FakeClient("{}"))
+        extract("   ", MEDS, client=FakeClient("{}"), model=ANTHROPIC)
 
 
 # --- live call (needs the key for the configured EXTRACT_MODEL provider) -------------
 
 
-LIVE_KEY = API_KEY_ENV[parse_model(os.environ.get("EXTRACT_MODEL") or "claude")[0]]
+LIVE_KEY = API_KEY_ENV[parse_model(os.environ.get("EXTRACT_MODEL") or DEFAULT_MODEL)[0]]
 
 
 @pytest.mark.skipif(not os.environ.get(LIVE_KEY), reason=f"needs {LIVE_KEY}")

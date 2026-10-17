@@ -18,13 +18,11 @@ services:
         sync: false
       - key: PUBLIC_BASE_URL
         sync: false
-      # Claude (extraction, triage, cited query). The SDK reads it from the environment.
-      - key: ANTHROPIC_API_KEY
-        sync: false
+      # Groq: transcription and, by default, checklist extraction.
       - key: GROQ_API_KEY
         sync: false
-      # LLM vendor (backend/app/llm.py). Defaults to Anthropic; set the *_MODEL
-      # values to openai:<model> plus LLM_BASE_URL / LLM_API_KEY to switch.
+      # LLM vendor (backend/app/llm.py). Extraction defaults to Groq, triage to
+      # Anthropic; set *_MODEL to <provider>:<model> to switch (see .env.example).
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: LLM_BASE_URL

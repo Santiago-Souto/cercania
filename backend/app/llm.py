@@ -1,10 +1,11 @@
 """One schema-constrained JSON call to whichever LLM vendor is configured.
 
 Callers pass a model spec "<provider>:<model>":
+- "groq:openai/gpt-oss-120b": Groq, with GROQ_API_KEY (the same key as transcription);
 - "anthropic:claude-haiku-5-5" (a bare model name also means Anthropic);
-- "openai:<model>" for any OpenAI-compatible chat/completions endpoint (OpenAI,
-  Groq, Gemini's compat endpoint, OpenRouter, Ollama, vLLM), configured with
-  LLM_BASE_URL and LLM_API_KEY.
+- "openai:<model>" for any other OpenAI-compatible chat/completions endpoint
+  (OpenAI, xAI, Gemini's compat endpoint, OpenRouter, Ollama, vLLM), configured
+  with LLM_BASE_URL and LLM_API_KEY.
 
 Every vendor failure becomes an LLMError with a vendor-neutral `kind`, so callers
 decide what to tell the user without knowing which vendor ran. Callers must still
@@ -19,9 +20,10 @@ import os
 import httpx
 
 # Env var holding the API key for each provider.
-API_KEY_ENV = {"anthropic": "ANTHROPIC_API_KEY", "openai": "LLM_API_KEY"}
+API_KEY_ENV = {"groq": "GROQ_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "openai": "LLM_API_KEY"}
 PROVIDERS = tuple(API_KEY_ENV)
 OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1"
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
 
 class LLMError(Exception):
@@ -52,8 +54,17 @@ def complete_json(*, system: str, user: str, schema: dict, model: str, max_token
     client or an httpx.Client, depending on the provider.
     """
     provider, name = parse_model(model)
-    if provider == "openai":
-        text = _openai(system, user, schema, name, max_tokens, timeout, client)
+    if provider == "groq":
+        api_key = os.environ.get("GROQ_API_KEY")
+        if not api_key:
+            raise LLMError("config", "GROQ_API_KEY is not set")
+        text = _openai(system, user, schema, name, max_tokens, timeout, client, GROQ_BASE_URL, api_key)
+    elif provider == "openai":
+        base_url = (os.environ.get("LLM_BASE_URL") or OPENAI_DEFAULT_BASE_URL).rstrip("/")
+        api_key = os.environ.get("LLM_API_KEY")
+        if not api_key and base_url == OPENAI_DEFAULT_BASE_URL:
+            raise LLMError("config", "LLM_API_KEY is not set")  # local servers may not need one
+        text = _openai(system, user, schema, name, max_tokens, timeout, client, base_url, api_key)
     else:
         text = _anthropic(system, user, schema, name, max_tokens, timeout, effort, client)
     try:
@@ -102,14 +113,10 @@ def _anthropic(system, user, schema, name, max_tokens, timeout, effort, client) 
     return next((b.text for b in response.content if b.type == "text"), None)
 
 
-# --- OpenAI-compatible --------------------------------------------------------------
+# --- OpenAI-compatible (Groq, OpenAI, xAI, ...) -------------------------------------
 
 
-def _openai(system, user, schema, name, max_tokens, timeout, client) -> str | None:
-    base_url = (os.environ.get("LLM_BASE_URL") or OPENAI_DEFAULT_BASE_URL).rstrip("/")
-    api_key = os.environ.get("LLM_API_KEY")
-    if not api_key and base_url == OPENAI_DEFAULT_BASE_URL:
-        raise LLMError("config", "LLM_API_KEY is not set")  # local servers may not need one
+def _openai(system, user, schema, name, max_tokens, timeout, client, base_url, api_key) -> str | None:
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     body = {
         "model": name,

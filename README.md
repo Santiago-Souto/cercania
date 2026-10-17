@@ -18,7 +18,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 |---|---|---|
 | Voice note received from WhatsApp | In progress | Meta Cloud API, bot number +1 555-674-0716 (test number: only allowed phones can write). Inbound voice notes verified against a real Meta payload; end-to-end with transcription pending the Groq key |
 | Audio transcription | In progress | Groq Whisper with a care-vocabulary prompt; live test pending |
-| Structured extraction with verbatim quotes | In progress | `backend/app/extract.py`, Claude Haiku 5.5 structured output by default; any OpenAI-compatible model via `EXTRACT_MODEL=openai:<model>` (`backend/app/llm.py`). Unit-tested; live call not yet verified |
+| Structured extraction with verbatim quotes | In progress | `backend/app/extract.py`, Groq `openai/gpt-oss-120b` strict structured output by default; any other vendor via `EXTRACT_MODEL=<provider>:<model>` (`backend/app/llm.py`). Unit-tested; live call not yet verified |
 | Quote verification (code) | Functional | Normalized whole-word substring match; unit-tested (`backend/tests/test_extract.py`) |
 | Emergency triage (model decides) | In progress | `backend/app/triage.py`, Claude Haiku 5.5 by default (any OpenAI-compatible model via `TRIAGE_MODEL=openai:<model>`), every message from a registered sender. Fixed reply text and recipients in code. Unit-tested; live call not yet verified; criteria provisional |
 | Emergency notifications by WhatsApp | Pending | Recipients chosen in code (`models.emergency_recipients`); sending not built. Needs templates or sandbox join |
@@ -90,6 +90,6 @@ python eval/run_eval.py --split unseen  # only the held-out cases
 python eval/run_eval.py --json out.json # per-case details
 ```
 
-Runs every case in `eval/cases.csv` through the real `process_report` on a fresh temporary SQLite database with the fictional seed data (the team database is never touched). Needs the API key of the configured provider: `ANTHROPIC_API_KEY` by default, or `LLM_API_KEY` (+ `LLM_BASE_URL`) when `EXTRACT_MODEL` / `TRIAGE_MODEL` use `openai:<model>`.
+Runs every case in `eval/cases.csv` through the real `process_report` on a fresh temporary SQLite database with the fictional seed data (the team database is never touched). Needs the API keys of the configured providers: by default `GROQ_API_KEY` (extraction) and `ANTHROPIC_API_KEY` (triage); `LLM_API_KEY` (+ `LLM_BASE_URL`) for any `openai:<model>`.
 
 Reports: fields extracted (value + verified quote), omissions detected, missing checklist items detected, false alarms (unexpected alerts, items reported but not mentioned, items flagged missing but mentioned), quote-verification pass rate, and latency per report. Change alerts are expected as `change:<item>` in `expected_alerts`. A case where `process_report` raises or returns a status other than `ok` counts as failed: its expected counts stay in every ratio with zero detections, and the run exits with code 1. The wording of extracted values is not judged. Cases with `split=unseen` are held out from prompt tuning (keep at least 5).

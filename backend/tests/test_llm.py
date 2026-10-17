@@ -24,6 +24,7 @@ def call(model: str, client):
     ("anthropic:claude-haiku-5-5", ("anthropic", "claude-haiku-5-5")),
     ("openai:gpt-x", ("openai", "gpt-x")),
     ("openai:llama3.1:8b", ("openai", "llama3.1:8b")),  # Ollama tags keep their colon
+    ("groq:openai/gpt-oss-120b", ("groq", "openai/gpt-oss-120b")),
 ])
 def test_parse_model(spec, expected):
     assert parse_model(spec) == expected
@@ -145,6 +146,31 @@ def test_openai_without_key_needs_custom_base_url(monkeypatch):
 
     monkeypatch.setenv("LLM_BASE_URL", "http://localhost:11434/v1")  # e.g. Ollama, no key
     assert call("openai:llama3.1:8b", openai_client(lambda r: chat_response('{"ok": true}'))) == {"ok": True}
+
+
+def test_groq_uses_groq_url_and_key(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gk")
+    monkeypatch.setenv("LLM_BASE_URL", "http://ignored.test/v1")  # only for openai:
+    seen = {}
+
+    def handler(request):
+        seen["url"] = str(request.url)
+        seen["auth"] = request.headers.get("authorization")
+        seen["body"] = json.loads(request.content)
+        return chat_response('{"ok": true}')
+
+    assert call("groq:openai/gpt-oss-120b", openai_client(handler)) == {"ok": True}
+    assert seen["url"] == "https://api.groq.com/openai/v1/chat/completions"
+    assert seen["auth"] == "Bearer gk"
+    assert seen["body"]["model"] == "openai/gpt-oss-120b"
+    assert seen["body"]["response_format"]["json_schema"]["strict"] is True
+
+
+def test_groq_without_key_is_a_config_error(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    with pytest.raises(LLMError) as e:
+        call("groq:openai/gpt-oss-120b", openai_client(lambda r: chat_response("{}")))
+    assert e.value.kind == "config"
 
 
 # --- live call (needs LLM_API_KEY and an openai: EXTRACT_MODEL) ------------------------

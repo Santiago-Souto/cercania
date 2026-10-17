@@ -20,9 +20,9 @@ from typing import Any
 from . import llm
 from .models import ChecklistItem
 
-# Haiku: one schema-constrained call, no tools; code verifies every quote (AGENTS.md section 8).
-# EXTRACT_MODEL="<provider>:<model>" switches vendor; see llm.py.
-DEFAULT_MODEL = "anthropic:claude-haiku-5-5"
+# Groq (GROQ_API_KEY, shared with transcription): one strict-schema call, no tools; code
+# verifies every quote (AGENTS.md section 8). EXTRACT_MODEL="<provider>:<model>" overrides it.
+DEFAULT_MODEL = "groq:openai/gpt-oss-120b"
 MAX_TOKENS = 4000
 TIMEOUT_SEC = 20.0
 
