@@ -1,4 +1,4 @@
-# e24 - care handoff assistant (Build 101)
+# CercanIA - care handoff assistant (Build 101)
 
 Caregivers send an end-of-shift voice note to a WhatsApp bot. The system transcribes it, extracts structured data with a verbatim quote per fact, compares it against the patient's care plan and history **in code**, flags omissions and changes, and stores a versioned record. The next shift can ask questions in natural language and gets answers citing the original fragment.
 

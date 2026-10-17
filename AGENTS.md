@@ -11,6 +11,8 @@ A care-handoff assistant for caregivers of dependent people (e.g. older adults i
 - The system transcribes it, extracts structured data, **compares it against the patient's care plan and history by code**, flags omissions/changes, and stores everything on a web app.
 - The next shift (or a family member) can **query the record in natural language** and gets answers **with a citation to the exact fragment of the original report**.
 
+Product name: **CercanIA** (always written with capital "IA"; repo `Santiago-Souto/cercania`).
+
 One-line pitch: *the shift handoff that doesn't get lost.*
 
 Product focus right now: **build the product first; sales/business model comes later.**
