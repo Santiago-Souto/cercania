@@ -34,8 +34,10 @@ RECIPIENT_NOT_ALLOWED = 131030
 
 MSG_UNSUPPORTED = "Por ahora solo puedo registrar notas de voz o texto. Enviá el reporte del turno como nota de voz."
 MSG_DOWNLOAD_FAILED = "No pude descargar tu nota de voz. ¿Podés enviarla de nuevo?"
+# Unknown numbers get no model call (AGENTS.md 4.1), so the emergency line is always included.
 MSG_UNKNOWN_NUMBER = (
-    "Este número no está registrado en CercanIA. Pedile a la persona responsable del paciente que te invite."
+    "Este número no está registrado en CercanIA. Pedile a la persona responsable del paciente que te invite. "
+    "Si es una emergencia, llamá ya a emergencias o al médico."
 )
 MSG_NO_PATIENTS = "No tenés pacientes asignados para enviar reportes. Pedile a la persona responsable que te invite."
 MSG_PROCESSING_UNAVAILABLE = (

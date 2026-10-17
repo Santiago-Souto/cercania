@@ -166,11 +166,11 @@ Meta Cloud API verification handshake. Query `hub.mode=subscribe`, `hub.verify_t
 
 Meta Cloud API webhook (JSON). Requests without a valid `X-Hub-Signature-256` (HMAC-SHA256 of the body with `WHATSAPP_APP_SECRET`) get 403 `invalid_signature`. Response on success: `{ "status": "received" }`. Status updates (delivered/read) are acked and ignored. Voice notes are transcribed; text messages are treated as a typed report; other types get a reply asking for a voice note.
 
-Acknowledge immediately (HTTP 200), then process asynchronously. Dedupe by provider message id. Identify the sender by phone number and route by role (AGENTS.md §4.1): unknown numbers get a fixed reply and nothing is processed; every registered sender's message goes through triage. If the sender has several patients, ask "which patient?" before processing.
+Acknowledge immediately (HTTP 200), then process asynchronously. Dedupe by provider message id. Identify the sender by phone number and route by role (AGENTS.md §4.1). If the sender has several patients, ask "which patient?" before processing. Target, not built yet (CIA-7): every registered sender's message goes through triage, including family, doctor and patient, and the emergency reply goes out before the patient question and before extraction. Today the bot behaves as listed below.
 
 Bot behavior (all replies are WhatsApp text):
-- Sender phone not in `person.phone` → "number not registered" message; nothing processed.
-- No patient where the sender has `send_report` → "no patients assigned" message.
+- Sender phone not in `person.phone` → "number not registered" message, which always includes the fixed emergency line; nothing processed, no model call.
+- No patient where the sender has `send_report` → "no patients assigned" message. Today this is where family, doctor and patient messages stop; they do not reach triage yet (see target above).
 - Several patients → numbered "¿De qué paciente es el reporte?" question; the report is kept (in memory, 30 min) and processed once the caregiver answers with the number or part of the name. `message_id` is the report's id, not the answer's.
 - Reports sent while a choice is pending (voice, or typed text of 4+ words) are queued, never dropped: the bot says it kept them and asks about each in arrival order. Reports that expire without a choice are announced on the caregiver's next message so they can resend them.
 - After `process_report`: `confirmation_text` (or the result's `message` for `needs_retry` / `unclear`). When `red_flag` is true, a fixed line written in code is prepended: "⚠️ Si es una emergencia, llamá a emergencias o al médico ahora."
