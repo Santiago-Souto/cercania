@@ -48,7 +48,7 @@ Command or manual steps that prove the criteria (pytest, curl, eval script, open
 ## Rules
 
 - Acceptance criteria are checkable by someone else: name the input and the expected output. Avoid "works well", "clean", "robust".
-- Pull safety rules into the criteria when relevant: the model never decides doses/alerts, every quote is verified by code, `null` when not mentioned, red flags are fixed rules.
+- Pull safety rules into the criteria when relevant: the model never decides doses/alerts (sole exception: emergency triage in `triage.py`, with fixed reply text and recipients chosen by code), every quote is verified by code, `null` when not mentioned.
 - Wrap every file name in backticks. Linear turns a bare `name.py` into a broken `http://name.py` link, and it can do this even to a backticked name placed right after an issue mention, so reword if it happens.
 - Keep it short. A ticket should fit on one screen; link to the docs instead of copying them.
 - Only reference CIA IDs that exist in the CercanIA team.

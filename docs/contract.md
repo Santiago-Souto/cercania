@@ -11,8 +11,10 @@ Edit this list only after validating with a caregiver contact. Update `AGENTS.md
 ## Core function
 
 ```
-process_report(patient_id, caregiver_id, transcript, audio_ref, message_id) -> ProcessResult
+process_report(patient_id, sender_id, transcript, audio_ref, message_id) -> ProcessResult
 ```
+
+`sender_id` is a caregiver for shift reports; any registered role can trigger an emergency report (`report.kind = "emergency"`, no checklist items).
 
 - Idempotent on `message_id`: a repeated delivery returns the existing result and creates nothing.
 - Never raises to the caller for model errors; returns `status: "needs_retry"` or `status: "unclear"` with a message the bot can send.
@@ -52,6 +54,13 @@ process_report(patient_id, caregiver_id, transcript, audio_ref, message_id) -> P
     }
   ],
   "red_flag": false,
+  "triage": {
+    "status": "ok",
+    "emergency": false,
+    "reason": null,
+    "quote": null,
+    "quote_verified": null
+  },
   "confirmation_text": "I recorded: ate little at dinner. Did not mention the 08:00 medication. How did she sleep?"
 }
 ```
@@ -61,7 +70,10 @@ Rules:
 - `medication` items carry `details.doses`: `[{ "plan_ref": "med_002", "time": "08:00", "given": true | false | null, "quote": "…", "quote_verified": true }]`. Only medications and times in the active care plan are accepted; `given: null` means unclear.
 - Items not mentioned: `value: null`, `quote: null`. Never infer.
 - `level` is a coarse category used by code to compare over time (e.g. appetite `normal` / `low` / `none`). Optional for display.
-- `red_flag: true` is set by a fixed-rule phrase list (code), not by the model.
+- `red_flag` is decided by the **model** in the triage step (`triage.py`), not by a phrase list. `red_flag == triage.emergency`. The reply text sent on an emergency is fixed in code.
+- `triage.quote` is verified like any other quote, but `quote_verified: false` **never** turns an emergency off; it is only shown as unverified.
+- `triage.status` is `ok` or `failed` (model error/timeout). On `failed`, `red_flag` is `false`, the report is still stored and the reply still includes the fixed emergency line.
+- On an emergency, `confirmation_text` is the fixed emergency message and asks no checklist questions.
 
 ## Alert types
 
@@ -70,6 +82,7 @@ Rules:
 | `omission` | compare.py vs care plan | scheduled medication/indication not mentioned or time mismatch |
 | `change` | compare.py vs history | deviation from the patient's usual pattern |
 | `missing_item` | compare.py vs checklist | checklist item not covered in this report |
+| `emergency` | triage.py (model) | the message describes an emergency; carries `reason`, `evidence_quote`, its verification status and `notifications: [{ "to": "health_provider" \| "caregiver" \| "family", "person_id": "…" \| null, "status": "sent" \| "failed", "error": null }]` |
 
 ## Endpoints
 

@@ -8,7 +8,7 @@ See `AGENTS.md` for full project context and rules, and `docs/contract.md` for i
 
 ## How the AI is central
 
-Without the AI there is no transcription of free-form speech, no extraction of structured facts from messy language, and no cited natural-language querying. The model reads and explains; code calculates, compares and verifies (every quote is checked against the transcript).
+Without the AI there is no transcription of free-form speech, no extraction of structured facts from messy language, and no cited natural-language querying. The model reads and explains; code calculates, compares and verifies (every quote is checked against the transcript). The one decision left to the model is emergency triage; the reply text and who gets notified stay in code.
 
 ## Status
 
@@ -20,6 +20,8 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Audio transcription | Pending | |
 | Structured extraction with verbatim quotes | In progress | `backend/app/extract.py`, Claude Haiku 5.5 structured output. Unit-tested; live call not yet verified |
 | Quote verification (code) | Functional | Normalized whole-word substring match; unit-tested (`tests/test_extract.py`) |
+| Emergency triage (model decides) | In progress | `backend/app/triage.py`, Claude Haiku 5.5, every message from a registered sender. Fixed reply text and recipients in code. Unit-tested; live call not yet verified; criteria provisional |
+| Emergency notifications by WhatsApp | Pending | Recipients chosen in code (`models.emergency_recipients`); sending not built. Needs templates or sandbox join |
 | Comparison vs care plan / history / checklist (code) | Pending | |
 | Confirmation reply to caregiver ("I recorded...") | Pending | |
 | Versioned report storage | Pending | |
