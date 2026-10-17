@@ -104,6 +104,21 @@ def test_triage_never_raises_on_api_error():
     assert t.status is TriageStatus.failed and t.reply == TRIAGE_FAILED_LINE
 
 
+def test_non_string_reason_or_quote_counts_as_absent_and_keeps_emergency():
+    t = validate({"emergency": True, "reason": 42, "quote": ["se cayó"]}, TEXT)
+    assert t.status is TriageStatus.ok and t.emergency
+    assert t.reason is None and t.quote is None and t.reply == EMERGENCY_REPLY
+
+
+def test_triage_never_raises_on_unexpected_errors():
+    t = triage(TEXT, client=FakeClient(exc=RuntimeError("boom")))
+    assert t.status is TriageStatus.failed and t.reply == TRIAGE_FAILED_LINE
+    # Response object missing fields entirely.
+    broken = FakeClient("{}")
+    broken._response = object()
+    assert triage(TEXT, client=broken).status is TriageStatus.failed
+
+
 def test_triage_empty_message_fails_without_calling_model():
     client = FakeClient("{}")
     assert triage("  ", client=client).status is TriageStatus.failed

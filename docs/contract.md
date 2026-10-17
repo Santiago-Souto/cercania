@@ -115,17 +115,22 @@ Query: `?limit=20&before=<iso>`
       "id": "rep_123",
       "version": 1,
       "created_at": "2026-10-17T21:05:00-03:00",
-      "caregiver": { "id": "cg_001", "display_name": "Ana (fictional)" },
+      "kind": "shift",
+      "sender": { "id": "cg_001", "display_name": "Ana (fictional)", "role": "caregiver" },
       "transcript": "…",
       "audio_url": "/media/rep_123.ogg",
       "items": [],
       "missing_items": [],
-      "alerts": []
+      "alerts": [],
+      "red_flag": false,
+      "triage": { "status": "ok", "emergency": false, "reason": null, "quote": null, "quote_verified": null }
     }
   ],
   "next_before": null
 }
 ```
+
+`kind` is `shift` (caregiver report, has items) or `emergency` (raised by another role, `items` is empty). `sender.role` is the sender's role for this patient. `triage` is `null` for seed fixtures, which never went through triage.
 
 ### `GET /reports/{report_id}/versions`
 

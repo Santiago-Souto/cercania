@@ -19,7 +19,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Voice note received from WhatsApp | In progress | Meta Cloud API, bot number +1 555-674-0716 (test number: only allowed phones can write). Inbound voice notes verified against a real Meta payload; end-to-end with transcription pending the Groq key |
 | Audio transcription | In progress | Groq Whisper with a care-vocabulary prompt; live test pending |
 | Structured extraction with verbatim quotes | In progress | `backend/app/extract.py`, Claude Haiku 5.5 structured output. Unit-tested; live call not yet verified |
-| Quote verification (code) | Functional | Normalized whole-word substring match; unit-tested (`tests/test_extract.py`) |
+| Quote verification (code) | Functional | Normalized whole-word substring match; unit-tested (`backend/tests/test_extract.py`) |
 | Emergency triage (model decides) | In progress | `backend/app/triage.py`, Claude Haiku 5.5, every message from a registered sender. Fixed reply text and recipients in code. Unit-tested; live call not yet verified; criteria provisional |
 | Emergency notifications by WhatsApp | Pending | Recipients chosen in code (`models.emergency_recipients`); sending not built. Needs templates or sandbox join |
 | Comparison vs care plan / history / checklist (code) | Pending | |
@@ -54,6 +54,8 @@ cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
 python -m app.seed              # tables + fictional data (--reset drops all tables)
+# No migrations yet: after a schema change (e.g. report.sender_id, triage fields),
+# run `python -m app.seed --reset`. It drops everything; all data is fictional.
 uvicorn app.main:app --reload   # http://localhost:8000/health
 pytest                          # backend tests
 ```

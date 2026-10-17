@@ -144,17 +144,29 @@ def build_schema(medications: list[dict]) -> dict:
 # --- Validation of model output (code, no model) ------------------------------------
 
 
+def _text(value) -> str | None:
+    """Model strings are trusted only if they are strings; anything else counts as absent."""
+    return value.strip() or None if isinstance(value, str) else None
+
+
 def validate(raw: dict, transcript: str, medications: list[dict]) -> tuple[list[dict], list[str]]:
-    """Turn raw model output into contract-shaped items. Never trusts the model blindly."""
+    """Turn raw model output into contract-shaped items. Never trusts the model blindly.
+
+    Wrong types (possible if EXTRACT_MODEL points at a model without structured
+    output) are dropped with a warning, never raised.
+    """
     plan_slots = {(m["id"], t) for m in medications for t in m["times"]}
     items: list[dict] = []
     warnings: list[str] = []
 
     for item, levels in ITEM_LEVELS.items():
         got = raw.get(item.value) or {}
-        value = (got.get("value") or "").strip() or None
-        quote = (got.get("quote") or "").strip() or None
-        level = got.get("level")
+        if not isinstance(got, dict):
+            warnings.append(f"{item.value}: expected an object, got {type(got).__name__}; dropped")
+            got = {}
+        value = _text(got.get("value"))
+        quote = _text(got.get("quote"))
+        level = got.get("level") if isinstance(got.get("level"), str) else None
         details = None
 
         if value is None:
@@ -171,16 +183,23 @@ def validate(raw: dict, transcript: str, medications: list[dict]) -> tuple[list[
 
         if item is ChecklistItem.medication and value is not None:
             doses = []
-            for d in got.get("doses") or []:
-                if (d.get("plan_ref"), d.get("time")) not in plan_slots:
-                    warnings.append(f"medication: dose {d.get('plan_ref')} {d.get('time')} not in care plan; dropped")
+            raw_doses = got.get("doses")
+            for d in raw_doses if isinstance(raw_doses, list) else []:
+                if not isinstance(d, dict):
+                    warnings.append(f"medication: dose is not an object: {d!r}; dropped")
                     continue
+                slot = (d.get("plan_ref"), d.get("time"))
+                if not all(isinstance(x, str) for x in slot) or slot not in plan_slots:
+                    warnings.append(f"medication: dose {slot[0]!r} {slot[1]!r} not in care plan; dropped")
+                    continue
+                given = d.get("given")
+                dose_quote = _text(d.get("quote"))
                 doses.append({
-                    "plan_ref": d["plan_ref"],
-                    "time": d["time"],
-                    "given": d.get("given"),
-                    "quote": d.get("quote"),
-                    "quote_verified": verify_quote(d.get("quote"), transcript),
+                    "plan_ref": slot[0],
+                    "time": slot[1],
+                    "given": given if isinstance(given, bool) else None,  # anything else = unclear
+                    "quote": dose_quote,
+                    "quote_verified": verify_quote(dose_quote, transcript),
                 })
             details = {"doses": doses}
 
@@ -261,6 +280,8 @@ def extract(transcript: str, medications: list[dict], *, client=None, model: str
         raw = json.loads(text or "")
     except json.JSONDecodeError as e:
         raise ExtractionError("La respuesta de la IA no tuvo el formato esperado.") from e
+    if not isinstance(raw, dict):
+        raise ExtractionError("La respuesta de la IA no tuvo el formato esperado.")
 
     items, warnings = validate(raw, transcript, medications)
     return Extraction(items=items, raw=raw, model=model, warnings=warnings)

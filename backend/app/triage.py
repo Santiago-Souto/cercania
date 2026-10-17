@@ -105,6 +105,11 @@ def _failed(error: str, model: str | None = None) -> Triage:
 # --- Validation of model output (code, no model) ------------------------------------
 
 
+def _text(value) -> str | None:
+    """Model strings are trusted only if they are strings; anything else counts as absent."""
+    return value.strip() or None if isinstance(value, str) else None
+
+
 def validate(raw: dict, text: str, model: str | None = None) -> Triage:
     emergency = raw.get("emergency")
     if not isinstance(emergency, bool):
@@ -113,8 +118,8 @@ def validate(raw: dict, text: str, model: str | None = None) -> Triage:
         # Nothing to explain; drop anything the model added.
         return Triage(status=TriageStatus.ok, emergency=False, model=model, raw=raw)
 
-    reason = (raw.get("reason") or "").strip() or None
-    quote = (raw.get("quote") or "").strip() or None
+    reason = _text(raw.get("reason"))
+    quote = _text(raw.get("quote"))
     # The emergency stands even if the quote is missing or not found.
     return Triage(
         status=TriageStatus.ok,
@@ -137,27 +142,35 @@ def _user_message(text: str, sender_role: Role | None) -> str:
 
 def triage(text: str, *, sender_role: Role | None = None, client=None,
            model: str | None = None) -> Triage:
-    """Classify one message. Never raises; on any failure returns status "failed"."""
-    import anthropic
+    """Classify one message. Never raises; on any failure returns status "failed".
 
-    if not text or not text.strip():
+    The catch-all is deliberate: whatever goes wrong, the caller must still store
+    the report and send TRIAGE_FAILED_LINE (AGENTS.md section 4.2).
+    """
+    if not isinstance(text, str) or not text.strip():
         return _failed("empty message")
 
     model = model or os.environ.get("TRIAGE_MODEL") or DEFAULT_MODEL
     try:
-        client = client or anthropic.Anthropic(timeout=TIMEOUT_SEC, max_retries=1)
-        response = client.messages.create(
-            model=model,
-            max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": _user_message(text, sender_role)}],
-            output_config={
-                "effort": "low",  # the emergency reply must go out first
-                "format": {"type": "json_schema", "schema": SCHEMA},
-            },
-        )
-    except anthropic.AnthropicError as e:
+        return _classify(text, sender_role, client, model)
+    except Exception as e:  # noqa: BLE001 - see docstring
         return _failed(f"{type(e).__name__}: {e}", model)
+
+
+def _classify(text: str, sender_role: Role | None, client, model: str) -> Triage:
+    import anthropic
+
+    client = client or anthropic.Anthropic(timeout=TIMEOUT_SEC, max_retries=1)
+    response = client.messages.create(
+        model=model,
+        max_tokens=MAX_TOKENS,
+        system=SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": _user_message(text, sender_role)}],
+        output_config={
+            "effort": "low",  # the emergency reply must go out first
+            "format": {"type": "json_schema", "schema": SCHEMA},
+        },
+    )
 
     if response.stop_reason in ("refusal", "max_tokens"):
         return _failed(f"stop_reason={response.stop_reason}", model)

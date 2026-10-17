@@ -159,6 +159,31 @@ def test_extract_raises_clear_error_on_bad_stop(stop_reason):
     assert e.value.message
 
 
+@pytest.mark.parametrize("text", ["[1, 2]", '"texto"', "42", "null"])
+def test_extract_raises_extraction_error_on_non_object_json(text):
+    with pytest.raises(ExtractionError):
+        extract(TRANSCRIPT, MEDS, client=FakeClient(text))
+
+
+def test_validate_drops_wrong_types_instead_of_raising():
+    raw = empty_raw()
+    raw["sleep"] = "durmió mal"  # not an object
+    raw["mood"] = {"value": 7, "level": ["low"], "quote": None}
+    raw["medication"] = {
+        "value": "Enalapril", "quote": "Le di el enalapril a las ocho",
+        "doses": ["med_001", {"plan_ref": 1, "time": "08:00"},
+                  {"plan_ref": "med_001", "time": "08:00", "given": "sí",
+                   "quote": "Le di el enalapril a las ocho"}],
+    }
+    items, warnings = validate(raw, TRANSCRIPT, MEDS)
+    items = {i["item"]: i for i in items}
+    assert items["sleep"]["value"] is None and items["mood"]["value"] is None
+    assert items["medication"]["details"]["doses"] == [
+        {"plan_ref": "med_001", "time": "08:00", "given": None,
+         "quote": "Le di el enalapril a las ocho", "quote_verified": True}]
+    assert len(warnings) == 3
+
+
 def test_extract_raises_on_invalid_json_and_empty_transcript():
     with pytest.raises(ExtractionError):
         extract(TRANSCRIPT, MEDS, client=FakeClient("not json"))
