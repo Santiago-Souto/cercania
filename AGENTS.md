@@ -153,6 +153,12 @@ backend/app/
   web_reports.py   POST /patients/{id}/reports (text/audio)  [infra/input owner]
   ingest.py        single hand-off from channels to process_report [infra/input owner]
   deps.py          DB session + current person dependencies  [shared]
+  errors.py        {error: {code, message}} shape and handlers [shared]
+  schemas.py       Pydantic models for every endpoint (mirror contract) [shared]
+  serializers.py   ORM -> contract dicts, one place          [shared]
+  api/             web routes, one module per area: patients, reports, corrections, me, notifications, query [shared]
+  process.py       process_report: triage + extraction -> compare -> store [brain owner]
+  notify.py        emergency notifications: web inbox, WhatsApp best effort [shared]
   triage.py        text -> emergency yes/no + quote (LLM)    [brain owner]
   extract.py       text -> JSON with quotes                  [brain owner]
   compare.py       plan/history/checklist logic, no model    [brain owner]
@@ -179,7 +185,7 @@ Endpoints (initial): `GET /patients/:id`, `GET /patients/:id/reports`, `POST /pa
 
 ## 10. Out of scope (do not build)
 
-Health-system / clinical-record integration, app/browser push notifications (WhatsApp emergency notifications in section 4.2 are in scope), complex auth, voice replies from the agent (text confirmation first; audio reply only if time remains Sunday), roles beyond the four in section 6, anything not on the critical path of "voice note in -> verified record + alerts out -> cited query".
+Health-system / clinical-record integration, app/browser push notifications (WhatsApp emergency notifications in section 4.2 are in scope; the in-app web inbox, polled every ~5 s, and the browser Notification API while the tab is open are in scope as the interim channel while WhatsApp is not approved), complex auth, voice replies from the agent (text confirmation first; audio reply only if time remains Sunday), roles beyond the four in section 6, anything not on the critical path of "voice note in -> verified record + alerts out -> cited query".
 
 ## 11. Quality check we must be able to show (AI quality, 20%)
 
