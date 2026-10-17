@@ -154,6 +154,33 @@ Meta Cloud API webhook (JSON). Requests without a valid `X-Hub-Signature-256` (H
 
 Acknowledge immediately (HTTP 200), then process asynchronously. Dedupe by provider message id. Identify the caregiver by sender phone number. If the caregiver has several patients, ask "which patient?" before processing.
 
+## Reports from the web app
+
+### `POST /patients/{patient_id}/reports`
+
+Same report a caregiver can send by WhatsApp. Either JSON text or multipart audio:
+
+```json
+{ "client_id": "web_7f3c", "text": "Casi no comió nada en la cena…" }
+```
+
+Multipart: `client_id` + `audio` file (webm/ogg/m4a). Audio goes through the same transcription step. Returns `ProcessResult` exactly as `process_report`. Idempotent on `client_id` (used as the `message_id`).
+
+Requires the `send_report` permission for that patient (`ROLE_PERMISSIONS` in `backend/app/models.py`; today only `caregiver`). Errors, all as `{ "error": { "code", "message" } }` with a message the UI can show as is:
+
+| HTTP | `code` | When |
+|---|---|---|
+| 400 | `client_id_missing`, `text_missing`, `audio_missing`, `audio_empty`, `invalid_json` | Bad input |
+| 401 | `unauthenticated` | No caller identity |
+| 403 | `forbidden` | Role lacks `send_report` for this patient |
+| 404 | `not_found` | Unknown patient |
+| 413 | `audio_too_large` | Audio over 20 MB |
+| 415 | `unsupported_audio`, `unsupported_media_type` | Not webm/ogg/m4a/mp3/wav, or neither JSON nor multipart |
+| 502 | `transcription_failed` | Transcription failed; ask to retry or type |
+| 503 | `processing_unavailable` | `process_report` not deployed yet; nothing was stored |
+
+A repeated `client_id` is not transcribed again; the stored report's result is returned.
+
 ### Magic link
 
 `POST /auth/link` is triggered when a user messages the bot. The bot replies with a single-use URL that expires after `MAGIC_LINK_TTL_MINUTES`. Roles: `caregiver`, `family` (read-only), `doctor` (only role that edits the care plan), `patient` (own profile and care plan; no reports or alerts). A role is per patient. Endpoints return `403` with an error `code: "forbidden"` when the role lacks the permission.

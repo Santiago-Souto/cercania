@@ -22,6 +22,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Quote verification (code) | Pending | |
 | Comparison vs care plan / history / checklist (code) | Pending | |
 | Confirmation reply to caregiver ("I recorded...") | Pending | |
+| Report from the web app (text or audio) | In progress | `POST /patients/{id}/reports` built and tested; returns `processing_unavailable` until `process_report` (CIA-7) merges |
 | Versioned report storage | Pending | |
 | Web timeline (caregiver view) | Pending | |
 | Family read-only view | Pending | |
@@ -33,6 +34,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 
 ### Simulated
 
+- **Caller identity:** until the login backend lands, the web app identifies the user with an `X-Person-Id` header (`backend/app/deps.py`). Anyone can claim any id; not for real data.
 - Patient, care plan and history data are fictional seed data (`backend/app/seed.py`). Seeded reports are marked `channel="seed"`, `model="seed"`: they are fixtures, not model output.
 
 ### Out of scope (declared)
