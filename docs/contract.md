@@ -174,7 +174,7 @@ Requires the `send_report` permission for that patient (`ROLE_PERMISSIONS` in `b
 | 401 | `unauthenticated` | No caller identity |
 | 403 | `forbidden` | Role lacks `send_report` for this patient |
 | 404 | `not_found` | Unknown patient |
-| 413 | `audio_too_large` | Audio over 20 MB |
+| 413 | `audio_too_large` | Audio over 4 MB (Vercel caps request bodies at 4.5 MB) |
 | 415 | `unsupported_audio`, `unsupported_media_type` | Not webm/ogg/m4a/mp3/wav, or neither JSON nor multipart |
 | 502 | `transcription_failed` | Transcription failed; ask to retry or type |
 | 503 | `processing_unavailable` | `process_report` not deployed yet; nothing was stored |

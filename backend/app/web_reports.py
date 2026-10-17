@@ -33,7 +33,9 @@ AUDIO_TYPES = {
     "audio/wav": "voice.wav",
     "audio/x-wav": "voice.wav",
 }
-MAX_AUDIO_BYTES = 20 * 1024 * 1024
+# Vercel rejects request bodies over 4.5 MB before our code runs; stay under it
+# so the caregiver gets our message instead of a platform error.
+MAX_AUDIO_BYTES = 4 * 1024 * 1024
 MAX_CLIENT_ID = 100
 
 
