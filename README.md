@@ -56,6 +56,12 @@ pytest                          # backend tests
 
 Deploy: `render.yaml` is a Render Blueprint (Render -> New -> Blueprint -> this repo). Health check at `/health`.
 
+Database on Supabase:
+1. Create a project at supabase.com (free plan). Save the database password.
+2. Dashboard -> **Connect** -> copy the **Session pooler** connection string (port 5432, user `postgres.<project-ref>`). Render is IPv4-only and the direct connection is IPv6, so use the pooler.
+3. Put it, with the password filled in, in `.env` as `DATABASE_URL` for local use, and in Render as the `DATABASE_URL` secret.
+4. `python -m app.seed` creates the tables and fictional data in Supabase. The backend adds `sslmode=require` itself.
+
 Web: run commands go here once `web/` is scaffolded.
 
 ## Evaluation

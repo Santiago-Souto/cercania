@@ -35,7 +35,9 @@ from sqlalchemy import (
     func,
     select,
 )
+from dotenv import find_dotenv, load_dotenv
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -405,8 +407,15 @@ class Alert(TimestampMixin, Base):
 # --- Engine and helpers ----------------------------------------------------------
 
 
-def database_url() -> str:
-    url = os.environ.get("DATABASE_URL", "sqlite:///./cercania.db")
+# Local dev reads the repo-root .env; in deploy the host sets real env vars,
+# which take precedence (override=False).
+load_dotenv(find_dotenv(usecwd=True), override=False)
+
+DEFAULT_DATABASE_URL = "sqlite:///./cercania.db"
+
+
+def database_url(raw: str | None = None) -> str:
+    url = raw if raw is not None else os.environ.get("DATABASE_URL") or DEFAULT_DATABASE_URL
     # Supabase hands out postgres:// or postgresql:// URLs; we use the psycopg 3 driver.
     for prefix in ("postgres://", "postgresql://"):
         if url.startswith(prefix):
@@ -414,7 +423,36 @@ def database_url() -> str:
     return url
 
 
-engine = create_engine(database_url(), pool_pre_ping=True)
+def engine_options(url: str) -> dict:
+    """Connection settings per backend.
+
+    Supabase (see docs "Connecting to Postgres"):
+    - Use the session pooler (port 5432, user postgres.<ref>) from IPv4-only hosts
+      such as Render; the direct connection is IPv6 unless the IPv4 add-on is on.
+    - SSL must be `require`; drivers default to `prefer`, which can fall back to plaintext.
+    - The transaction pooler (port 6543) does not support prepared statements, so
+      psycopg's automatic preparation is turned off there.
+    """
+    parsed = make_url(url)
+    if parsed.get_backend_name() == "sqlite":
+        return {"connect_args": {"check_same_thread": False}}
+
+    connect_args: dict = {}
+    if parsed.host not in (None, "localhost", "127.0.0.1") and "sslmode" not in parsed.query:
+        connect_args["sslmode"] = "require"
+    if parsed.port == 6543:
+        connect_args["prepare_threshold"] = None
+    # Small pool: the free-tier pooler caps client connections.
+    return {"connect_args": connect_args, "pool_pre_ping": True,
+            "pool_size": 5, "max_overflow": 5, "pool_recycle": 300}
+
+
+def describe_database(url: str) -> str:
+    """Human-readable target without the password, for logs and errors."""
+    return make_url(url).render_as_string(hide_password=True)
+
+
+engine = create_engine(database_url(), **engine_options(database_url()))
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 
