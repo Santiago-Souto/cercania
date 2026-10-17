@@ -16,8 +16,8 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 
 | Capability | Status | Notes |
 |---|---|---|
-| Voice note received from WhatsApp | Pending | Fallback: Telegram bot or web recorder |
-| Audio transcription | Pending | |
+| Voice note received from WhatsApp | Pending | Meta Cloud API webhook built and tested with mocked requests. Blocked: Meta requires business verification with company documents. Reports come in through the web app meanwhile |
+| Audio transcription | In progress | Groq Whisper with a care-vocabulary prompt; live test pending |
 | Structured extraction with verbatim quotes | Pending | |
 | Quote verification (code) | Pending | |
 | Comparison vs care plan / history / checklist (code) | Pending | |
