@@ -14,10 +14,15 @@ What "correct" means (scored by code, not by a model):
   The wording of the value is NOT judged (it is free text).
 - missing item detected: an item the case says was not mentioned is in missing_items.
 - omission detected: an expected `omission:<plan_ref>` alert came back.
+- change detected: an expected `change:<item>` alert came back (change alerts carry `item`).
 - false alarm: an omission/change alert the case does not expect, an item reported
   although the case says it was not mentioned, or an item flagged missing although
   it was mentioned.
 - quote verification pass rate: returned quotes that code verified against the transcript.
+
+A case fails when process_report raises or returns a status other than "ok". A
+failed case keeps its expected counts with zero detections, so failures lower
+every ratio instead of disappearing, and the run exits with code 1.
 """
 
 from __future__ import annotations
@@ -89,6 +94,8 @@ class CaseScore:
     missing_detected: int = 0
     omissions_expected: int = 0
     omissions_detected: int = 0
+    changes_expected: int = 0
+    changes_detected: int = 0
     unexpected_alerts: list[str] = field(default_factory=list)
     invented_items: list[str] = field(default_factory=list)  # reported but not mentioned
     wrongly_missing: list[str] = field(default_factory=list)  # flagged missing but mentioned
@@ -104,6 +111,21 @@ def alert_key(alert: dict) -> str:
     return f"{alert.get('type')}:{alert.get('plan_ref') or alert.get('item') or ''}"
 
 
+def failed_score(case: Case, seconds: float, error: str, status: str = "error") -> CaseScore:
+    """A failed case still counts what was expected, with nothing detected."""
+    return CaseScore(
+        case_id=case.case_id,
+        split=case.split,
+        status=status,
+        seconds=seconds,
+        error=error,
+        fields_expected=len(case.expected_items),
+        missing_expected=len(case.expected_missing),
+        omissions_expected=sum(1 for a in case.expected_alerts if a.startswith("omission:")),
+        changes_expected=sum(1 for a in case.expected_alerts if a.startswith("change:")),
+    )
+
+
 def score_case(case: Case, result: dict, seconds: float = 0.0) -> CaseScore:
     items = result.get("items") or []
     detected = {i["item"] for i in items if i.get("value") is not None and i.get("quote_verified")}
@@ -111,12 +133,17 @@ def score_case(case: Case, result: dict, seconds: float = 0.0) -> CaseScore:
     missing = set(result.get("missing_items") or [])
     alerts = {alert_key(a) for a in result.get("alerts") or [] if a.get("type") in ("omission", "change")}
     expected_omissions = {a for a in case.expected_alerts if a.startswith("omission:")}
+    expected_changes = {a for a in case.expected_alerts if a.startswith("change:")}
     quoted = [i for i in items if i.get("quote")]
+    status = result.get("status", "missing_status")
+    if status != "ok":
+        detail = result.get("message") or result.get("confirmation_text") or ""
+        return failed_score(case, seconds, f"process_report returned status={status!r} {detail}".strip(), status)
 
     return CaseScore(
         case_id=case.case_id,
         split=case.split,
-        status=result.get("status", "missing_status"),
+        status=status,
         seconds=seconds,
         fields_expected=len(case.expected_items),
         fields_detected=len(case.expected_items & detected),
@@ -124,6 +151,8 @@ def score_case(case: Case, result: dict, seconds: float = 0.0) -> CaseScore:
         missing_detected=len(case.expected_missing & missing),
         omissions_expected=len(expected_omissions),
         omissions_detected=len(expected_omissions & alerts),
+        changes_expected=len(expected_changes),
+        changes_detected=len(expected_changes & alerts),
         unexpected_alerts=sorted(alerts - case.expected_alerts),
         invented_items=sorted(reported & case.expected_missing),
         wrongly_missing=sorted(missing & case.expected_items),
@@ -137,28 +166,29 @@ def ratio(num: int, den: int) -> str:
 
 
 def summarize(scores: list[CaseScore]) -> dict:
-    ok = [s for s in scores if s.error is None]
-    times = [s.seconds for s in ok]
+    """Failed cases stay in every denominator (with zero detections) and in latency."""
+    times = [s.seconds for s in scores]
     return {
         "cases": len(scores),
-        "errors": len(scores) - len(ok),
-        "fields": (sum(s.fields_detected for s in ok), sum(s.fields_expected for s in ok)),
-        "omissions": (sum(s.omissions_detected for s in ok), sum(s.omissions_expected for s in ok)),
-        "missing": (sum(s.missing_detected for s in ok), sum(s.missing_expected for s in ok)),
-        "false_alarms": sum(s.false_alarms for s in ok),
-        "quotes": (sum(s.quotes_verified for s in ok), sum(s.quotes for s in ok)),
+        "errors": sum(1 for s in scores if s.error is not None),
+        "fields": (sum(s.fields_detected for s in scores), sum(s.fields_expected for s in scores)),
+        "omissions": (sum(s.omissions_detected for s in scores), sum(s.omissions_expected for s in scores)),
+        "changes": (sum(s.changes_detected for s in scores), sum(s.changes_expected for s in scores)),
+        "missing": (sum(s.missing_detected for s in scores), sum(s.missing_expected for s in scores)),
+        "false_alarms": sum(s.false_alarms for s in scores),
+        "quotes": (sum(s.quotes_verified for s in scores), sum(s.quotes for s in scores)),
         "median_s": statistics.median(times) if times else None,
         "max_s": max(times) if times else None,
     }
 
 
 def format_summary(title: str, summary: dict) -> str:
-    lines = [f"== {title}: {summary['cases']} cases" + (f", {summary['errors']} errored" if summary["errors"] else "")]
-    if summary["cases"] == summary["errors"]:
-        return "\n".join(lines + ["   (nothing to score)"])
+    lines = [f"== {title}: {summary['cases']} cases" + (
+        f", {summary['errors']} FAILED (counted as zero detections)" if summary["errors"] else "")]
     lines += [
         f"   Fields extracted (value + verified quote): {ratio(*summary['fields'])}",
         f"   Omissions detected:                        {ratio(*summary['omissions'])}",
+        f"   Changes detected:                          {ratio(*summary['changes'])}",
         f"   Missing items detected:                    {ratio(*summary['missing'])}",
         f"   False alarms:                              {summary['false_alarms']}",
         f"   Quote verification pass rate:              {ratio(*summary['quotes'])}",
@@ -198,7 +228,7 @@ def caregiver_for(models, patient_id: str) -> str:
             )
         )
     if person_id is None:
-        raise SystemExit(f"Seed data has no caregiver for {patient_id}; fix the case or the seed.")
+        raise LookupError(f"seed data has no caregiver for {patient_id}; fix the case or the seed")
     return person_id
 
 
@@ -217,10 +247,10 @@ def run(cases: list[Case], process_report, models) -> list[CaseScore]:
             )
             score = score_case(case, result, time.perf_counter() - start)
         except Exception as exc:  # one broken case must not hide the others
-            score = CaseScore(case.case_id, case.split, "error", time.perf_counter() - start, error=repr(exc))
+            score = failed_score(case, time.perf_counter() - start, repr(exc))
         print(
             f"  {case.case_id} [{case.split}] {score.status} {score.seconds:.1f}s"
-            + (f" ERROR {score.error}" if score.error else f" false_alarms={score.false_alarms}"),
+            + (f" FAILED {score.error}" if score.error else f" false_alarms={score.false_alarms}"),
             flush=True,
         )
         scores.append(score)

@@ -61,16 +61,60 @@ def test_every_kind_of_mistake_is_counted():
     assert (s.quotes_verified, s.quotes) == (1, 3)
 
 
-def test_summary_separates_errors_and_formats_ratios():
-    good = ev.score_case(C001, {"status": "ok", "items": [], "missing_items": [], "alerts": []}, seconds=2.0)
-    broken = ev.CaseScore("c002", "unseen", "error", 0.1, error="boom")
+def test_failed_case_stays_in_every_denominator():
+    good = ev.score_case(C001, {
+        "status": "ok",
+        "items": [item("appetite", "poco", "comio poco", True), item("pain", "rodilla", "rodilla", True)],
+        "missing_items": [], "alerts": [{"type": "omission", "plan_ref": "med_002"}],
+    }, seconds=2.0)
+    broken = ev.failed_score(C001, 4.0, "boom")
     summary = ev.summarize([good, broken])
     assert summary["cases"] == 2 and summary["errors"] == 1
-    assert summary["fields"] == (0, 2)
+    assert summary["fields"] == (2, 4)       # not 2/2
+    assert summary["omissions"] == (1, 2)
+    assert summary["max_s"] == 4.0           # failed time counts too
     text = ev.format_summary("All", summary)
-    assert "1 errored" in text
-    assert "Fields extracted (value + verified quote): 0/2 (0%)" in text
-    assert "median 2.0s" in text
+    assert "1 FAILED (counted as zero detections)" in text
+    assert "Fields extracted (value + verified quote): 2/4 (50%)" in text
+
+
+def test_non_ok_status_is_a_failed_case():
+    s = ev.score_case(C001, {"status": "needs_retry", "message": "modelo caído", "items": []})
+    assert s.error and "needs_retry" in s.error and "modelo caído" in s.error
+    assert s.status == "needs_retry"
+    assert (s.fields_detected, s.fields_expected) == (0, 2)
+    assert s.omissions_expected == 1
+
+
+def test_change_alerts_are_scored_by_item():
+    case = ev.Case("c9", "pat_001", "...", set(), set(), {"change:appetite"}, "dev")
+    hit = ev.score_case(case, {"status": "ok", "items": [], "missing_items": [],
+                               "alerts": [{"type": "change", "item": "appetite", "report_refs": ["r1"]}]})
+    assert (hit.changes_detected, hit.changes_expected) == (1, 1)
+    assert hit.false_alarms == 0
+    miss = ev.score_case(case, {"status": "ok", "items": [], "missing_items": [],
+                                "alerts": [{"type": "change", "item": "sleep"}]})
+    assert miss.changes_detected == 0
+    assert miss.unexpected_alerts == ["change:sleep"]
+
+
+def test_bad_patient_id_fails_one_case_not_the_run(monkeypatch):
+    other = ev.Case("c002", "pat_002", "durmio bien", {"sleep"}, set(), set(), "unseen")
+    ok_result = {"status": "ok", "items": [item("sleep", "bien", "durmio bien", True)], "missing_items": [], "alerts": []}
+
+    calls = iter([LookupError, ok_result])
+
+    def caregiver(models, patient_id):
+        outcome = next(calls)
+        if outcome is LookupError:
+            raise LookupError("no caregiver")
+        return "cg"
+
+    monkeypatch.setattr(ev, "caregiver_for", caregiver)
+    scores = ev.run([C001, other], lambda **kw: ok_result, models=None)
+    assert [s.case_id for s in scores] == ["c001", "c002"]
+    assert scores[0].error and "no caregiver" in scores[0].error
+    assert scores[1].error is None and scores[1].fields_detected == 1
 
 
 def test_ratio_without_cases():
