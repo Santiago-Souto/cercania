@@ -168,6 +168,34 @@ Meta Cloud API webhook (JSON). Requests without a valid `X-Hub-Signature-256` (H
 
 Acknowledge immediately (HTTP 200), then process asynchronously. Dedupe by provider message id. Identify the sender by phone number and route by role (AGENTS.md §4.1): unknown numbers get a fixed reply and nothing is processed; every registered sender's message goes through triage. If the sender has several patients, ask "which patient?" before processing.
 
+## Reports from the web app
+
+### `POST /patients/{patient_id}/reports`
+
+Same report a caregiver can send by WhatsApp. Either JSON text or multipart audio:
+
+```json
+{ "client_id": "web_7f3c", "text": "Casi no comió nada en la cena…" }
+```
+
+Multipart: `client_id` + `audio` file (webm/ogg/m4a). Audio goes through the same transcription step. Returns `ProcessResult` exactly as `process_report`. Idempotent on `client_id`: the `message_id` passed to `process_report` is `web:<person_id>:<client_id>`, so one user's id can never match another user's report or a WhatsApp message.
+
+Requires the `send_report` permission for that patient (`ROLE_PERMISSIONS` in `backend/app/models.py`; today only `caregiver`). Errors, all as `{ "error": { "code", "message" } }` with a message the UI can show as is:
+
+| HTTP | `code` | When |
+|---|---|---|
+| 400 | `client_id_missing`, `text_missing`, `audio_missing`, `audio_empty`, `invalid_json` | Bad input |
+| 401 | `unauthenticated` | No caller identity |
+| 403 | `forbidden` | Role lacks `send_report` for this patient |
+| 404 | `not_found` | Unknown patient |
+| 409 | `client_id_conflict` | Same `client_id` already used by this user for another patient |
+| 413 | `audio_too_large` | Audio over 4 MB (Vercel caps request bodies at 4.5 MB) |
+| 415 | `unsupported_audio`, `unsupported_media_type` | Not webm/ogg/m4a/mp3/wav, or neither JSON nor multipart |
+| 502 | `transcription_failed` | Transcription failed; ask to retry or type |
+| 503 | `processing_unavailable` | `process_report` not deployed yet; nothing was stored |
+
+A repeated `client_id` is not transcribed again; the stored report's result is returned.
+
 ### Magic link
 
 `POST /auth/link` is triggered when a user messages the bot. The bot replies with a single-use URL that expires after `MAGIC_LINK_TTL_MINUTES`. Roles: `caregiver`, `family` (read-only), `doctor` (only role that edits the care plan), `patient` (own profile and care plan; no reports or alerts). A role is per patient. Endpoints return `403` with an error `code: "forbidden"` when the role lacks the permission.
