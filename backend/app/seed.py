@@ -9,7 +9,10 @@ History is shaped so code-based comparison has something to find:
 - Elena (pat_003): 20:00 medication skipped / not mentioned; low urination twice.
 - Ana (cg_001) cares for two patients, to exercise the "which patient?" question.
 - Dra. Marta (doc_001) is the doctor for all three and authored their care plans.
+- Nadia (nur_001) is the nurse for Rosa and Jorge.
 - Jorge has his own login (ptl_002, role patient): he can read his care plan, not reports.
+- Rosa and Jorge have a registered health provider (emergency notifications);
+  Elena has none, to exercise the "no provider registered" path.
 
 Seeded reports use channel="seed" and model="seed" so they are never mistaken
 for model output. Alerts are not hand-written here; compare.py produces them.
@@ -50,6 +53,7 @@ PEOPLE = [
     ("fam_002", "+15550100012", "Diego (ficticio)"),
     ("fam_003", "+15550100013", "Lucía (ficticia)"),
     ("doc_001", "+15550100021", "Dra. Marta (ficticia)"),
+    ("nur_001", "+15550100022", "Enf. Nadia (ficticia)"),
     ("ptl_002", "+15550100031", "Jorge (ficticio)"),  # Jorge's own login
 ]
 
@@ -58,8 +62,11 @@ PATIENTS = [
         "id": "pat_001",
         "display_name": "Rosa (ficticia)",
         "birth_year": 1941,
+        "location": "Habitación 12",
         "vocabulary": ["Rosa", "andador"],
-        "access": [("cg_001", Role.caregiver), ("fam_001", Role.family), ("doc_001", Role.doctor)],
+        "health_provider": ("Emergencia Móvil Ejemplo (ficticia)", "+15550100041"),
+        "access": [("cg_001", Role.caregiver), ("fam_001", Role.family), ("doc_001", Role.doctor),
+                   ("nur_001", Role.nurse)],
         "indications": ["Estimular la hidratación", "Acompañar al caminar"],
         "allergies": ["Penicilina"],
         "medications": [
@@ -71,9 +78,11 @@ PATIENTS = [
         "id": "pat_002",
         "display_name": "Jorge (ficticio)",
         "birth_year": 1938,
+        "location": "Habitación 14",
         "vocabulary": ["Jorge", "andador"],
+        "health_provider": ("Mutualista Ejemplo (ficticia)", "+15550100042"),
         "access": [("cg_001", Role.caregiver), ("fam_002", Role.family), ("doc_001", Role.doctor),
-                   ("ptl_002", Role.patient)],
+                   ("nur_001", Role.nurse), ("ptl_002", Role.patient)],
         "indications": ["Recordarle usar el andador", "Levotiroxina en ayunas"],
         "allergies": [],
         "medications": [
@@ -85,6 +94,7 @@ PATIENTS = [
         "id": "pat_003",
         "display_name": "Elena (ficticia)",
         "birth_year": 1945,
+        "location": "Habitación 3",
         "vocabulary": ["Elena"],
         "access": [("cg_002", Role.caregiver), ("fam_003", Role.family), ("doc_001", Role.doctor)],
         "indications": ["Ofrecer agua cada 2 horas", "Dieta blanda"],
@@ -296,11 +306,16 @@ def seed() -> None:
             return
 
         for pid, phone, name in PEOPLE:
-            s.add(Person(id=pid, phone=phone, display_name=name))
+            # Fictional address on a reserved domain.
+            s.add(Person(id=pid, phone=phone, display_name=name, email=f"{pid}@example.com"))
 
         for p in PATIENTS:
+            provider_name, provider_phone = p.get("health_provider") or (None, None)
             s.add(Patient(id=p["id"], display_name=p["display_name"],
-                          birth_year=p["birth_year"], vocabulary=p["vocabulary"]))
+                          birth_year=p["birth_year"], location=p["location"],
+                          vocabulary=p["vocabulary"],
+                          health_provider_name=provider_name,
+                          health_provider_phone=provider_phone))
             for person_id, role in p["access"]:
                 s.add(PatientAccess(person_id=person_id, patient_id=p["id"], role=role))
             plan = CarePlan(id=f"plan_{p['id'][4:]}", patient_id=p["id"], version=1,
@@ -313,7 +328,7 @@ def seed() -> None:
 
         for n, (patient_id, caregiver_id, days_ago, transcript, items) in enumerate(HISTORY, 1):
             at = shift_end(days_ago)
-            report = Report(id=f"rep_{n:03d}", patient_id=patient_id, caregiver_id=caregiver_id,
+            report = Report(id=f"rep_{n:03d}", patient_id=patient_id, sender_id=caregiver_id,
                             message_id=f"seed-{n:03d}", channel="seed", transcript=transcript,
                             created_at=at)
             version = ReportVersion(id=f"rv_{n:03d}_1", report=report, version=1,

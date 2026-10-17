@@ -12,40 +12,40 @@ Three devs working in parallel, following the owners in `AGENTS.md` section 9. T
 
 Files: `backend/app/extract.py`, `compare.py`, `query.py`, `models.py`, `seed.py`, `backend/tests/`
 
-| By | Task |
-|---|---|
-| 12:30 | `models.py` schema with versioned reports; `seed.py` with 3 patients and several days of history so `change` alerts can fire |
+| By    | Task                                                                                                                                                    |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 12:30 | `models.py` schema with versioned reports; `seed.py` with 3 patients and several days of history so `change` alerts can fire                            |
 | 14:00 | `extract.py`: Claude structured output, one verbatim quote per item, `null` when not mentioned. Quote verification in code (normalized substring match) |
-| 15:30 | `compare.py` (no model calls): missing checklist items, omissions vs medication times, changes vs history. Red-flag phrase list in code |
-| 16:30 | `process_report()` that runs everything and returns `ProcessResult` exactly as in the contract, idempotent on `message_id`, plus `confirmation_text` |
-| 17:00 | **Integration with B and C** |
-| 19:30 | `query.py`: answers with verified citations, `unclear` when the records don't say. Corrections create a new version |
+| 15:30 | `compare.py` (no model calls): missing checklist items, omissions vs medication times, changes vs history. Emergency triage (`triage.py`, model decides; fixed reply and recipients in code) is in place |
+| 16:30 | `process_report()` that runs everything and returns `ProcessResult` exactly as in the contract, idempotent on `message_id`, plus `confirmation_text`    |
+| 17:00 | **Integration with B and C**                                                                                                                            |
+| 19:30 | `query.py`: answers with verified citations, `unclear` when the records don't say. Corrections create a new version                                     |
 
 ## Dev B: Web
 
 Files: `web/`
 
-| By | Task |
-|---|---|
-| 12:30 | Scaffold, hello world deployed, fake JSON copied exactly from `docs/contract.md` |
-| 14:00 | Caregiver view: patient profile with care plan, timeline of reports, each item shows its quote and verified status |
-| 15:30 | Alerts panel (omission, change, missing item), red-flag banner, read-only family view |
-| 16:30 | Query screen with the answer and its citations; audio player that seeks to `audio_start_sec` |
-| 17:00 | **Swap fake data for the real API** |
+| By    | Task                                                                                                                        |
+| ----- | --------------------------------------------------------------------------------------------------------------------------- |
+| 12:30 | Scaffold, hello world deployed, fake JSON copied exactly from `docs/contract.md`                                            |
+| 14:00 | Caregiver view: patient profile with care plan, timeline of reports, each item shows its quote and verified status          |
+| 15:30 | Alerts panel (omission, change, missing item, emergency with its notification status), emergency banner, read-only family view |
+| 16:30 | Query screen with the answer and its citations; audio player that seeks to `audio_start_sec`                                |
+| 17:00 | **Swap fake data for the real API**                                                                                         |
 | 19:30 | Magic-link landing page (reads the token, picks the role), clear loading and error states, text-input fallback for the demo |
 
 ## Dev C: Infra and input
 
 Files: `backend/app/main.py`, `whatsapp.py`, `transcribe.py`, `eval/`
 
-| By | Task |
-|---|---|
-| 12:30 | Backend hello world on Render, Railway or Fly with a stable URL |
+| By    | Task                                                                                                                                                                            |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 12:30 | Backend hello world on Render, Railway or Fly with a stable URL                                                                                                                 |
 | 14:00 | Webhook: reply 200 right away, process in the background, drop duplicate message ids. Download the voice note and transcribe it with the vocabulary hint. **WhatsApp go/no-go** |
-| 15:30 | Compare the two transcription providers on 5 audios and pick one. Request **segment timestamps** (the web player needs them) |
-| 16:30 | Reply to the caregiver with `confirmation_text`. Identify the caregiver by phone number; ask "which patient?" if they have several |
-| 17:00 | **End-to-end: audio -> record -> alert -> view** |
-| 19:30 | `eval/run_eval.py` printing the `AGENTS.md` section 11 metrics, magic-link backend, README status table, backup demo video |
+| 15:30 | Compare the two transcription providers on 5 audios and pick one. Request **segment timestamps** (the web player needs them)                                                    |
+| 16:30 | Reply to the caregiver with `confirmation_text`. Identify the caregiver by phone number; ask "which patient?" if they have several                                              |
+| 17:00 | **End-to-end: audio -> record -> alert -> view**                                                                                                                                |
+| 19:30 | `eval/run_eval.py` printing the `AGENTS.md` section 11 metrics, magic-link backend, README status table, backup demo video                                                      |
 
 ## Shared items and who owns them
 

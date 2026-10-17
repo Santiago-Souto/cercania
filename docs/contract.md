@@ -11,8 +11,10 @@ Edit this list only after validating with a caregiver contact. Update `AGENTS.md
 ## Core function
 
 ```
-process_report(patient_id, caregiver_id, transcript, audio_ref, message_id) -> ProcessResult
+process_report(patient_id, sender_id, transcript, audio_ref, message_id) -> ProcessResult
 ```
+
+`sender_id` is a caregiver for shift reports; any registered role can trigger an emergency report (`report.kind = "emergency"`, no checklist items).
 
 - Idempotent on `message_id`: a repeated delivery returns the existing result and creates nothing.
 - Never raises to the caller for model errors; returns `status: "needs_retry"` or `status: "unclear"` with a message the bot can send.
@@ -47,20 +49,32 @@ process_report(patient_id, caregiver_id, transcript, audio_ref, message_id) -> P
     },
     {
       "type": "change",
+      "item": "appetite",
       "detail": "Appetite low for 3 consecutive shifts.",
       "report_refs": ["rep_121", "rep_122", "rep_123"]
     }
   ],
   "red_flag": false,
+  "triage": {
+    "status": "ok",
+    "emergency": false,
+    "reason": null,
+    "quote": null,
+    "quote_verified": null
+  },
   "confirmation_text": "I recorded: ate little at dinner. Did not mention the 08:00 medication. How did she sleep?"
 }
 ```
 
 Rules:
-- `quote` must be a substring (after normalization: case, accents, whitespace) of `transcript`. If not, set `quote_verified: false` and do not use the value for alerts.
+- `quote` must be a substring (after normalization: case, accents, punctuation, whitespace; whole words only) of `transcript`. If not, set `quote_verified: false` and do not use the value for alerts.
+- `medication` items carry `details.doses`: `[{ "plan_ref": "med_002", "time": "08:00", "given": true | false | null, "quote": "…", "quote_verified": true }]`. Only medications and times in the active care plan are accepted; `given: null` means unclear.
 - Items not mentioned: `value: null`, `quote: null`. Never infer.
 - `level` is a coarse category used by code to compare over time (e.g. appetite `normal` / `low` / `none`). Optional for display.
-- `red_flag: true` is set by a fixed-rule phrase list (code), not by the model.
+- `red_flag` is decided by the **model** in the triage step (`triage.py`), not by a phrase list. `red_flag == triage.emergency`. The reply text sent on an emergency is fixed in code.
+- `triage.quote` is verified like any other quote, but `quote_verified: false` **never** turns an emergency off; it is only shown as unverified.
+- `triage.status` is `ok` or `failed` (model error/timeout). On `failed`, `red_flag` is `false`, the report is still stored and the reply still includes the fixed emergency line.
+- On an emergency, `confirmation_text` is the fixed emergency message and asks no checklist questions.
 
 ## Alert types
 
@@ -69,6 +83,7 @@ Rules:
 | `omission` | compare.py vs care plan | scheduled medication/indication not mentioned or time mismatch |
 | `change` | compare.py vs history | deviation from the patient's usual pattern |
 | `missing_item` | compare.py vs checklist | checklist item not covered in this report |
+| `emergency` | triage.py (model) | the message describes an emergency; carries `reason`, `evidence_quote`, its verification status and `notifications: [{ "to": "health_provider" \| "caregiver" \| "family", "person_id": "…" \| null, "status": "sent" \| "failed", "error": null }]` |
 
 ## Endpoints
 
@@ -102,17 +117,22 @@ Query: `?limit=20&before=<iso>`
       "id": "rep_123",
       "version": 1,
       "created_at": "2026-10-17T21:05:00-03:00",
-      "caregiver": { "id": "usr_001", "display_name": "Ana (fictional)" },
+      "kind": "shift",
+      "sender": { "id": "usr_001", "display_name": "Ana (fictional)", "role": "caregiver" },
       "transcript": "…",
       "audio_url": "/media/rep_123.ogg",
       "items": [],
       "missing_items": [],
-      "alerts": []
+      "alerts": [],
+      "red_flag": false,
+      "triage": { "status": "ok", "emergency": false, "reason": null, "quote": null, "quote_verified": null }
     }
   ],
   "next_before": null
 }
 ```
+
+`kind` is `shift` (caregiver report, has items) or `emergency` (raised by another role, `items` is empty). `sender.role` is the sender's role for this patient. `triage` is `null` for seed fixtures, which never went through triage.
 
 ### `GET /reports/{report_id}/versions`
 
@@ -153,7 +173,15 @@ Meta Cloud API verification handshake. Query `hub.mode=subscribe`, `hub.verify_t
 
 Meta Cloud API webhook (JSON). Requests without a valid `X-Hub-Signature-256` (HMAC-SHA256 of the body with `WHATSAPP_APP_SECRET`) get 403 `invalid_signature`. Response on success: `{ "status": "received" }`. Status updates (delivered/read) are acked and ignored. Voice notes are transcribed; text messages are treated as a typed report; other types get a reply asking for a voice note.
 
-Acknowledge immediately (HTTP 200), then process asynchronously. Dedupe by provider message id. Identify the caregiver by sender phone number. If the caregiver has several patients, ask "which patient?" before processing.
+Acknowledge immediately (HTTP 200), then process asynchronously. Dedupe by provider message id. Identify the sender by phone number and route by role (AGENTS.md §4.1). If the sender has several patients, ask "which patient?" before processing. Target, not built yet (CIA-7): every registered sender's message goes through triage, including family, doctor and patient, and the emergency reply goes out before the patient question and before extraction. Today the bot behaves as listed below.
+
+Bot behavior (all replies are WhatsApp text):
+- Sender phone not in `person.phone` → "number not registered" message, which always includes the fixed emergency line; nothing processed, no model call.
+- No patient where the sender has `send_report` → "no patients assigned" message. Today this is where family, doctor and patient messages stop; they do not reach triage yet (see target above).
+- Several patients → numbered "¿De qué paciente es el reporte?" question; the report is kept (in memory, 30 min) and processed once the caregiver answers with the number or part of the name. `message_id` is the report's id, not the answer's.
+- Reports sent while a choice is pending (voice, or typed text of 4+ words) are queued, never dropped: the bot says it kept them and asks about each in arrival order. Reports that expire without a choice are announced on the caregiver's next message so they can resend them.
+- After `process_report`: `confirmation_text` (or the result's `message` for `needs_retry` / `unclear`). When `red_flag` is true, a fixed line written in code is prepended: "⚠️ Si es una emergencia, llamá a emergencias o al médico ahora."
+- `process_report` not deployed → the caregiver is told nothing was stored.
 
 The signature check runs before the ack and before anything is processed; the sender phone is trusted only after it passes. The payload's `metadata.phone_number_id` must also equal `WHATSAPP_PHONE_NUMBER_ID`; other numbers are acked and ignored (pending in code).
 
@@ -242,7 +270,7 @@ Patients the current user has a membership for, with what the list screen needs:
 }
 ```
 
-Returns the patient as in `GET /patients/{patient_id}`. The creator becomes `caregiver` and sets the initial care plan; after that only a `doctor` can edit it. Doses are stored as entered; nothing is computed.
+`location` is optional free text and is `null` when not set. Returns the patient as in `GET /patients/{patient_id}`. The creator becomes `caregiver` and sets the initial care plan; after that only a `doctor` can edit it. Doses are stored as entered; nothing is computed.
 
 ### `GET /patients/{patient_id}/members`
 
@@ -308,7 +336,7 @@ Only for the `patient` role (and caregivers testing).
 
 `help` is a fixed rule: notify every caregiver and health-team member by WhatsApp immediately; the model is never involved.
 
-`feeling` is checked against the red-flag phrase list in code: the `text` field, or for `audio` the transcript, before replying. Audio must never skip this check; if transcription fails, return `transcription_failed` and the UI asks the patient to retry or type, always showing "si es una emergencia, llamá a emergencias". When `red_flag` is `true`, the team is notified as for `help` and `message_for_patient` is this fixed, code-generated text (never written by the model):
+`feeling` goes through the same triage step as WhatsApp messages (`triage.py`, model decides `red_flag`): the `text` field, or for `audio` the transcript, before replying. Audio must never skip triage; if triage fails, the reply still includes the fixed emergency line; if transcription fails, return `transcription_failed` and the UI asks the patient to retry or type, always showing "si es una emergencia, llamá a emergencias". When `red_flag` is `true`, the team is notified as for `help` and `message_for_patient` is this fixed text written in code (the model only decides `red_flag`, never the wording):
 
 ```json
 { "id": "pm_002", "kind": "feeling", "notified": ["usr_001", "usr_004"], "red_flag": true, "message_for_patient": "Avisamos a tu equipo. Si es una emergencia, llamá a emergencias o a tu médico ahora." }
@@ -336,4 +364,4 @@ Only `family` and health-team roles. Human-to-human: no model call. The UI alway
 
 ## Seed data
 
-`backend/app/seed.py` creates 2-3 fictional patients, each with a care plan, and fictional users for every role (one caregiver, one doctor, one nurse, one family member, the patient), plus a few days of history so that `change` alerts can be demonstrated. No real names or data.
+`backend/app/seed.py` creates 2-3 fictional patients, each with a care plan, and fictional users (caregivers, one doctor, one nurse, family members, and one patient login; no `institution` user yet), each with a fictional `@example.com` email, plus a few days of history so that `change` alerts can be demonstrated. No real names or data.
