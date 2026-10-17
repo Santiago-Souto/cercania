@@ -80,14 +80,14 @@ One web app, same data, a view per role. Roles are per patient (`membership`): t
 | Family | Read-only summary and alerts; message the health team |
 | Patient | Only two actions: tell how they feel (audio or text) and press "I need help" |
 
-Auth: sign up with name, email and WhatsApp number -> the bot sends a **6-digit code** to that WhatsApp -> code entered on the web. Codes are single-use, expire in 10 minutes, are stored hashed and are rate-limited per number. No passwords. Outbound WhatsApp messages outside the 24h window need an approved authentication template (or, in the sandbox, the user must join first); verify with the provider's docs. Invited users get the role from their invite after their first login.
+Auth: sign up with name, email and WhatsApp number -> the bot sends a **6-digit code** to that WhatsApp -> code entered on the web. Codes are single-use, expire in 10 minutes, are stored hashed and are rate-limited per number. No passwords. Outbound WhatsApp messages outside the 24h window need an approved authentication template (or, in the sandbox, the user must join first); verify with the provider's docs. Invited users get the role from their invite after their first login. Only caregivers can invite. Login and sign-up never reveal whether a phone or email is registered. The WhatsApp webhook verifies the provider signature before trusting the sender phone; corrections and reports take the author from the session or the verified sender, never from the request body.
 
 ## 7. Safety rules (non-negotiable)
 
 - **Never diagnose. Never suggest, change or compute doses.** Record, compare, alert.
 - If something is ambiguous, **ask or say "unclear"**. Never guess.
 - Red-flag phrases (fall, chest pain, breathing difficulty, etc.) trigger a **fixed-rule** message: "contact emergency services or the physician." This is a safety net, not the product's core.
-- Patient "I need help" is a **fixed rule**, never routed through the model: notify every caregiver and health-team member of that patient right away and show the patient "help is on the way; if it is an emergency, call emergency services". Patient "how I feel" messages go through the red-flag phrase list too.
+- Patient "I need help" is a **fixed rule**, never routed through the model: notify every caregiver and health-team member of that patient right away and show the patient "help is on the way; if it is an emergency, call emergency services". Patient "how I feel" messages go through the red-flag phrase list too, text or audio (audio is checked on its transcript).
 - Family <-> health team messages are human-to-human. The model never answers them, and the thread always shows "not for emergencies".
 - Do not claim legal protection. The product creates a *record of what was reported*.
 - Not a replacement for the clinical record. No integration with health-system records (out of scope, see section 10).

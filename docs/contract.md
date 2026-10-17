@@ -77,6 +77,7 @@ All responses are JSON. Errors: `{ "error": { "code": "string", "message": "huma
 {
   "id": "pat_001",
   "display_name": "Rosa (fictional)",
+  "location": "Room 12",
   "care_plan": {
     "medications": [
       { "id": "med_002", "name": "Example-med", "dose": "as prescribed", "times": ["08:00", "20:00"] }
@@ -98,7 +99,7 @@ Query: `?limit=20&before=<iso>`
       "id": "rep_123",
       "version": 1,
       "created_at": "2026-10-17T21:05:00-03:00",
-      "caregiver": { "id": "cg_001", "display_name": "Ana (fictional)" },
+      "caregiver": { "id": "usr_001", "display_name": "Ana (fictional)" },
       "transcript": "…",
       "audio_url": "/media/rep_123.ogg",
       "items": [],
@@ -117,10 +118,10 @@ Returns all versions, oldest first. Previous versions are immutable.
 ### `POST /reports/{report_id}/corrections`
 
 ```json
-{ "corrections": [ { "item": "appetite", "value": "ate normally" } ], "by": "cg_001" }
+{ "corrections": [ { "item": "appetite", "value": "ate normally" } ] }
 ```
 
-Creates a new version. Does not modify the old one.
+Creates a new version. Does not modify the old one. The author of the new version is the session user, never a field in the body. Only `caregiver` memberships can correct.
 
 ### `POST /patients/{patient_id}/query`
 
@@ -145,13 +146,15 @@ Creates a new version. Does not modify the old one.
 
 Acknowledge immediately (HTTP 200), then process asynchronously. Dedupe by provider message id. Identify the caregiver by sender phone number. If the caregiver has several patients, ask "which patient?" before processing.
 
+Before anything else (including the ack), verify the provider signature on the raw request (`X-Twilio-Signature` for Twilio, `X-Hub-Signature-256` for Meta Cloud API) with `WHATSAPP_AUTH_TOKEN` from the environment, and check that the destination number is `WHATSAPP_FROM_NUMBER`. If either check fails, return `403` and process nothing. The sender phone is trusted only after this check.
+
 ## Roles (fixed enum)
 
 `caregiver`, `family`, `patient`, `doctor`, `nurse`, `institution`. `doctor`, `nurse` and `institution` share the "health team" permissions in `AGENTS.md` section 6. A role belongs to a membership (user + patient), not to the user.
 
 ## Auth (6-digit code by WhatsApp)
 
-No passwords. The web app keeps the session in an httpOnly cookie set by `POST /auth/verify`; every endpoint below except `/auth/*` and `/webhook/*` requires it and returns `401 { "error": { "code": "unauthenticated" } }` without it.
+No passwords. The web app keeps the session in a cookie set by `POST /auth/verify` with `HttpOnly`, `Secure` and `SameSite=Lax`; every endpoint below except `/auth/*` and `/webhook/*` requires it and returns `401 { "error": { "code": "unauthenticated" } }` without it.
 
 ### `POST /auth/signup`
 
@@ -171,7 +174,9 @@ Both send a 6-digit code to the WhatsApp number and reply:
 { "status": "code_sent", "phone_last4": "0000", "expires_in_sec": 600, "resend_after_sec": 60 }
 ```
 
-Errors: `phone_invalid`, `email_taken`, `user_not_found`, `too_many_requests`, `whatsapp_unreachable` (message tells the user to message the bot first).
+Errors: `phone_invalid`, `too_many_requests`, `whatsapp_unreachable` (message tells the user to message the bot first).
+
+Anti-enumeration: these two endpoints must not reveal whether a phone or email is registered. `POST /auth/login` returns the same `code_sent` body for an unknown phone and sends nothing. `POST /auth/signup` for a phone that already has an account sends a normal login code instead of creating a second user. A conflicting email is reported only after the code is verified (`email_taken` from `POST /auth/verify`).
 
 ### `POST /auth/verify`
 
@@ -183,7 +188,7 @@ Errors: `phone_invalid`, `email_taken`, `user_not_found`, `too_many_requests`, `
 { "user": { "id": "usr_001", "name": "Ana Pérez (fictional)" }, "memberships": [ { "patient_id": "pat_001", "role": "caregiver" } ] }
 ```
 
-Codes are single-use, expire after `LOGIN_CODE_TTL_MINUTES` (default 10), are stored hashed, and lock after 5 wrong attempts. Errors: `code_invalid`, `code_expired`, `too_many_attempts`. Pending invites for that phone/email become memberships here.
+Codes are single-use, expire after `LOGIN_CODE_TTL_MINUTES` (default 10), are stored hashed, and lock after 5 wrong attempts. Errors: `code_invalid`, `code_expired`, `too_many_attempts`, `email_taken` (signup only: the email belongs to another account; the user is asked for a different one). Pending invites for that phone/email become memberships here.
 
 ### `POST /auth/logout`
 
@@ -242,7 +247,7 @@ Returns the patient as in `GET /patients/{patient_id}`. The creator becomes `car
 { "contact": "+59899111111", "role": "family" }
 ```
 
-`contact` is a WhatsApp number or an email. Sends a WhatsApp/email invite; the membership is created when that person verifies a code (`POST /auth/verify`). Only `caregiver` and health-team roles can invite.
+`contact` is a WhatsApp number or an email. Sends a WhatsApp/email invite; the membership is created when that person verifies a code (`POST /auth/verify`). Only `caregiver` memberships can invite (`403 forbidden` otherwise), matching `AGENTS.md` section 6. Health-team and family members cannot invite.
 
 ## Reports from the web app
 
@@ -276,7 +281,13 @@ Only for the `patient` role (and caregivers testing).
 { "id": "pm_001", "kind": "help", "notified": ["usr_001", "usr_004"], "red_flag": false, "message_for_patient": "Ya avisamos a tu equipo. Si es una emergencia, llamá a emergencias." }
 ```
 
-`help` is a fixed rule: notify every caregiver and health-team member by WhatsApp immediately; the model is never involved. `feeling` text is checked against the red-flag phrase list in code.
+`help` is a fixed rule: notify every caregiver and health-team member by WhatsApp immediately; the model is never involved.
+
+`feeling` is checked against the red-flag phrase list in code: the `text` field, or for `audio` the transcript, before replying. Audio must never skip this check; if transcription fails, return `transcription_failed` and the UI asks the patient to retry or type, always showing "si es una emergencia, llamá a emergencias". When `red_flag` is `true`, the team is notified as for `help` and `message_for_patient` is this fixed, code-generated text (never written by the model):
+
+```json
+{ "id": "pm_002", "kind": "feeling", "notified": ["usr_001", "usr_004"], "red_flag": true, "message_for_patient": "Avisamos a tu equipo. Si es una emergencia, llamá a emergencias o a tu médico ahora." }
+```
 
 ### `GET /patients/{patient_id}/patient-messages`
 
