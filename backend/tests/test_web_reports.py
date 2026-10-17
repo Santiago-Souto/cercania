@@ -79,7 +79,7 @@ def test_text_report_goes_to_process_report(db, brain):
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
     assert brain == [{
-        "patient_id": "pat_x", "caregiver_id": "cg", "transcript": "durmió bien",
+        "patient_id": "pat_x", "sender_id": "cg", "transcript": "durmió bien",
         "audio_ref": None, "message_id": "web:cg:web_1",
     }]
 
@@ -100,7 +100,7 @@ def test_audio_report_is_transcribed_with_patient_vocabulary(db, brain, groq):
 
 
 def test_repeated_client_id_reuses_stored_transcript_without_transcribing(db, brain, groq):
-    db.add(Report(id="rep_1", patient_id="pat_x", caregiver_id="cg", message_id="web:cg:web_3", transcript="ya guardado"))
+    db.add(Report(id="rep_1", patient_id="pat_x", sender_id="cg", message_id="web:cg:web_3", transcript="ya guardado"))
     db.commit()
     r = client.post(
         URL, data={"client_id": "web_3"}, files={"audio": ("rec.ogg", b"OggS", "audio/ogg")}, headers=AS_CAREGIVER
@@ -193,7 +193,7 @@ def test_client_id_of_another_user_never_reaches_their_report(db, brain):
     # Another caregiver's report stored with raw id "shared".
     db.add(Person(id="other", phone="+15550109998", display_name="other"))
     db.add(Patient(id="pat_y", display_name="Otro (ficticio)"))
-    db.add(Report(id="rep_y", patient_id="pat_y", caregiver_id="other", message_id="web:other:shared",
+    db.add(Report(id="rep_y", patient_id="pat_y", sender_id="other", message_id="web:other:shared",
                   transcript="datos de otro paciente"))
     db.commit()
     r = client.post(URL, json={"client_id": "shared", "text": "mi reporte"}, headers=AS_CAREGIVER)
@@ -204,7 +204,7 @@ def test_client_id_of_another_user_never_reaches_their_report(db, brain):
 
 def test_same_client_id_for_another_patient_is_a_conflict(db, brain):
     db.add(Patient(id="pat_z", display_name="Z (ficticio)"))
-    db.add(Report(id="rep_z", patient_id="pat_z", caregiver_id="cg", message_id="web:cg:dup", transcript="de Z"))
+    db.add(Report(id="rep_z", patient_id="pat_z", sender_id="cg", message_id="web:cg:dup", transcript="de Z"))
     db.commit()
     r = client.post(URL, json={"client_id": "dup", "text": "hola"}, headers=AS_CAREGIVER)
     assert r.status_code == 409
