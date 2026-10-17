@@ -1,4 +1,6 @@
 # Render Blueprint: connect the repo in Render -> New -> Blueprint.
+# Variables marked `sync: false` are secrets: Render asks for them on first
+# deploy, and they are never stored in this file.
 services:
   - type: web
     name: cercania-api
@@ -13,4 +15,16 @@ services:
         value: 3.12.7
       # Secret: Render asks for the value on first deploy (Supabase session pooler URL).
       - key: DATABASE_URL
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: WHATSAPP_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: WHATSAPP_VERIFY_TOKEN
         sync: false

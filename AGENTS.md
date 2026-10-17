@@ -83,7 +83,7 @@ Triggered when triage says emergency, for any registered sender.
 3. **Notify by WhatsApp**: the patient's registered health provider contact (if any), and the other caregivers and family members with access to that patient. Never notify the patient. Log each notification and its delivery status on the alert.
 4. The web shows the emergency as a banner on the patient and in the alerts panel.
 
-Notifications to people who did not message the bot in the last 24h need an approved template (Meta) or, on the Twilio sandbox, that each recipient has joined the sandbox. If a notification can't be sent, record it as failed and show the failure on the alert; never fail silently.
+Notifications to people who did not message the bot in the last 24h need an approved template (Meta), and the Meta test number only delivers to phones on its allowed list. If a notification can't be sent, record it as failed and show the failure on the alert; never fail silently.
 
 If triage itself fails (model error/timeout), the bot still replies with a message that includes the fixed emergency line, and the report is stored with `triage_status = failed` so it is visible.
 
@@ -134,12 +134,12 @@ Auth: phone number in -> bot sends a **single-use link with short expiry**. The 
 - Backend: Python + FastAPI
 - Web: React or Next.js (two views: caregiver, family)
 - DB: **decided** Postgres on Supabase via SQLAlchemy 2.0 + psycopg 3 (`DATABASE_URL`); SQLite is the local default and fallback (same models). Files in Supabase Storage, private bucket, signed URLs.
-- Transcription: Whisper-class API (OpenAI or Groq); fallback AWS Transcribe with custom vocabulary
+- Transcription: Groq Whisper (`whisper-large-v3-turbo`, env `GROQ_API_KEY`) with a vocabulary prompt; CIA-18 compares providers on real audio
 - LLM: Claude via API, structured JSON output (`output_config.format`). **Decided per task:**
   - Extraction (`extract.py`, transcript -> checklist items with quotes): `claude-haiku-5-5`. One schema-constrained call, no tools; code verifies every quote. Override with `EXTRACT_MODEL` if the eval shows Sonnet is needed.
   - Cited query (`query.py`, reasoning across several reports): `claude-sonnet-5-5`.
   - Emergency triage (`triage.py`, every message from a registered sender): `claude-haiku-5-5`, small schema (`emergency`, `reason`, `quote`), separate call from extraction so it also covers non-caregivers.
-- WhatsApp: Twilio sandbox first, or Meta Cloud API test number. **Cut rule: if a real voice note does not flow end-to-end by 14:00 Sat, switch to a Telegram bot or a web recorder and list WhatsApp as Pending.**
+- WhatsApp: **decided** Meta Cloud API, bot number **+1 555-674-0716** (Meta test number; only numbers on its allowed list can write to it). Setup: `docs/whatsapp-setup.md`, automated by `backend/scripts/setup_whatsapp.py`. Twilio trial does not allow WhatsApp.
 - Deploy: any host with a stable public URL (Render, Railway, Fly). Deploy "hello world" first.
 - Secrets only via environment variables. `.env` is gitignored; commit `.env.example` only.
 
@@ -156,6 +156,8 @@ backend/app/
   query.py         cited natural-language answers            [brain owner]
   models.py        schema                                    [brain owner]
   seed.py          2-3 fictional patients + care plans       [brain owner]
+backend/scripts/
+  setup_whatsapp.py  registers the webhook with Meta         [infra/input owner]
 web/               caregiver and family views                [web owner]
 eval/
   cases.csv        20 cases with expected output
@@ -220,7 +222,6 @@ Problem: the shift handoff gets lost. Live demo: a juror dictates a report, sees
 
 - Stack confirmation (section 8).
 - Which transcription provider wins the 5-real-audio test.
-- WhatsApp provider vs fallback channel (decided at 14:00).
 - Final checklist item list (section 4) once validated with a caregiver contact.
 - Emergency triage criteria (section 4.2): the prompt in `triage.py` is provisional. It currently treats a past event the message says was attended, with the patient now fine ("se cayó a la mañana, la vio el médico, está bien"), as **not** an emergency, and anything unclear as an emergency. Confirm or change.
 - Whether to add a deterministic phrase list as a second safety net next to the model (rejected for now, Oct 17).

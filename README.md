@@ -16,8 +16,8 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 
 | Capability | Status | Notes |
 |---|---|---|
-| Voice note received from WhatsApp | Pending | Fallback: Telegram bot or web recorder |
-| Audio transcription | Pending | |
+| Voice note received from WhatsApp | In progress | Meta Cloud API, bot number +1 555-674-0716 (test number: only allowed phones can write). Inbound voice notes verified against a real Meta payload; end-to-end with transcription pending the Groq key |
+| Audio transcription | In progress | Groq Whisper with a care-vocabulary prompt; live test pending |
 | Structured extraction with verbatim quotes | In progress | `backend/app/extract.py`, Claude Haiku 5.5 structured output. Unit-tested; live call not yet verified |
 | Quote verification (code) | Functional | Normalized whole-word substring match; unit-tested (`tests/test_extract.py`) |
 | Emergency triage (model decides) | In progress | `backend/app/triage.py`, Claude Haiku 5.5, every message from a registered sender. Fixed reply text and recipients in code. Unit-tested; live call not yet verified; criteria provisional |
