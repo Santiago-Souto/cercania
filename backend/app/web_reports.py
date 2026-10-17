@@ -113,7 +113,7 @@ async def create_report(
         return await run_in_threadpool(
             ingest.process_report,
             patient_id=patient_id,
-            caregiver_id=person_id,
+            sender_id=person_id,
             transcript=transcript,
             audio_ref=None,
             message_id=message_id,

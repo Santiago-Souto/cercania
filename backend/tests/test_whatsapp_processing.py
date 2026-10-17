@@ -89,7 +89,7 @@ def test_voice_note_from_caregiver_with_one_patient_is_processed_and_confirmed(s
     whatsapp.handle_message(voice(ANA))
     assert media == [{"mime_type": "audio/ogg", "vocabulary": ["andador", "Enalapril"]}]
     assert brain == [{
-        "patient_id": "pat_rosa", "caregiver_id": "ana", "transcript": "comió poco en la cena",
+        "patient_id": "pat_rosa", "sender_id": "ana", "transcript": "comió poco en la cena",
         "audio_ref": None, "message_id": "wamid.v1",
     }]
     assert sent == [(ANA, "Registré: comió poco. ¿Cómo durmió?")]
@@ -113,7 +113,7 @@ def test_argentine_number_matches_without_mobile_digit(sent, brain, media, db):
         s.add(PatientAccess(person_id="ar", patient_id="pat_elena", role=Role.caregiver))
         s.commit()
     whatsapp.handle_message(voice("5491122334455"))
-    assert brain[0]["caregiver_id"] == "ar"
+    assert brain[0]["sender_id"] == "ar"
 
 
 def test_several_patients_asks_which_then_processes_the_kept_note(sent, brain, media):

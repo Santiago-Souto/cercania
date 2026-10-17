@@ -34,8 +34,10 @@ RECIPIENT_NOT_ALLOWED = 131030
 
 MSG_UNSUPPORTED = "Por ahora solo puedo registrar notas de voz o texto. Enviá el reporte del turno como nota de voz."
 MSG_DOWNLOAD_FAILED = "No pude descargar tu nota de voz. ¿Podés enviarla de nuevo?"
+# Unknown numbers get no model call (AGENTS.md 4.1), so the emergency line is always included.
 MSG_UNKNOWN_NUMBER = (
-    "Este número no está registrado en CercanIA. Pedile a la persona responsable del paciente que te invite."
+    "Este número no está registrado en CercanIA. Pedile a la persona responsable del paciente que te invite. "
+    "Si es una emergencia, llamá ya a emergencias o al médico."
 )
 MSG_NO_PATIENTS = "No tenés pacientes asignados para enviar reportes. Pedile a la persona responsable que te invite."
 MSG_PROCESSING_UNAVAILABLE = (
@@ -49,7 +51,8 @@ MSG_EXPIRED = (
     "{count} reporte(s) que enviaste quedaron sin registrar porque no elegiste el paciente a tiempo. "
     "Por favor, volvé a enviarlos."
 )
-# Fixed rule (AGENTS.md section 7): added by code whenever red_flag is true, never by the model.
+# Fixed text (AGENTS.md section 7): added by code whenever red_flag is true. red_flag itself
+# comes from the model in triage.py; this wording never does.
 MSG_RED_FLAG = "⚠️ Si es una emergencia, llamá a emergencias o al médico ahora."
 
 
@@ -432,7 +435,7 @@ def deliver(message: IncomingMessage, caregiver_id: str, patient_id: str, transc
     try:
         result = ingest.process_report(
             patient_id=patient_id,
-            caregiver_id=caregiver_id,
+            sender_id=caregiver_id,
             transcript=transcript.text,
             audio_ref=None,
             message_id=message.id,

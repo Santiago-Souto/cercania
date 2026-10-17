@@ -11,8 +11,10 @@ Edit this list only after validating with a caregiver contact. Update `AGENTS.md
 ## Core function
 
 ```
-process_report(patient_id, caregiver_id, transcript, audio_ref, message_id) -> ProcessResult
+process_report(patient_id, sender_id, transcript, audio_ref, message_id) -> ProcessResult
 ```
+
+`sender_id` is a caregiver for shift reports; any registered role can trigger an emergency report (`report.kind = "emergency"`, no checklist items).
 
 - Idempotent on `message_id`: a repeated delivery returns the existing result and creates nothing.
 - Never raises to the caller for model errors; returns `status: "needs_retry"` or `status: "unclear"` with a message the bot can send.
@@ -53,15 +55,26 @@ process_report(patient_id, caregiver_id, transcript, audio_ref, message_id) -> P
     }
   ],
   "red_flag": false,
+  "triage": {
+    "status": "ok",
+    "emergency": false,
+    "reason": null,
+    "quote": null,
+    "quote_verified": null
+  },
   "confirmation_text": "I recorded: ate little at dinner. Did not mention the 08:00 medication. How did she sleep?"
 }
 ```
 
 Rules:
-- `quote` must be a substring (after normalization: case, accents, whitespace) of `transcript`. If not, set `quote_verified: false` and do not use the value for alerts.
+- `quote` must be a substring (after normalization: case, accents, punctuation, whitespace; whole words only) of `transcript`. If not, set `quote_verified: false` and do not use the value for alerts.
+- `medication` items carry `details.doses`: `[{ "plan_ref": "med_002", "time": "08:00", "given": true | false | null, "quote": "…", "quote_verified": true }]`. Only medications and times in the active care plan are accepted; `given: null` means unclear.
 - Items not mentioned: `value: null`, `quote: null`. Never infer.
 - `level` is a coarse category used by code to compare over time (e.g. appetite `normal` / `low` / `none`). Optional for display.
-- `red_flag: true` is set by a fixed-rule phrase list (code), not by the model.
+- `red_flag` is decided by the **model** in the triage step (`triage.py`), not by a phrase list. `red_flag == triage.emergency`. The reply text sent on an emergency is fixed in code.
+- `triage.quote` is verified like any other quote, but `quote_verified: false` **never** turns an emergency off; it is only shown as unverified.
+- `triage.status` is `ok` or `failed` (model error/timeout). On `failed`, `red_flag` is `false`, the report is still stored and the reply still includes the fixed emergency line.
+- On an emergency, `confirmation_text` is the fixed emergency message and asks no checklist questions.
 
 ## Alert types
 
@@ -70,6 +83,7 @@ Rules:
 | `omission` | compare.py vs care plan | scheduled medication/indication not mentioned or time mismatch |
 | `change` | compare.py vs history | deviation from the patient's usual pattern |
 | `missing_item` | compare.py vs checklist | checklist item not covered in this report |
+| `emergency` | triage.py (model) | the message describes an emergency; carries `reason`, `evidence_quote`, its verification status and `notifications: [{ "to": "health_provider" \| "caregiver" \| "family", "person_id": "…" \| null, "status": "sent" \| "failed", "error": null }]` |
 
 ## Endpoints
 
@@ -102,17 +116,22 @@ Query: `?limit=20&before=<iso>`
       "id": "rep_123",
       "version": 1,
       "created_at": "2026-10-17T21:05:00-03:00",
-      "caregiver": { "id": "cg_001", "display_name": "Ana (fictional)" },
+      "kind": "shift",
+      "sender": { "id": "cg_001", "display_name": "Ana (fictional)", "role": "caregiver" },
       "transcript": "…",
       "audio_url": "/media/rep_123.ogg",
       "items": [],
       "missing_items": [],
-      "alerts": []
+      "alerts": [],
+      "red_flag": false,
+      "triage": { "status": "ok", "emergency": false, "reason": null, "quote": null, "quote_verified": null }
     }
   ],
   "next_before": null
 }
 ```
+
+`kind` is `shift` (caregiver report, has items) or `emergency` (raised by another role, `items` is empty). `sender.role` is the sender's role for this patient. `triage` is `null` for seed fixtures, which never went through triage.
 
 ### `GET /reports/{report_id}/versions`
 
@@ -153,11 +172,11 @@ Meta Cloud API verification handshake. Query `hub.mode=subscribe`, `hub.verify_t
 
 Meta Cloud API webhook (JSON). Requests without a valid `X-Hub-Signature-256` (HMAC-SHA256 of the body with `WHATSAPP_APP_SECRET`) get 403 `invalid_signature`. Response on success: `{ "status": "received" }`. Status updates (delivered/read) are acked and ignored. Voice notes are transcribed; text messages are treated as a typed report; other types get a reply asking for a voice note.
 
-Acknowledge immediately (HTTP 200), then process asynchronously. Dedupe by provider message id. Identify the caregiver by sender phone number. If the caregiver has several patients, ask "which patient?" before processing.
+Acknowledge immediately (HTTP 200), then process asynchronously. Dedupe by provider message id. Identify the sender by phone number and route by role (AGENTS.md §4.1). If the sender has several patients, ask "which patient?" before processing. Target, not built yet (CIA-7): every registered sender's message goes through triage, including family, doctor and patient, and the emergency reply goes out before the patient question and before extraction. Today the bot behaves as listed below.
 
 Bot behavior (all replies are WhatsApp text):
-- Sender phone not in `person.phone` → "number not registered" message; nothing processed.
-- No patient where the sender has `send_report` → "no patients assigned" message.
+- Sender phone not in `person.phone` → "number not registered" message, which always includes the fixed emergency line; nothing processed, no model call.
+- No patient where the sender has `send_report` → "no patients assigned" message. Today this is where family, doctor and patient messages stop; they do not reach triage yet (see target above).
 - Several patients → numbered "¿De qué paciente es el reporte?" question; the report is kept (in memory, 30 min) and processed once the caregiver answers with the number or part of the name. `message_id` is the report's id, not the answer's.
 - Reports sent while a choice is pending (voice, or typed text of 4+ words) are queued, never dropped: the bot says it kept them and asks about each in arrival order. Reports that expire without a choice are announced on the caregiver's next message so they can resend them.
 - After `process_report`: `confirmation_text` (or the result's `message` for `needs_retry` / `unclear`). When `red_flag` is true, a fixed line written in code is prepended: "⚠️ Si es una emergencia, llamá a emergencias o al médico ahora."
