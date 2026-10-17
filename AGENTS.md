@@ -97,9 +97,9 @@ Auth: phone number in -> bot sends a **single-use link with short expiry**. The 
 - Backend: Python + FastAPI
 - Web: React or Next.js (two views: caregiver, family)
 - DB: **decided** Postgres on Supabase via SQLAlchemy 2.0 + psycopg 3 (`DATABASE_URL`); SQLite is the local default and fallback (same models). Files in Supabase Storage, private bucket, signed URLs.
-- Transcription: Whisper-class API (OpenAI or Groq); fallback AWS Transcribe with custom vocabulary
+- Transcription: Groq Whisper (`whisper-large-v3-turbo`, env `GROQ_API_KEY`) with a vocabulary prompt; CIA-18 compares providers on real audio
 - LLM: Claude via API. Start with `claude-sonnet-5-5`; use `claude-haiku-5-5` if latency demands. Use structured JSON output / tool use.
-- WhatsApp: Twilio sandbox first, or Meta Cloud API test number. **Cut rule: if a real voice note does not flow end-to-end by 14:00 Sat, switch to a Telegram bot or a web recorder and list WhatsApp as Pending.**
+- WhatsApp: **decided** Meta Cloud API, bot number **+1 555-674-0716** (Meta test number; only numbers on its allowed list can write to it). Setup: `docs/whatsapp-setup.md`, automated by `backend/scripts/setup_whatsapp.py`. Twilio trial does not allow WhatsApp.
 - Deploy: any host with a stable public URL (Render, Railway, Fly). Deploy "hello world" first.
 - Secrets only via environment variables. `.env` is gitignored; commit `.env.example` only.
 
@@ -110,6 +110,8 @@ backend/app/
   main.py          API + webhook (ack fast, process async)
   whatsapp.py      receive, download audio, reply            [infra/input owner]
   transcribe.py    audio -> text with vocabulary hint        [infra/input owner]
+backend/scripts/
+  setup_whatsapp.py  registers the webhook with Meta         [infra/input owner]
   extract.py       text -> JSON with quotes                  [brain owner]
   compare.py       plan/history/checklist logic, no model    [brain owner]
   query.py         cited natural-language answers            [brain owner]
@@ -178,5 +180,4 @@ Problem: the shift handoff gets lost. Live demo: a juror dictates a report, sees
 
 - Stack confirmation (section 8).
 - Which transcription provider wins the 5-real-audio test.
-- WhatsApp provider vs fallback channel (decided at 14:00).
 - Final checklist item list (section 4) once validated with a caregiver contact.

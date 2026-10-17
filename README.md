@@ -16,8 +16,8 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 
 | Capability | Status | Notes |
 |---|---|---|
-| Voice note received from WhatsApp | Pending | Fallback: Telegram bot or web recorder |
-| Audio transcription | Pending | |
+| Voice note received from WhatsApp | In progress | Meta Cloud API, bot number +1 555-674-0716 (test number: only allowed phones can write). Inbound voice notes verified against a real Meta payload; end-to-end with transcription pending the Groq key |
+| Audio transcription | In progress | Groq Whisper with a care-vocabulary prompt; live test pending |
 | Structured extraction with verbatim quotes | Pending | |
 | Quote verification (code) | Pending | |
 | Comparison vs care plan / history / checklist (code) | Pending | |
