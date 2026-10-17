@@ -139,7 +139,7 @@ Auth: sign up with name, email and WhatsApp number -> the bot sends a **6-digit 
 - DB: **decided** Postgres on Supabase via SQLAlchemy 2.0 + psycopg 3 (`DATABASE_URL`); SQLite is the local default and fallback (same models). Files in Supabase Storage, private bucket, signed URLs.
 - Transcription: Groq Whisper (`whisper-large-v3-turbo`, env `GROQ_API_KEY`) with a vocabulary prompt; CIA-18 compares providers on real audio
 - LLM: Claude via API, structured JSON output (`output_config.format`). **Decided per task:**
-  - Extraction (`extract.py`, transcript -> checklist items with quotes): `claude-haiku-5-5`. One schema-constrained call, no tools; code verifies every quote. Override with `EXTRACT_MODEL` if the eval shows Sonnet is needed.
+  - Extraction (`extract.py`, transcript -> checklist items with quotes): `claude-haiku-5-5`. One schema-constrained call, no tools; code verifies every quote. Vendor-agnostic through `llm.py`: `EXTRACT_MODEL=<provider>:<model>` with `anthropic` (default) or `openai` (any OpenAI-compatible endpoint via `LLM_BASE_URL` / `LLM_API_KEY`). Switch only if the eval says so.
   - Cited query (`query.py`, reasoning across several reports): `claude-sonnet-5-5`.
   - Emergency triage (`triage.py`, every message from a registered sender): `claude-haiku-5-5`, small schema (`emergency`, `reason`, `quote`), separate call from extraction so it also covers non-caregivers.
 - WhatsApp: **decided** Meta Cloud API, bot number **+1 555-674-0716** (Meta test number; only numbers on its allowed list can write to it). Setup: `docs/whatsapp-setup.md`, automated by `backend/scripts/setup_whatsapp.py`. Twilio trial does not allow WhatsApp.
@@ -156,6 +156,7 @@ backend/app/
   web_reports.py   POST /patients/{id}/reports (text/audio)  [infra/input owner]
   ingest.py        single hand-off from channels to process_report [infra/input owner]
   deps.py          DB session + current person dependencies  [shared]
+  llm.py           one JSON-schema call, any vendor          [brain owner]
   triage.py        text -> emergency yes/no + quote (LLM)    [brain owner]
   extract.py       text -> JSON with quotes                  [brain owner]
   compare.py       plan/history/checklist logic, no model    [brain owner]

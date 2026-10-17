@@ -13,6 +13,7 @@ from app.extract import (
     validate,
     verify_quote,
 )
+from app.llm import LLMError, parse_model
 from app.models import ChecklistItem
 
 MEDS = [
@@ -123,7 +124,7 @@ def test_validate_clears_quote_when_value_is_null():
     assert sleep["level"] is None and sleep["quote"] is None and sleep["quote_verified"] is None
 
 
-# --- model call wiring (fake client: tests only, never used by the app) ----------
+# --- model call wiring (fake Anthropic client: tests only, never used by the app) --
 
 
 class FakeClient:
@@ -150,6 +151,21 @@ def test_extract_sends_schema_and_returns_validated_items():
     assert result.items[0]["quote_verified"] is True
     assert "appetite" not in result.missing_items
     assert result.raw == raw
+    assert result.model == "anthropic:test-model"
+
+
+@pytest.mark.parametrize("kind, retryable", [
+    ("config", False), ("auth", False), ("bad_request", False), ("unavailable", True),
+    ("refused", False), ("truncated", False), ("bad_output", True),
+])
+def test_extract_maps_every_llm_error_kind(monkeypatch, kind, retryable):
+    def fail(**kwargs):
+        raise LLMError(kind)
+
+    monkeypatch.setattr("app.extract.llm.complete_json", fail)
+    with pytest.raises(ExtractionError) as e:
+        extract(TRANSCRIPT, MEDS, model="openai:gpt-x")
+    assert e.value.message and e.value.retryable is retryable
 
 
 @pytest.mark.parametrize("stop_reason", ["refusal", "max_tokens"])
@@ -191,10 +207,14 @@ def test_extract_raises_on_invalid_json_and_empty_transcript():
         extract("   ", MEDS, client=FakeClient("{}"))
 
 
-# --- live call (needs ANTHROPIC_API_KEY) -------------------------------------------
+# --- live call (needs the key for the configured EXTRACT_MODEL provider) -------------
 
 
-@pytest.mark.skipif(not os.environ.get("ANTHROPIC_API_KEY"), reason="needs ANTHROPIC_API_KEY")
+LIVE_KEY = {"anthropic": "ANTHROPIC_API_KEY", "openai": "LLM_API_KEY"}[
+    parse_model(os.environ.get("EXTRACT_MODEL") or "claude")[0]]
+
+
+@pytest.mark.skipif(not os.environ.get(LIVE_KEY), reason=f"needs {LIVE_KEY}")
 def test_live_extraction_unseen_transcript():
     transcript = (
         "Bueno, Rosa hoy anduvo medio bajoneada. A la mañana le di el enalapril y la metformina, "

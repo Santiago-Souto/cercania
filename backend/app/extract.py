@@ -11,17 +11,18 @@ Nothing here computes doses, schedules or alerts; compare.py does the comparing.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import unicodedata
 from dataclasses import dataclass, field
 from typing import Any
 
+from . import llm
 from .models import ChecklistItem
 
 # Haiku: one schema-constrained call, no tools; code verifies every quote (AGENTS.md section 8).
-DEFAULT_MODEL = "claude-haiku-5-5"
+# EXTRACT_MODEL="<provider>:<model>" switches vendor; see llm.py.
+DEFAULT_MODEL = "anthropic:claude-haiku-5-5"
 MAX_TOKENS = 4000
 TIMEOUT_SEC = 20.0
 
@@ -231,57 +232,39 @@ def _user_message(transcript: str, medications: list[dict]) -> str:
     return f"Care plan medications:\n{plan}\n\nTranscript:\n<transcript>\n{transcript}\n</transcript>"
 
 
-def _default_client():
-    import anthropic
-
-    try:
-        return anthropic.Anthropic(timeout=TIMEOUT_SEC, max_retries=1)
-    except anthropic.AnthropicError as e:
-        raise ExtractionError(
-            "El servicio de IA no está configurado (falta ANTHROPIC_API_KEY).", retryable=False
-        ) from e
+# What the caregiver sees for each vendor-neutral failure (message, retryable).
+_ERRORS: dict[str, tuple[str, bool]] = {
+    "config": ("El servicio de IA no está configurado (falta la clave de API).", False),
+    "auth": ("El servicio de IA rechazó la credencial configurada.", False),
+    "bad_request": ("No pudimos procesar el reporte (solicitud inválida).", False),
+    "unavailable": ("El servicio de IA no respondió a tiempo. Volvé a intentar en un momento.", True),
+    "refused": ("El servicio de IA no procesó este reporte.", False),
+    "truncated": ("El reporte es demasiado largo para procesarlo de una vez.", False),
+    "bad_output": ("La respuesta de la IA no tuvo el formato esperado.", True),
+}
 
 
 def extract(transcript: str, medications: list[dict], *, client=None, model: str | None = None) -> Extraction:
     """Extract checklist items from a transcript. Raises ExtractionError on any model failure."""
-    import anthropic
-
     if not transcript or not transcript.strip():
         raise ExtractionError("El reporte llegó vacío; no hay nada para registrar.", retryable=False)
 
-    model = model or os.environ.get("EXTRACT_MODEL") or DEFAULT_MODEL
-    client = client or _default_client()
+    provider, name = llm.parse_model(model or os.environ.get("EXTRACT_MODEL") or DEFAULT_MODEL)
+    model = f"{provider}:{name}"
     try:
-        response = client.messages.create(
+        raw = llm.complete_json(
+            system=SYSTEM_PROMPT,
+            user=_user_message(transcript, medications),
+            schema=build_schema(medications),
             model=model,
             max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": _user_message(transcript, medications)}],
-            output_config={
-                "effort": "low",  # latency budget: confirmation in < 10 s
-                "format": {"type": "json_schema", "schema": build_schema(medications)},
-            },
+            timeout=TIMEOUT_SEC,
+            effort="low",  # latency budget: confirmation in < 10 s
+            client=client,
         )
-    except anthropic.AuthenticationError as e:
-        raise ExtractionError("El servicio de IA rechazó la credencial configurada.", retryable=False) from e
-    except anthropic.BadRequestError as e:
-        raise ExtractionError("No pudimos procesar el reporte (solicitud inválida).", retryable=False) from e
-    except (anthropic.RateLimitError, anthropic.APITimeoutError, anthropic.APIConnectionError,
-            anthropic.InternalServerError, anthropic.APIStatusError) as e:
-        raise ExtractionError("El servicio de IA no respondió a tiempo. Volvé a intentar en un momento.") from e
-
-    if response.stop_reason == "refusal":
-        raise ExtractionError("El servicio de IA no procesó este reporte.", retryable=False)
-    if response.stop_reason == "max_tokens":
-        raise ExtractionError("El reporte es demasiado largo para procesarlo de una vez.", retryable=False)
-
-    text = next((b.text for b in response.content if b.type == "text"), None)
-    try:
-        raw = json.loads(text or "")
-    except json.JSONDecodeError as e:
-        raise ExtractionError("La respuesta de la IA no tuvo el formato esperado.") from e
-    if not isinstance(raw, dict):
-        raise ExtractionError("La respuesta de la IA no tuvo el formato esperado.")
+    except llm.LLMError as e:
+        message, retryable = _ERRORS.get(e.kind, _ERRORS["unavailable"])
+        raise ExtractionError(message, retryable=retryable) from e
 
     items, warnings = validate(raw, transcript, medications)
     return Extraction(items=items, raw=raw, model=model, warnings=warnings)
