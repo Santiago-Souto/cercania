@@ -1,5 +1,6 @@
 // Single entry point for data. Screens never fetch directly.
-// NEXT_PUBLIC_USE_FAKE_DATA=1 -> contract-shaped fake data (SIMULATED, see lib/fake.ts).
+// NEXT_PUBLIC_USE_FAKE_DATA=1 -> contract-shaped fake data (SIMULATED, see lib/fake.ts). Opt-in only:
+// a deploy that forgets the variable must hit the real API and fail loudly, never show fabricated patients.
 // Otherwise -> the backend at NEXT_PUBLIC_API_URL (CIA-14 finishes this switch, incl. session cookies).
 
 import { connection } from "next/server";
@@ -15,7 +16,7 @@ import type {
   Report,
 } from "./types";
 
-export const USE_FAKE = process.env.NEXT_PUBLIC_USE_FAKE_DATA !== "0";
+export const USE_FAKE = process.env.NEXT_PUBLIC_USE_FAKE_DATA === "1";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export class ApiError extends Error {

@@ -59,11 +59,12 @@ Web (Node 20+, Next.js 16 + shadcn/ui, mobile-first):
 ```bash
 cd web
 npm install
-npm run dev     # http://localhost:3000 -> /login
+npm run dev       # fake data, http://localhost:3000 -> /login
+npm run dev:real  # real backend at NEXT_PUBLIC_API_URL
 npm run lint && npm run build
 ```
 
-`NEXT_PUBLIC_USE_FAKE_DATA` defaults to fake data (set it to `0` and `NEXT_PUBLIC_API_URL` to the backend to use real data). Design and screen map: `docs/design/DESIGN.md`.
+Fake data is opt-in: only `NEXT_PUBLIC_USE_FAKE_DATA=1` (set by `npm run dev`) shows it. Without it the app calls the backend at `NEXT_PUBLIC_API_URL`, so a deploy never shows fabricated patients by accident. Design and screen map: `docs/design/DESIGN.md`.
 
 ## Evaluation
 

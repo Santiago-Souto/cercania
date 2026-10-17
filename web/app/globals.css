@@ -47,6 +47,7 @@
     --color-secondary: var(--secondary);
     --color-primary-foreground: var(--primary-foreground);
     --color-primary: var(--primary);
+    --color-primary-hover: var(--primary-hover);
     --color-popover-foreground: var(--popover-foreground);
     --color-popover: var(--popover);
     --color-card-foreground: var(--card-foreground);
@@ -72,6 +73,7 @@
     --popover-foreground: #16201c;
     --primary: #0e5a55;
     --primary-foreground: #ffffff;
+    --primary-hover: #0a4440;
     --secondary: #e3efec;
     --secondary-foreground: #0e5a55;
     --muted: #e7ebe6;

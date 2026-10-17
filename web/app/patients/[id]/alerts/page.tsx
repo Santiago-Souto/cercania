@@ -2,7 +2,7 @@
 // Red flags use a fixed message (AGENTS.md §7). Alerts come from code, never from the model.
 import Link from "next/link";
 import type { Route } from "next";
-import { BellOffIcon, CircleAlertIcon, TrendingDownIcon, TriangleAlertIcon } from "lucide-react";
+import { BellOffIcon, CircleAlertIcon, ListChecksIcon, TrendingDownIcon, TriangleAlertIcon } from "lucide-react";
 import { AppShell, BottomNav, ScreenHeader } from "@/components/app/shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ import type { Alert as AlertT } from "@/lib/types";
 const GROUPS: { type: AlertT["type"]; label: string }[] = [
   { type: "omission", label: "Omisión · plan de cuidado" },
   { type: "change", label: "Cambio · respecto a lo habitual" },
+  { type: "missing_item", label: "Checklist incompleto" },
 ];
 
 export default async function AlertsPage(props: PageProps<"/patients/[id]/alerts">) {
@@ -61,7 +62,13 @@ export default async function AlertsPage(props: PageProps<"/patients/[id]/alerts
                             : "size-7 rounded-full bg-warning text-warning-foreground"
                         }
                       >
-                        {type === "change" ? <TrendingDownIcon className="size-4" /> : <CircleAlertIcon className="size-4" />}
+                        {type === "change" ? (
+                          <TrendingDownIcon className="size-4" />
+                        ) : type === "missing_item" ? (
+                          <ListChecksIcon className="size-4" />
+                        ) : (
+                          <CircleAlertIcon className="size-4" />
+                        )}
                       </ItemMedia>
                       <ItemContent>
                         <ItemTitle className="text-base font-bold">{a.detail}</ItemTitle>
@@ -81,7 +88,7 @@ export default async function AlertsPage(props: PageProps<"/patients/[id]/alerts
 
         {last && last.missing_items.length > 0 && (
           <section className="flex flex-col gap-2.5">
-            <h2 className="font-sans text-[13px] font-bold tracking-wide text-muted-foreground uppercase">Temas faltantes</h2>
+            <h2 className="font-sans text-[13px] font-bold tracking-wide text-muted-foreground uppercase">Temas faltantes · último reporte</h2>
             <Card className="text-base">
               <CardContent className="flex flex-col gap-2.5">
                 <CardDescription>El reporte de {dayTime(last.created_at).toLowerCase()} no habló de:</CardDescription>
