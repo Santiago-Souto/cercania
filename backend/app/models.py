@@ -33,7 +33,9 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
     func,
+    inspect,
     select,
+    text,
 )
 from dotenv import find_dotenv, load_dotenv
 from sqlalchemy.dialects.postgresql import JSONB
@@ -91,6 +93,8 @@ class Role(str, enum.Enum):
     caregiver = "caregiver"
     family = "family"
     doctor = "doctor"
+    nurse = "nurse"  # health team, like doctor but cannot edit the care plan
+    institution = "institution"  # health team, like nurse
     patient = "patient"  # the patient's own login, linked to their profile
 
 
@@ -113,6 +117,10 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
                             Permission.raise_emergency}),
     Role.doctor: frozenset({Permission.read_reports, Permission.read_care_plan,
                             Permission.edit_care_plan, Permission.raise_emergency}),
+    Role.nurse: frozenset({Permission.read_reports, Permission.read_care_plan,
+                           Permission.raise_emergency}),
+    Role.institution: frozenset({Permission.read_reports, Permission.read_care_plan,
+                                 Permission.raise_emergency}),
     # The patient sees their profile and care plan, never reports about them.
     Role.patient: frozenset({Permission.read_care_plan, Permission.raise_emergency}),
 }
@@ -168,13 +176,14 @@ class TimestampMixin:
 
 
 class Person(TimestampMixin, Base):
-    """Anyone who logs in or messages the bot, in any role. Phone = identity."""
+    """Anyone who logs in or messages the bot, in any role. Phone = identity; email is unverified contact info."""
 
     __tablename__ = "person"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("per"))
     phone: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)  # E.164
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(254))  # not unique, never grants access
 
     access: Mapped[list[PatientAccess]] = relationship(back_populates="person")
 
@@ -187,6 +196,7 @@ class Patient(TimestampMixin, Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("pat"))
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
     birth_year: Mapped[int | None] = mapped_column(Integer)
+    location: Mapped[str | None] = mapped_column(String(120))  # e.g. "Habitación 12"
     notes: Mapped[str | None] = mapped_column(Text)
     # Extra words for the transcription hint (names, local terms). Medication
     # names are added automatically from the active care plan.
@@ -496,8 +506,17 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 
 def init_db() -> None:
-    """Create missing tables. Safe to call repeatedly; never drops anything."""
+    """Create missing tables and nullable columns. Safe to call repeatedly; never drops anything."""
     Base.metadata.create_all(engine)
+    # No migration tool: add nullable columns that were introduced after a table existed.
+    existing = inspect(engine)
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            have = {c["name"] for c in existing.get_columns(table.name)}
+            for col in table.columns:
+                if col.name not in have and col.nullable:
+                    col_type = col.type.compile(dialect=engine.dialect)
+                    conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col_type}'))
 
 
 def role_for(session: Session, person_id: str, patient_id: str) -> Role | None:

@@ -29,9 +29,9 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Web timeline (caregiver view) | Pending | |
 | Family read-only view | Pending | |
 | Doctor edits care plan (new version) | Pending | Role and permission in schema; no endpoint/view yet |
-| Patient view (own care plan, no reports) | Pending | Role and permission in schema; no endpoint/view yet |
+| Patient view (how I feel + I need help; no reports or alerts) | Pending | Role and permission in schema; no endpoint/view yet |
 | Cited natural-language query | Pending | |
-| Single-use magic-link access | Pending | |
+| Login with 6-digit WhatsApp code | Pending | |
 | Eval script and 20 cases | In progress | `eval/run_eval.py` built and tested; needs `process_report` (CIA-7) to run and the 20 cases (CIA-24); 2 cases so far, 0 unseen |
 
 ### Simulated
