@@ -110,6 +110,9 @@ backend/app/
   main.py          API + webhook (ack fast, process async)
   whatsapp.py      receive, download audio, reply            [infra/input owner]
   transcribe.py    audio -> text with vocabulary hint        [infra/input owner]
+  web_reports.py   POST /patients/{id}/reports (text/audio)  [infra/input owner]
+  ingest.py        single hand-off from channels to process_report [infra/input owner]
+  deps.py          DB session + current person dependencies  [shared]
 backend/scripts/
   setup_whatsapp.py  registers the webhook with Meta         [infra/input owner]
   extract.py       text -> JSON with quotes                  [brain owner]

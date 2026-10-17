@@ -85,7 +85,7 @@ def transcribe(
     if not api_key:
         raise TranscriptionError(
             "GROQ_API_KEY is not set",
-            "No pude transcribir el audio por un problema de configuración. Ya avisamos al equipo.",
+            "No pude transcribir el audio por un problema de configuración del servidor. Avisale al equipo de CercanIA.",
         )
     if not audio:
         raise TranscriptionError("empty audio", "El audio llegó vacío. ¿Podés enviarlo de nuevo?")
