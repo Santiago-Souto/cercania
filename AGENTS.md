@@ -98,7 +98,9 @@ Auth: phone number in -> bot sends a **single-use link with short expiry**. The 
 - Web: React or Next.js (two views: caregiver, family)
 - DB: **decided** Postgres on Supabase via SQLAlchemy 2.0 + psycopg 3 (`DATABASE_URL`); SQLite is the local default and fallback (same models). Files in Supabase Storage, private bucket, signed URLs.
 - Transcription: Whisper-class API (OpenAI or Groq); fallback AWS Transcribe with custom vocabulary
-- LLM: Claude via API. Start with `claude-sonnet-5-5`; use `claude-haiku-5-5` if latency demands. Use structured JSON output / tool use.
+- LLM: Claude via API, structured JSON output (`output_config.format`). **Decided per task:**
+  - Extraction (`extract.py`, transcript -> checklist items with quotes): `claude-haiku-5-5`. One schema-constrained call, no tools; code verifies every quote. Override with `EXTRACT_MODEL` if the eval shows Sonnet is needed.
+  - Cited query (`query.py`, reasoning across several reports): `claude-sonnet-5-5`.
 - WhatsApp: Twilio sandbox first, or Meta Cloud API test number. **Cut rule: if a real voice note does not flow end-to-end by 14:00 Sat, switch to a Telegram bot or a web recorder and list WhatsApp as Pending.**
 - Deploy: any host with a stable public URL (Render, Railway, Fly). Deploy "hello world" first.
 - Secrets only via environment variables. `.env` is gitignored; commit `.env.example` only.
