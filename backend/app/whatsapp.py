@@ -49,7 +49,8 @@ MSG_EXPIRED = (
     "{count} reporte(s) que enviaste quedaron sin registrar porque no elegiste el paciente a tiempo. "
     "Por favor, volvé a enviarlos."
 )
-# Fixed rule (AGENTS.md section 7): added by code whenever red_flag is true, never by the model.
+# Fixed text (AGENTS.md section 7): added by code whenever red_flag is true. red_flag itself
+# comes from the model in triage.py; this wording never does.
 MSG_RED_FLAG = "⚠️ Si es una emergencia, llamá a emergencias o al médico ahora."
 
 
@@ -432,7 +433,7 @@ def deliver(message: IncomingMessage, caregiver_id: str, patient_id: str, transc
     try:
         result = ingest.process_report(
             patient_id=patient_id,
-            caregiver_id=caregiver_id,
+            sender_id=caregiver_id,
             transcript=transcript.text,
             audio_ref=None,
             message_id=message.id,
