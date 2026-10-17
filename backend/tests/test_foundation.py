@@ -154,3 +154,14 @@ def test_cors_preflight_allows_web_origin():
     assert r.status_code == 200
     assert r.headers["access-control-allow-origin"] == "http://localhost:3000"
     assert r.headers["access-control-allow-credentials"] == "true"
+
+
+def test_naive_datetimes_leave_as_utc():
+    """SQLite returns naive datetimes; the web must get an explicit offset."""
+    from datetime import datetime
+
+    from app.schemas import MyPatient
+
+    out = MyPatient(id="pat_x", display_name="x", role="family",
+                    last_report_at=datetime(2026, 10, 17, 22, 0)).model_dump(mode="json")
+    assert out["last_report_at"] == "2026-10-17T22:00:00Z"

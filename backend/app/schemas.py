@@ -4,11 +4,20 @@ and request bodies. They mirror docs/contract.md; change them only together with
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime as _datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 from typing_extensions import Annotated
+
+
+def _as_utc(value: _datetime) -> _datetime:
+    # SQLite hands back naive datetimes (stored as UTC). Without an offset the
+    # browser would read them as local time, so every timestamp leaves with one.
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+
+datetime = Annotated[_datetime, AfterValidator(_as_utc)]
 
 ChecklistItemName = Literal[
     "appetite", "sleep", "urination", "medication", "mood", "mobility", "pain", "incidents"
