@@ -140,7 +140,7 @@ export function AudioPlayer({ audioPaths, children }: { audioPaths: (string | nu
   const onTimeUpdate = () => {
     const audio = audioRef.current;
     if (!audio || !active) return;
-    setCurrent(audio.currentTime);
+    if (active.status !== "loading") setCurrent(audio.currentTime); // before the seek it still reads 0
     if (active.clip.end !== null && audio.currentTime >= active.clip.end + TAIL_SEC && active.status === "playing") {
       audio.pause();
       setActive({ clip: active.clip, status: "ended" });
