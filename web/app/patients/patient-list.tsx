@@ -15,7 +15,7 @@ import type { MyPatient } from "@/lib/types";
 /** Lowercase without accents, so "jose" finds "José" and "hab 12" finds "Hab. 12". */
 const fold = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[.]/g, "").toLowerCase();
 
-export function PatientList({ patients }: { patients: MyPatient[] }) {
+export function PatientList({ patients, hideEmpty = false }: { patients: MyPatient[]; hideEmpty?: boolean }) {
   const [q, setQ] = useState("");
   // Every word must match, so "hab 12" finds "Habitación 12".
   const words = fold(q).split(/\s+/).filter(Boolean);
@@ -40,14 +40,14 @@ export function PatientList({ patients }: { patients: MyPatient[] }) {
           />
         </InputGroup>
 
-        {patients.length === 0 && (
+        {patients.length === 0 && !hideEmpty && (
           <Empty>
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <UsersIcon />
               </EmptyMedia>
               <EmptyTitle>Todavía no tenés pacientes</EmptyTitle>
-              <EmptyDescription>Agregá uno o pedile a la residencia que te invite.</EmptyDescription>
+              <EmptyDescription>Agregá uno, o pedile a quien lo cuida que te invite con este número.</EmptyDescription>
             </EmptyHeader>
           </Empty>
         )}

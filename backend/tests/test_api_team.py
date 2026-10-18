@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.api import patients as patients_api
-from app.api.auth import _accept_invites
 from app.deps import get_db
 from app.main import app
 from app.models import (
@@ -170,14 +169,64 @@ def test_members_access(db):
     assert client.get("/patients/pat_a/members", headers=h("new")).status_code == 403
 
 
-def test_invite_becomes_membership_on_login(db):
-    client.post("/patients/pat_a/invites", json={"contact": "+15550100009", "role": "nurse"}, headers=h("cg"))
-    _accept_invites(db, db.get(Person, "new"))
-    db.commit()
+def invite_new(role="nurse"):
+    """cg invites the registered non-member `new` (+15550100009)."""
+    r = client.post("/patients/pat_a/invites", json={"contact": "+15550100009", "role": role}, headers=h("cg"))
+    assert r.status_code == 201
+    return r.json()["id"]
+
+
+def test_invited_person_sees_the_invite_and_nothing_is_joined_yet(db):
+    inv = invite_new()
+    r = client.get("/me/invites", headers=h("new"))
+    assert r.status_code == 200
+    [mine] = r.json()["invites"]
+    assert {k: mine[k] for k in ("id", "patient_id", "patient_display_name", "role", "invited_by")} == {
+        "id": inv, "patient_id": "pat_a", "patient_display_name": "Rosa (ficticia)",
+        "role": "nurse", "invited_by": "cg (ficticio)"}
+    assert client.get("/me", headers=h("new")).json()["memberships"] == []
+    assert client.get("/patients/pat_a/reports", headers=h("new")).status_code == 404
+    assert client.get("/me/invites", headers=h("fam")).json() == {"invites": []}
+
+
+def test_accepting_creates_the_membership(db):
+    inv = invite_new()
+    r = client.post(f"/me/invites/{inv}/accept", headers=h("new"))
+    assert r.status_code == 200
+    assert r.json() == {"patient_id": "pat_a", "display_name": "Rosa (ficticia)", "role": "nurse"}
+    assert db.get(Invite, inv).status == InviteStatus.accepted
+    assert client.get("/patients/pat_a/reports", headers=h("new")).status_code == 200
+    assert client.get("/me/invites", headers=h("new")).json() == {"invites": []}
     m = client.get("/patients/pat_a/members", headers=h("cg")).json()
     assert ("new", "nurse") in [(x["user_id"], x["role"]) for x in m["members"]]
     assert m["invites"] == []
-    assert db.scalar(select(Invite)).status == InviteStatus.accepted
+    # No longer pending: a second accept is a 404.
+    assert client.post(f"/me/invites/{inv}/accept", headers=h("new")).status_code == 404
+
+
+def test_declining_deletes_the_invite_and_allows_a_new_one(db):
+    inv = invite_new()
+    r = client.post(f"/me/invites/{inv}/decline", headers=h("new"))
+    assert r.status_code == 200 and r.json() == {"status": "declined"}
+    assert db.get(Invite, inv) is None
+    assert client.get("/patients/pat_a/members", headers=h("cg")).json()["invites"] == []
+    assert client.get("/me", headers=h("new")).json()["memberships"] == []
+    invite_new()  # the caregiver can invite the number again
+
+
+def test_nobody_else_can_answer_someone_elses_invite(db):
+    inv = invite_new()
+    for pid in ("cg", "fam"):
+        for action in ("accept", "decline"):
+            r = client.post(f"/me/invites/{inv}/{action}", headers=h(pid))
+            assert r.status_code == 404 and r.json()["error"]["code"] == "not_found"
+    assert db.get(Invite, inv).status == InviteStatus.pending
+
+
+def test_my_invites_need_a_session(db, monkeypatch):
+    monkeypatch.delenv("ALLOW_DEV_IDENTITY_HEADER")
+    assert client.get("/me/invites").status_code == 401
+    assert client.post("/me/invites/inv_x/accept").status_code == 401
 
 
 def test_invite_whatsapp_only_when_enabled(db, monkeypatch):

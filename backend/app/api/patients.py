@@ -179,7 +179,7 @@ ROLE_ES = {Role.caregiver: "cuidador/a", Role.family: "familia", Role.patient: "
 
 def send_invite_whatsapp(phone: str, text: str) -> None:
     """Best effort, after the response. Off unless NOTIFY_WHATSAPP=1 (the Meta test number only
-    reaches allowed-list phones); the invite works anyway when that phone logs in."""
+    reaches allowed-list phones); the invite is seen in the app anyway (GET /me/invites)."""
     if not notify.whatsapp_enabled():
         log.info("Invite WhatsApp skipped for %s (NOTIFY_WHATSAPP is off)", whatsapp.mask(phone))
         return
@@ -196,8 +196,8 @@ def create_invite(
     ctx: PatientContext = Depends(patient_access(Permission.invite)),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Pending membership for a WhatsApp number; it becomes `patient_access` when that phone
-    verifies an SMS code (api/auth.py `_accept_invites`). Re-inviting a pending number updates
+    """Pending membership for a WhatsApp number; it becomes `patient_access` only when the
+    person with that phone accepts it in the app (api/me.py `accept_invite`). Re-inviting a pending number updates
     its role instead of adding a second invite."""
     if "@" in body.contact:
         raise api_error(400, "phone_invalid",

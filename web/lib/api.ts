@@ -10,7 +10,9 @@ import type {
   Invite,
   Me,
   Member,
+  Membership,
   Message,
+  MyInvite,
   MyPatient,
   NewPatient,
   Patient,
@@ -84,6 +86,21 @@ export async function createInvite(patientId: string, contact: string, role: Rol
     method: "POST",
     body: JSON.stringify({ contact, role }),
   });
+}
+
+/** Invites to the caller's own phone, shown on "Mis pacientes" to accept or decline. */
+export async function getMyInvites(): Promise<MyInvite[]> {
+  await connection(); // always live: render at request time
+  const data = await request<{ invites: MyInvite[] }>(`/me/invites`);
+  return data.invites;
+}
+
+export async function acceptInvite(inviteId: string): Promise<Membership> {
+  return request<Membership>(`/me/invites/${inviteId}/accept`, { method: "POST" });
+}
+
+export async function declineInvite(inviteId: string): Promise<void> {
+  await request(`/me/invites/${inviteId}/decline`, { method: "POST" });
 }
 
 export async function getPatientMessages(patientId: string): Promise<PatientMessage[]> {
