@@ -107,7 +107,7 @@ Rules:
 - `triage.quote` is verified like any other quote, but `quote_verified: false` **never** turns an emergency off; it is only shown as unverified.
 - `triage.status` is `ok` or `failed` (model error/timeout). On `failed`, `red_flag` is `false`, the report is still stored and the reply still includes the fixed emergency line.
 - On an emergency, `confirmation_text` is the fixed emergency message and asks no checklist questions.
-- `audio_start_sec` / `audio_end_sec` on items are `null` until transcript segment times are wired (see Pending in README).
+- `audio_start_sec` / `audio_end_sec` on items come from the report's transcript segments by the rule in Transcript segments; `null` when there are none or the quote is not in them. Segments are not stored by the channels yet (CIA-18), so today they are always `null`.
 
 ## Alert types
 
@@ -174,6 +174,24 @@ Used by `GET /patients/{id}/reports`, `GET /reports/{id}` and the corrections re
 - `red_flag_quote` is the same value as `triage.quote`.
 - `audio_url` and `audio_duration_sec`: **SIMULATED**. Audio is not stored yet, so both are `null` for new reports. A stored audio file returns `/media/{report_id}` as a placeholder path; no `/media` route exists yet.
 - `triage` is `null` for seed fixtures, which never went through triage.
+
+## Transcript segments
+
+Timestamped pieces of the transcript, used to play the audio fragment behind a quote. Stored on `report.segments` (`backend/app/models.py`); not returned by the API. The web only sees the resulting `audio_start_sec` / `audio_end_sec` on items and citations.
+
+```json
+[
+  { "start": 0.0, "end": 3.5, "text": "Anoche le di la medicación de las ocho." },
+  { "start": 3.5, "end": 6.0, "text": "Comió poco en la cena." },
+  { "start": 6.0, "end": 8.0, "text": "Durmió bien." }
+]
+```
+
+- `start` / `end`: seconds (float) from the start of the audio file, as the transcription provider returns them (Groq Whisper `verbose_json`). `text` is the segment text, trimmed. Segments are in audio order.
+- Typed reports (WhatsApp text or web text) have `[]`.
+- **Quote -> audio times** (code only, `backend/app/segments.py`, same for items and citations): the shortest run of consecutive segments whose joined text contains the quote, with the same normalization as quote verification (case, accents, punctuation, whitespace; whole words). `audio_start_sec` is the first segment's `start`, `audio_end_sec` the last segment's `end`. If two runs are equally short, the first one wins. No match or no segments: both `null`.
+- Example: with the segments above, `"comió poco en la cena"` -> `3.5`-`6.0`; `"las ocho. Comió poco"` -> `0.0`-`6.0`.
+- The model never sees or returns times.
 
 ## Endpoints
 
@@ -296,7 +314,7 @@ Permission: `read_reports`. Cited answer over the patient's reports from the las
 
 - `confidence` is `answered` or `unclear`. If the records do not contain the answer, return `unclear` and say so; never guess.
 - Every citation is checked in code: `report_id` must be one of the reports sent to the model and the quote must verify against that report's transcript. Unverified citations are dropped. An `answered` reply with no surviving citation becomes `unclear` with a note.
-- `audio_start_sec` / `audio_end_sec` come from stored transcript segments; `null` when there are none or the quote spans several segments.
+- `audio_start_sec` / `audio_end_sec` come from the report's transcript segments by the rule in Transcript segments; `null` when there are none or the quote is not in them.
 - With no reports in the window, the answer is `unclear` with `citations: []` and no model call.
 
 Errors: `401`; `404`; `403` (role without `read_reports`, i.e. patient); `422 invalid_request` (empty or too long question); `502 query_failed` (model unavailable, timed out, refused, or returned an unusable answer; the message is safe to show and asks to retry).

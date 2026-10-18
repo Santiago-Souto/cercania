@@ -151,13 +151,13 @@ def test_unclear_reply_passes_through_with_note(db, report, fake):
     assert body["note"] == "Falta el reporte de ayer."
 
 
-def test_segment_timing_only_when_quote_is_in_one_segment():
+def test_segment_timing_from_the_segments_that_contain_the_quote():
     reports = [{"id": "rep_1", "transcript": TRANSCRIPT, "segments": SEGMENTS}]
     one = query_mod.verify_citations([{"report_id": "rep_1", "quote": "comió poco en la cena"}], reports)
     assert (one[0]["audio_start_sec"], one[0]["audio_end_sec"]) == (3.5, 6.0)
-    # Spans two segments: valid quote, but no single audio fragment.
+    # Spans two segments: from the first one's start to the second one's end.
     two = query_mod.verify_citations([{"report_id": "rep_1", "quote": "las ocho. Comió poco"}], reports)
-    assert (two[0]["audio_start_sec"], two[0]["audio_end_sec"]) == (None, None)
+    assert (two[0]["audio_start_sec"], two[0]["audio_end_sec"]) == (0.0, 6.0)
     # No segments stored (text report).
     none = query_mod.verify_citations(
         [{"report_id": "rep_1", "quote": "Durmió bien"}], [{"id": "rep_1", "transcript": TRANSCRIPT, "segments": []}]
