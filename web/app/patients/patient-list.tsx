@@ -33,7 +33,7 @@ export function PatientList({ patients, hideEmpty = false }: { patients: MyPatie
           <InputGroupInput
             type="search"
             aria-label="Buscar paciente"
-            placeholder="Buscar por nombre o habitación"
+            placeholder="Buscar paciente"
             className="text-base"
             value={q}
             onChange={(e) => setQ(e.target.value)}

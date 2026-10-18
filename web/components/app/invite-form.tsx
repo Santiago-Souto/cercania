@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { ROLE_LABEL } from "@/lib/format";
-import { checkPhone, ROLE_HELP, ROLES } from "@/lib/team";
+import { checkPhone, ROLE_HELP, ROLES, type InviteRole } from "@/lib/team";
 import type { Role } from "@/lib/types";
 
 /** Resolves to an error message to show next to the number, or null when the invite was taken. */
@@ -20,7 +20,7 @@ export type OnInvite = (phone: string, role: Role) => Promise<string | null> | s
 export function InviteForm({ onInvite, submitLabel }: { onInvite: OnInvite; submitLabel: string }) {
   const id = useId();
   const [contact, setContact] = useState("");
-  const [role, setRole] = useState<Role>("family");
+  const [role, setRole] = useState<InviteRole>("family");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -74,7 +74,7 @@ export function InviteForm({ onInvite, submitLabel }: { onInvite: OnInvite; subm
           </Field>
           <Field>
             <FieldLabel htmlFor={`${id}-role`}>Rol</FieldLabel>
-            <Select value={role} onValueChange={(v) => setRole(v as Role)}>
+            <Select value={role} onValueChange={(v) => setRole(v as InviteRole)}>
               <SelectTrigger id={`${id}-role`} className="h-12! w-full bg-card text-base">
                 <SelectValue />
               </SelectTrigger>
