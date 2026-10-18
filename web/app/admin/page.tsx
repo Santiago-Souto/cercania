@@ -10,7 +10,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
 import { getAdminPeople, getMe } from "@/lib/api";
 import { AssignRole, DeletePreRegistration, MakeAdmin, PreRegisterForm, RemoveRole } from "./admin-forms";
-import { ADMIN_ROLE_LABEL } from "./labels";
+import { ADMIN_ROLE_LABEL, membershipLabel } from "./labels";
 
 export default async function AdminPage() {
   const me = await getMe();
@@ -102,16 +102,16 @@ export default async function AdminPage() {
                 {person.memberships.length > 0 && (
                   <ItemGroup className="gap-1">
                     {person.memberships.map((m) => {
-                      const label = `${ADMIN_ROLE_LABEL[m.role].toLowerCase()} de ${m.patient_name}`;
+                      const label = membershipLabel(m, person.name);
                       return (
                         <Item key={m.patient_id} variant="muted" size="sm" className="rounded-lg">
                           <ItemContent>
                             <ItemTitle className="text-sm font-normal">
-                              <span className="font-bold">{ADMIN_ROLE_LABEL[m.role]}</span> de {m.patient_name}
+                              <span className="font-bold">{label.role}</span> {label.detail}
                             </ItemTitle>
                           </ItemContent>
                           <ItemActions>
-                            <RemoveRole person={person} patientId={m.patient_id} label={label} />
+                            <RemoveRole person={person} membership={m} />
                           </ItemActions>
                         </Item>
                       );
