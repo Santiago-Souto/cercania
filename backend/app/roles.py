@@ -167,6 +167,10 @@ def on_signup(session: Session, person: Person) -> str:
     return "self_signup_patient"
 
 
+def _has_membership(session: Session, person: Person) -> bool:
+    return session.scalar(select(PatientAccess.id).where(PatientAccess.person_id == person.id).limit(1)) is not None
+
+
 def ensure_default_role(session: Session, person: Person) -> bool:
     """A person left with no role at all is a patient (CIA-48 default): give them their own profile.
 
@@ -174,9 +178,12 @@ def ensure_default_role(session: Session, person: Person) -> bool:
     removed. Admins, caregivers and anyone with a pending invite are left as they are.
     Returns True when a profile was created.
     """
-    if person.is_admin or person.is_caregiver:
+    if person.is_admin or person.is_caregiver or _has_membership(session, person):
         return False
-    if session.scalar(select(PatientAccess.id).where(PatientAccess.person_id == person.id).limit(1)) is not None:
+    # Lock the person row, then check again: two concurrent requests (login, a double-mounted
+    # My patients) must not each create a profile. Postgres waits here; SQLite has one writer.
+    session.execute(select(Person.id).where(Person.id == person.id).with_for_update())
+    if _has_membership(session, person):
         return False
     if session.scalar(select(Invite.id).where(Invite.phone == person.phone,
                                               Invite.status == InviteStatus.pending).limit(1)) is not None:
