@@ -161,7 +161,10 @@ class QueryRequest(BaseModel):
 
 
 class Citation(BaseModel):
-    report_id: str
+    source: Literal["report", "patient_message"] = "report"
+    report_id: str | None = None
+    patient_message_id: str | None = None
+    created_at: datetime | None = None  # when the cited report or patient message was received
     quote: str
     audio_start_sec: float | None = None
     audio_end_sec: float | None = None
