@@ -327,3 +327,53 @@ def test_race_on_message_id_returns_the_winner(db, monkeypatch):
     n = rows(db, Report)
     again = run(REPORT, message_id="wa-race", e=happy_extract())
     assert again == winner and rows(db, Report) == n
+
+
+# --- transcript segments (docs/contract.md, "Transcript segments") ---------------------------
+
+SEGMENTS = [
+    {"start": 0.0, "end": 2.4, "text": "Rosa comió poco en la cena."},
+    {"start": 2.4, "end": 4.9, "text": "Le di el enalapril"},
+    {"start": 4.9, "end": 6.0, "text": "a las ocho. Orinó bien."},
+    {"start": 6.0, "end": 7.1, "text": "Sin caídas."},
+]
+
+
+def test_segments_are_stored_and_give_items_audio_times(db):
+    r = process.process_report(
+        patient_id=PAT, sender_id=CG, transcript=REPORT, audio_ref=None, message_id="wa-seg",
+        segments=SEGMENTS, triage_client=triage_client(), extract_client=happy_extract())
+    by_item = {i["item"]: i for i in r["items"]}
+    assert (by_item["appetite"]["audio_start_sec"], by_item["appetite"]["audio_end_sec"]) == (0.0, 2.4)
+    # The quote spans two segments.
+    assert (by_item["medication"]["audio_start_sec"], by_item["medication"]["audio_end_sec"]) == (2.4, 6.0)
+    assert by_item["sleep"]["audio_start_sec"] is None  # not mentioned
+    with db() as s:
+        assert s.get(Report, r["report"]["id"]).segments == SEGMENTS
+
+
+def test_unverified_quote_gets_no_audio_times(db):
+    r = process.process_report(
+        patient_id=PAT, sender_id=CG, transcript=REPORT, audio_ref=None, message_id="wa-seg2",
+        segments=SEGMENTS, triage_client=triage_client(),
+        extract_client=happy_extract(quote="le dio el enalapril"))
+    med = next(i for i in r["items"] if i["item"] == "medication")
+    assert med["quote_verified"] is False
+    assert (med["audio_start_sec"], med["audio_end_sec"]) == (None, None)
+
+
+def test_typed_report_has_no_segments_and_no_audio_times(db):
+    r = run(REPORT, message_id="wa-typed", e=happy_extract())
+    assert all(i["audio_start_sec"] is None for i in r["items"])
+    with db() as s:
+        assert s.get(Report, r["report"]["id"]).segments == []
+
+
+def test_ingest_forwards_segments(monkeypatch):
+    from app import ingest
+
+    calls = []
+    monkeypatch.setattr(process, "process_report", lambda **kw: calls.append(kw) or {"status": "ok"})
+    ingest.process_report("pat", "cg", "t", None, "m1", segments=SEGMENTS)
+    ingest.process_report("pat", "cg", "t", None, "m2")
+    assert calls[0]["segments"] == SEGMENTS and calls[1]["segments"] == []

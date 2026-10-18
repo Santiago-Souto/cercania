@@ -17,7 +17,7 @@ from app.models import (
     Report,
     Role,
 )
-from app.transcribe import Transcript, TranscriptionError
+from app.transcribe import Segment, Transcript, TranscriptionError
 
 URL = "/patients/pat_x/reports"
 
@@ -64,7 +64,7 @@ def groq(monkeypatch):
 
     def fake(audio, filename, mime_type, vocabulary):
         calls.append({"audio": audio, "filename": filename, "mime_type": mime_type, "vocabulary": vocabulary})
-        return Transcript(text="comió poco en la cena")
+        return Transcript(text="comió poco en la cena", segments=[Segment(0.0, 1.8, "comió poco en la cena")])
 
     monkeypatch.setattr(web_reports, "transcribe", fake)
     return calls
@@ -80,7 +80,7 @@ def test_text_report_goes_to_process_report(db, brain):
     assert r.json()["status"] == "ok"
     assert brain == [{
         "patient_id": "pat_x", "sender_id": "cg", "transcript": "durmió bien",
-        "audio_ref": None, "message_id": "web:cg:web_1",
+        "audio_ref": None, "message_id": "web:cg:web_1", "segments": [],
     }]
 
 
@@ -97,6 +97,7 @@ def test_audio_report_is_transcribed_with_patient_vocabulary(db, brain, groq):
     assert groq[0]["vocabulary"] == ["andador", "Enalapril"]
     assert brain[0]["transcript"] == "comió poco en la cena"
     assert brain[0]["message_id"] == "web:cg:web_2"
+    assert brain[0]["segments"] == [{"start": 0.0, "end": 1.8, "text": "comió poco en la cena"}]
 
 
 def test_repeated_client_id_reuses_stored_transcript_without_transcribing(db, brain, groq):

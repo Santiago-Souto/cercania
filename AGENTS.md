@@ -137,7 +137,7 @@ Auth: sign up with name, email and WhatsApp number -> the bot sends a **6-digit 
 - Backend: Python + FastAPI
 - Web: **Next.js** (decided), mobile-first, usable on desktop at a centered ~480px column. UI copy in Spanish (Río de la Plata). **Design source of truth: `docs/design/DESIGN.md`** (tokens, components, screen → route → ticket map) with artboard snapshots in `docs/design/screens/`. UI changes start in the design, then the code. **UI is shadcn/ui only** (themed with our tokens); no custom components or plain HTML unless strictly necessary.
 - DB: **decided** Postgres on Supabase via SQLAlchemy 2.0 + psycopg 3 (`DATABASE_URL`); SQLite is the local default and fallback (same models). Files in Supabase Storage, private bucket, signed URLs.
-- Transcription: Groq Whisper (`whisper-large-v3-turbo`, env `GROQ_API_KEY`) with a vocabulary prompt; CIA-18 compares providers on real audio
+- Transcription: **decided** Groq Whisper (`whisper-large-v3-turbo`, env `GROQ_API_KEY`) with a vocabulary prompt; `verbose_json` segments feed audio citations. Free tier, same key as the LLM tasks. The planned comparison with OpenAI Whisper was dropped (Oct 18).
 - LLM: structured JSON output. Every call goes through `llm.py`, so any task can switch vendor by config: `<TASK>_MODEL=<provider>:<model>` with `groq` (`GROQ_API_KEY`), `anthropic` (`ANTHROPIC_API_KEY`) or `openai` (any other OpenAI-compatible endpoint via `LLM_BASE_URL` / `LLM_API_KEY`). Switch only if the eval says so. **Decided per task:**
   - Extraction (`extract.py`, transcript -> checklist items with quotes): **decided** Groq `openai/gpt-oss-120b` (strict JSON schema; same `GROQ_API_KEY` as transcription). One schema-constrained call, no tools; code verifies every quote. Override with `EXTRACT_MODEL`.
   - Cited query (`query.py`, reasoning across several reports): Groq `openai/gpt-oss-120b` (same key as extraction; switched from Claude Sonnet because no Anthropic key is configured). Override with `QUERY_MODEL`.
@@ -190,7 +190,7 @@ README.md          Functional / Simulated / Pending
 Contract first: the web owner builds against fake data from `docs/contract.md` and must not wait on the backend. Change the contract only by editing `docs/contract.md` in the same commit as the code.
 
 Core interface:
-`process_report(patient, caregiver, transcript, audio, message_id) -> { record, missing_items, alerts }`
+`process_report(patient, caregiver, transcript, audio, message_id, segments) -> { record, missing_items, alerts }`
 
 Endpoints (initial): `GET /patients/:id`, `GET /patients/:id/reports`, `POST /patients/:id/query` (question -> answer + citations).
 
@@ -250,7 +250,6 @@ Problem: the shift handoff gets lost. Live demo: a juror dictates a report, sees
 
 - Stack confirmation (section 8; web is decided: Next.js).
 - WhatsApp authentication template for the 6-digit code vs sandbox join (section 6).
-- Which transcription provider wins the 5-real-audio test.
 - Final checklist item list (section 4) once validated with a caregiver contact.
 - Emergency triage criteria (section 4.2): the prompt in `triage.py` is provisional. It currently treats a past event the message says was attended, with the patient now fine ("se cayó a la mañana, la vio el médico, está bien"), as **not** an emergency, and anything unclear as an emergency. Confirm or change.
 - Whether to add a deterministic phrase list as a second safety net next to the model (rejected for now, Oct 17).

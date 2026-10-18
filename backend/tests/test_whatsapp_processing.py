@@ -6,7 +6,7 @@ from sqlalchemy.pool import StaticPool
 
 from app import ingest, whatsapp
 from app.models import Base, CarePlan, Medication, Patient, PatientAccess, Person, Role
-from app.transcribe import Transcript, TranscriptionError
+from app.transcribe import Segment, Transcript, TranscriptionError
 from app.whatsapp import IncomingMessage
 
 ANA = "15550100001"     # caregiver of one patient
@@ -71,7 +71,7 @@ def media(monkeypatch):
 
     def fake_transcribe(audio, mime_type, vocabulary):
         transcribed.append({"mime_type": mime_type, "vocabulary": vocabulary})
-        return Transcript(text="comió poco en la cena")
+        return Transcript(text="comió poco en la cena", segments=[Segment(0.0, 1.8, "comió poco en la cena")])
 
     monkeypatch.setattr(whatsapp, "transcribe", fake_transcribe)
     return transcribed
@@ -91,6 +91,7 @@ def test_voice_note_from_caregiver_with_one_patient_is_processed_and_confirmed(s
     assert brain == [{
         "patient_id": "pat_rosa", "sender_id": "ana", "transcript": "comió poco en la cena",
         "audio_ref": None, "message_id": "wamid.v1",
+        "segments": [{"start": 0.0, "end": 1.8, "text": "comió poco en la cena"}],
     }]
     assert sent == [(ANA, "Registré: comió poco. ¿Cómo durmió?")]
 

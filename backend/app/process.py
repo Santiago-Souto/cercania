@@ -33,6 +33,7 @@ from .models import (
     active_care_plan,
     role_for,
 )
+from .segments import quote_times
 
 log = logging.getLogger(__name__)
 
@@ -147,7 +148,8 @@ def add_alert(version: ReportVersion, data: dict, notifications: list | None = N
 
 
 def process_report(patient_id: str, sender_id: str, transcript: str, audio_ref: str | None,
-                   message_id: str, *, triage_client=None, extract_client=None) -> dict:
+                   message_id: str, segments: list[dict] | None = None, *,
+                   triage_client=None, extract_client=None) -> dict:
     """Process one message. Returns a ProcessResult dict (docs/contract.md).
 
     status "ok": stored (or already stored: idempotent on message_id).
@@ -156,17 +158,19 @@ def process_report(patient_id: str, sender_id: str, transcript: str, audio_ref: 
     status "forbidden": sender has no access to the patient; nothing stored.
 
     audio_ref is accepted for the contract but not stored yet (channels pass None).
+    segments ([{start, end, text}], [] for typed reports) are stored on the report and give
+    each verified item quote its audio_start_sec / audio_end_sec (segments.quote_times).
     """
     session = SessionLocal()
     try:
-        return _process(session, patient_id, sender_id, transcript, message_id,
+        return _process(session, patient_id, sender_id, transcript, message_id, list(segments or []),
                         triage_client, extract_client)
     finally:
         session.close()
 
 
 def _process(session: Session, patient_id: str, sender_id: str, transcript: str, message_id: str,
-             triage_client, extract_client) -> dict:
+             segments: list[dict], triage_client, extract_client) -> dict:
     # 1. idempotency
     if (report := _existing(session, message_id)) is not None:
         log.info("duplicate message; returning report %s", report.id)
@@ -207,7 +211,7 @@ def _process(session: Session, patient_id: str, sender_id: str, transcript: str,
     report = Report(
         id=report_id, patient_id=patient_id, sender_id=sender_id, kind=kind, message_id=message_id,
         channel="web" if message_id.startswith("web:") else "whatsapp",
-        transcript=transcript, red_flag=emergency,
+        transcript=transcript, segments=segments, red_flag=emergency,
         triage_status=triage.status, triage_reason=triage.reason, triage_quote=triage.quote,
         triage_quote_verified=triage.quote_verified, triage_model=triage.model,
     )
@@ -226,10 +230,12 @@ def _process(session: Session, patient_id: str, sender_id: str, transcript: str,
         alerts += compare.compare(items, plan, history, report_id=report_id,
                                   history_report_ids=history_ids)
         for i in items:
+            start, end = quote_times(i["quote"], segments) if i["quote_verified"] else (None, None)
             ReportItem(
                 report_version=version, item=ChecklistItem(i["item"]), value=i["value"],
                 level=i["level"], details=i["details"], quote=i["quote"],
-                quote_verified=i["quote_verified"], source=ItemSource.transcript,
+                quote_verified=i["quote_verified"], audio_start_sec=start, audio_end_sec=end,
+                source=ItemSource.transcript,
             )
     version.confirmation_text = confirmation_text(items, alerts, triage=triage)
 

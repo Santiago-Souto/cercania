@@ -17,7 +17,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Capability | Status | Notes |
 |---|---|---|
 | Voice note received from WhatsApp | In progress | Meta Cloud API, bot number +1 555-674-0716 (test number: only allowed phones can write). Inbound voice notes verified against a real Meta payload; end-to-end with transcription pending the Groq key |
-| Audio transcription | Functional | Groq Whisper with a care-vocabulary prompt. Verified live on Render with a fictional m4a (CIA-20): transcribed and processed in 6.3 s. Accuracy on real voices not measured yet (CIA-18) |
+| Audio transcription | Functional | Groq Whisper with a care-vocabulary prompt. Verified live on Render with a fictional m4a (CIA-20): transcribed and processed in 6.3 s. Returns timestamped segments, stored on the report and used for citation audio times (CIA-18). Provider decided without a comparison; accuracy on real voices not measured |
 | `process_report` pipeline (triage + extraction + compare + store) | Functional | `backend/app/process.py`, reached through `app/ingest.py` by WhatsApp and the web app. Verified end to end on Render with the real models (CIA-20): typed and audio reports, ~6–7 s per report with the server warm. Accuracy at scale not measured yet (see Eval) |
 | Structured extraction with verbatim quotes | Functional | `backend/app/extract.py`, Groq `openai/gpt-oss-120b` strict structured output by default; any other vendor via `EXTRACT_MODEL=<provider>:<model>` (`backend/app/llm.py`). Every quote checked in code. Live on Render: all mentioned items extracted with verified quotes. About 1 in 10 calls is still rejected twice by Groq's schema check and returns a retryable `needs_retry` |
 | Quote verification (code) | Functional | Normalized whole-word substring match; unit-tested (`backend/tests/test_extract.py`) |
@@ -51,7 +51,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 - Real auth: login with the 6-digit WhatsApp code (CIA-32) is not built.
 - WhatsApp emergency notifications, pending Meta approval. `NOTIFY_WHATSAPP=0` by default, so they are recorded as `skipped`; the web inbox is the channel in use.
 - Audio storage and `audio_url` (Supabase Storage, signed URLs).
-- Transcript segments: the format and the quote -> audio rule are defined (`docs/contract.md`, CIA-23), but the channels do not store segments yet (CIA-18), so `audio_start_sec` / `audio_end_sec` are still `null`.
+- Audio playback of citations: transcript segments are stored and items and citations get `audio_start_sec` / `audio_end_sec` (CIA-18), but there is no stored audio to play yet (see above). Whisper segments can be long (a 13 s note came back as one segment), so a fragment may cover more than the quote.
 - Members, invites and messages endpoints.
 - Eval not yet run against the real model for `process_report` and the cited query.
 
