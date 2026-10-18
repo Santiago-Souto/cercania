@@ -1,8 +1,8 @@
 """Transcript segments and the one rule that maps a quote to audio times (CIA-23).
 
 A segment is {"start": float, "end": float, "text": str}: seconds from the start of
-the audio, as the transcription provider returns them (transcribe.Segment), in order.
-They are stored on report.segments and are [] for typed reports.
+the audio, in order. Stored on report.segments: one per word when the provider returns
+word timestamps (transcribe.Transcript.segment_dicts), else its segments; [] for typed reports.
 
 Items and citations use the same rule (docs/contract.md, "Transcript segments"):
 the quote's audio range is the shortest run of consecutive segments whose joined text
@@ -30,6 +30,9 @@ def quote_times(quote: str | None, segments: list[dict] | None) -> tuple[float |
             if f" {q} " in f" {joined} ":
                 if best is None or j - i < best[1] - best[0]:
                     best = (i, j)
+                break
+            # Longer than the quote even without segment i: any match starts later (found from i + 1).
+            if len(joined) - len(texts[i]) > len(q):
                 break
     if best is None:
         return None, None

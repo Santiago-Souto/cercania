@@ -188,7 +188,8 @@ Timestamped pieces of the transcript, used to play the audio fragment behind a q
 ]
 ```
 
-- `start` / `end`: seconds (float) from the start of the audio file, as the transcription provider returns them (Groq Whisper `verbose_json`). `text` is the segment text, trimmed. Segments are in audio order.
+- `start` / `end`: seconds (float) from the start of the audio file. `text` is trimmed. Pieces are in audio order.
+- **Granularity:** one piece per **word** when the provider returns word timestamps (Groq Whisper `verbose_json` with `timestamp_granularities[]=word`, the default), otherwise the provider's segments. Whisper often returns a whole voice note as a single segment, so words are what let a citation play just the quoted words. Same shape and same rule either way.
 - Typed reports (WhatsApp text or web text) have `[]`.
 - **Quote -> audio times** (code only, `backend/app/segments.py`, same for items and citations): the shortest run of consecutive segments whose joined text contains the quote, with the same normalization as quote verification (case, accents, punctuation, whitespace; whole words). `audio_start_sec` is the first segment's `start`, `audio_end_sec` the last segment's `end`. If two runs are equally short, the first one wins. No match or no segments: both `null`.
 - Example: with the segments above, `"comió poco en la cena"` -> `3.5`-`6.0`; `"las ocho. Comió poco"` -> `0.0`-`6.0`.
