@@ -355,7 +355,7 @@ Any authenticated person. Errors: `401 unauthenticated`.
 
 ### `GET /me/patients`
 
-Any authenticated person. One entry per membership, for the dashboard. Status fields come from reports:
+Any authenticated person. One entry per membership, for the dashboard. A person with no role at all (no membership, not admin, not caregiver, no pending invite) first gets their own patient profile with the `patient` role, as at sign-up; `POST /auth/verify` does the same for an existing account. Status fields come from reports:
 
 - `last_report_at`: `created_at` of the patient's newest report, or `null`.
 - `red_flag`: some report from the last 24 h has `red_flag`.

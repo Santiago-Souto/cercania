@@ -165,3 +165,24 @@ def on_signup(session: Session, person: Person) -> str:
         return "invite_pending"
     own_patient_profile(session, person)
     return "self_signup_patient"
+
+
+def ensure_default_role(session: Session, person: Person) -> bool:
+    """A person left with no role at all is a patient (CIA-48 default): give them their own profile.
+
+    Covers accounts from before the sign-up rule, a declined invite, or memberships an admin
+    removed. Admins, caregivers and anyone with a pending invite are left as they are.
+    Returns True when a profile was created.
+    """
+    if person.is_admin or person.is_caregiver:
+        return False
+    if session.scalar(select(PatientAccess.id).where(PatientAccess.person_id == person.id).limit(1)) is not None:
+        return False
+    if session.scalar(select(Invite.id).where(Invite.phone == person.phone,
+                                              Invite.status == InviteStatus.pending).limit(1)) is not None:
+        return False
+    patient = own_patient_profile(session, person)
+    session.flush()
+    log(session, "default_patient_applied", actor_id=None, person_id=person.id, phone=person.phone,
+        patient_id=patient.id, after={"role": Role.patient.value, "patient_id": patient.id})
+    return True
