@@ -12,7 +12,7 @@ Tool-neutral: use whatever Linear access you have (MCP, API or CLI), `git`, and 
 ## 1. Understand (intent before code)
 
 1. Read the ticket: title, description, assignee, status, relations, comments.
-2. Read what it points to: `AGENTS.md` (always §3 core principle, §7 safety, §10 out of scope, §12 definition of done), `docs/contract.md`, `docs/tasks.md`, and the files listed in the ticket.
+2. Read what it points to: `AGENTS.md` (always §3 core principle, §7 safety, §10 out of scope, §12 definition of done), `docs/contract.md`, and the files listed in the ticket.
 3. Read the code that already exists in those files and their callers. Never plan against code you have not opened.
 4. Write a short **intent brief** back to the user (5-8 lines):
    - The problem in one sentence, from the user's point of view (caregiver, family, next shift, juror).
@@ -36,7 +36,7 @@ Tool-neutral: use whatever Linear access you have (MCP, API or CLI), `git`, and 
 ## 3. Plan
 
 1. Write a plan of small steps. Each step names the files it touches and how it will be checked (a test, a command, a page to open).
-2. Stay inside the files the ticket owns (AGENTS.md §9 / `docs/tasks.md`). If you need to touch another owner's file or the contract, say so in the plan.
+2. Stay inside the files the ticket owns (AGENTS.md §9). If you need to touch another owner's file or the contract, say so in the plan.
 3. Order steps so the critical path works early: a thin end-to-end slice first, polish last.
 4. Write tests first where the behavior is checkable in code (quote verification, compare rules, idempotency, endpoint shapes).
 5. **Gate:** show the plan to the user and wait for approval before writing code. If the user said to run autonomously, post the plan as a comment on the ticket and continue.
