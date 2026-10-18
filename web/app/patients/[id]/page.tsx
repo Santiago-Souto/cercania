@@ -7,6 +7,7 @@ import { AppShell, Brand, BottomNav } from "@/components/app/shell";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { EmergencyCallButton } from "@/components/app/emergency-call";
 import { EmergencyContactCard } from "@/components/app/emergency-contact-card";
+import { PatientAlarmCard, getPatientAlarms, isRecent } from "@/components/app/patient-alarm";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,8 +23,14 @@ export default async function PatientHome(props: PageProps<"/patients/[id]">) {
   const mine = await getMyPatients();
   const role = mine.find((p) => p.id === id)?.role;
   if (role === "patient") redirect(`/patients/${id}/me` as Route);
-  const [patient, reports] = await Promise.all([getPatient(id), getReports(id)]);
   const healthTeam = role === "doctor" || role === "nurse" || role === "institution";
+  // Patient help requests and red flags reach caregivers and the health team only (never family).
+  const [patient, reports, alarms] = await Promise.all([
+    getPatient(id),
+    getReports(id),
+    role === "caregiver" || healthTeam ? getPatientAlarms(id) : Promise.resolve([]),
+  ]);
+  const recentAlarms = alarms.filter((m) => isRecent(m));
   const last = reports[0];
   const plan = patient.care_plan;
   const covered = last ? last.items.filter((i) => i.value !== null).length : 0;
@@ -49,6 +56,17 @@ export default async function PatientHome(props: PageProps<"/patients/[id]">) {
       </header>
 
       <main className="flex flex-1 flex-col gap-4 px-4 pb-4">
+        {/* First thing on screen: the patient asked for help in the last 24 h. */}
+        {recentAlarms.length > 0 && (
+          <PatientAlarmCard
+            m={recentAlarms[0]}
+            patientName={patient.display_name}
+            contact={patient.emergency_contact}
+            alertsHref={`/patients/${id}/alerts`}
+            more={recentAlarms.length - 1}
+          />
+        )}
+
         <Button asChild size="xl">
           <Link href={`/patients/${id}/reports/new` as Route}>
             <MicIcon />

@@ -166,6 +166,8 @@ export type MyPatient = {
   open_alerts: number | null;
   red_flag: boolean | null;
   missing_report: boolean | null;
+  /** Newest patient help request / red-flag message of the last 24 h; null for family and the patient. */
+  patient_alarm: "help" | "emergency" | null;
 };
 
 export type Member = { user_id: string; name: string; role: Role };

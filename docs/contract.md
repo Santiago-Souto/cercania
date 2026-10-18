@@ -361,7 +361,8 @@ Any authenticated person. One entry per membership, for the dashboard. A person 
 - `red_flag`: some report from the last 24 h has `red_flag`.
 - `open_alerts`: count of `emergency`, `omission` and `change` alerts on the latest version of reports from the last 24 h (`missing_item` alerts are not counted).
 - `missing_report`: no report in the last 24 h.
-- Role `patient` never sees reports or alerts: `last_report_at`, `open_alerts`, `red_flag` and `missing_report` are all `null`.
+- `patient_alarm`: `help` or `emergency` when the newest patient help request or red-flag "how I feel" message from the last 24 h (see Patient messages) is one, else `null`. Always `null` for roles without `read_patient_messages` (family, patient).
+- Role `patient` never sees reports or alerts: `last_report_at`, `open_alerts`, `red_flag`, `missing_report` and `patient_alarm` are all `null`.
 
 ```json
 {
@@ -374,7 +375,8 @@ Any authenticated person. One entry per membership, for the dashboard. A person 
       "last_report_at": "2026-10-18T00:05:00Z",
       "open_alerts": 1,
       "red_flag": false,
-      "missing_report": false
+      "missing_report": false,
+      "patient_alarm": null
     }
   ]
 }

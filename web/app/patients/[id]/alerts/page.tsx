@@ -4,8 +4,9 @@
 // their notification lands somewhere (they are patient messages, not reports).
 import Link from "next/link";
 import type { Route } from "next";
-import { BellOffIcon, CircleAlertIcon, HandHelpingIcon, ListChecksIcon, TrendingDownIcon, TriangleAlertIcon } from "lucide-react";
+import { BellOffIcon, CircleAlertIcon, ListChecksIcon, TrendingDownIcon, TriangleAlertIcon } from "lucide-react";
 import { EmergencyCallButton } from "@/components/app/emergency-call";
+import { PatientAlarmCard, getPatientAlarms } from "@/components/app/patient-alarm";
 import { AppShell, BottomNav, ScreenHeader } from "@/components/app/shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -13,9 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Item, ItemContent, ItemMedia, ItemTitle } from "@/components/ui/item";
-import { ApiError, getPatient, getPatientMessages, getReports } from "@/lib/api";
+import { getPatient, getReports } from "@/lib/api";
 import { CHECKLIST_LABEL, ROLE_LABEL, dayTime, firstName } from "@/lib/format";
-import type { Alert as AlertT, AlertNotification, PatientMessage } from "@/lib/types";
+import type { Alert as AlertT, AlertNotification } from "@/lib/types";
 
 const RECIPIENT_LABEL: Record<AlertNotification["to"], string> = {
   caregiver: ROLE_LABEL.caregiver,
@@ -35,46 +36,9 @@ const GROUPS: { type: AlertT["type"]; label: string }[] = [
   { type: "missing_item", label: "Checklist incompleto" },
 ];
 
-// Family has no `read_patient_messages` (403): they just do not see this section.
-async function patientAlarms(patientId: string): Promise<PatientMessage[]> {
-  try {
-    const messages = await getPatientMessages(patientId);
-    return messages.filter((m) => m.kind === "help" || m.red_flag);
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 403) return [];
-    throw err;
-  }
-}
-
-function PatientAlarm({ m, patientName }: { m: PatientMessage; patientName: string }) {
-  const help = m.kind === "help";
-  const seen = m.seen_by.map((s) => firstName(s.name)).filter(Boolean);
-  return (
-    <Alert variant="danger">
-      {help ? <HandHelpingIcon /> : <TriangleAlertIcon />}
-      <AlertTitle className="font-heading text-lg font-bold">{help ? "Pidió ayuda" : "Posible emergencia"}</AlertTitle>
-      <AlertDescription className="flex flex-col gap-1 text-[15px]">
-        <span>
-          {dayTime(m.created_at)} ·{" "}
-          {help ? (
-            <>{firstName(patientName)} tocó “Necesito ayuda”.</>
-          ) : (
-            <>
-              {firstName(patientName)} escribió: <em>“{m.text}”</em>
-            </>
-          )}
-        </span>
-        {m.reason && <span>Motivo: {m.reason}</span>}
-        <strong>Contactá a emergencias o al médico.</strong>
-        {seen.length > 0 && <span className="text-[13px]">Lo vio: {seen.join(", ")}</span>}
-      </AlertDescription>
-    </Alert>
-  );
-}
-
 export default async function AlertsPage(props: PageProps<"/patients/[id]/alerts">) {
   const { id } = await props.params;
-  const [patient, reports, alarms] = await Promise.all([getPatient(id), getReports(id), patientAlarms(id)]);
+  const [patient, reports, alarms] = await Promise.all([getPatient(id), getReports(id), getPatientAlarms(id)]);
   const flagged = reports.filter((r) => r.red_flag);
   const emergencyOf = (r: (typeof reports)[number]) => r.alerts.find((a) => a.type === "emergency");
   const last = reports[0];
@@ -88,9 +52,8 @@ export default async function AlertsPage(props: PageProps<"/patients/[id]/alerts
         {alarms.length > 0 && (
           <section className="flex flex-col gap-2.5" aria-label="Mensajes del paciente">
             {alarms.map((m) => (
-              <PatientAlarm key={m.id} m={m} patientName={patient.display_name} />
+              <PatientAlarmCard key={m.id} m={m} patientName={patient.display_name} contact={patient.emergency_contact} />
             ))}
-            <EmergencyCallButton contact={patient.emergency_contact} className="self-start" />
           </section>
         )}
 
