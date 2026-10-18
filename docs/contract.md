@@ -18,7 +18,7 @@ Edit this list only after validating with a caregiver contact. Update `AGENTS.md
 ## Core function
 
 ```
-process_report(patient_id, sender_id, transcript, audio_ref, message_id) -> ProcessResult
+process_report(patient_id, sender_id, transcript, audio_ref, message_id, segments=[]) -> ProcessResult
 ```
 
 Implemented in `backend/app/process.py` (the entry point is reached through `app/ingest.py`). `sender_id` is a caregiver for shift reports; any registered role can trigger an emergency report (`report.kind = "emergency"`, no checklist items).
@@ -26,6 +26,7 @@ Implemented in `backend/app/process.py` (the entry point is reached through `app
 - Idempotent on `message_id`: a repeated delivery returns the stored result and creates nothing.
 - Never raises to the caller for model errors. Caregiver reports that cannot be extracted return `status: "needs_retry"`.
 - `audio_ref` is accepted but not stored yet; channels pass `null`.
+- `segments` are the transcript segments from transcription (see Transcript segments); `[]` for typed reports. They are stored on the report.
 
 ### ProcessResult statuses
 
@@ -107,7 +108,7 @@ Rules:
 - `triage.quote` is verified like any other quote, but `quote_verified: false` **never** turns an emergency off; it is only shown as unverified.
 - `triage.status` is `ok` or `failed` (model error/timeout). On `failed`, `red_flag` is `false`, the report is still stored and the reply still includes the fixed emergency line.
 - On an emergency, `confirmation_text` is the fixed emergency message and asks no checklist questions.
-- `audio_start_sec` / `audio_end_sec` on items come from the report's transcript segments by the rule in Transcript segments; `null` when there are none or the quote is not in them. Segments are not stored by the channels yet (CIA-18), so today they are always `null`.
+- `audio_start_sec` / `audio_end_sec` on items come from the report's transcript segments by the rule in Transcript segments, only for verified quotes; `null` when there are none, the quote is unverified or it is not in them.
 
 ## Alert types
 

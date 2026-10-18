@@ -190,7 +190,7 @@ README.md          Functional / Simulated / Pending
 Contract first: the web owner builds against fake data from `docs/contract.md` and must not wait on the backend. Change the contract only by editing `docs/contract.md` in the same commit as the code.
 
 Core interface:
-`process_report(patient, caregiver, transcript, audio, message_id) -> { record, missing_items, alerts }`
+`process_report(patient, caregiver, transcript, audio, message_id, segments) -> { record, missing_items, alerts }`
 
 Endpoints (initial): `GET /patients/:id`, `GET /patients/:id/reports`, `POST /patients/:id/query` (question -> answer + citations).
 

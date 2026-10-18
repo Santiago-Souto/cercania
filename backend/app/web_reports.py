@@ -82,6 +82,7 @@ async def create_report(
     if existing is not None and existing.patient_id != patient_id:
         return error_response(409, "client_id_conflict", "Ese identificador ya se usó para otro paciente. Generá uno nuevo.")
     transcript = existing.transcript if existing is not None else None
+    segments: list[dict] = []
     if transcript is None and audio is not None:
         mime = (audio.content_type or "").split(";")[0].strip()
         if mime not in AUDIO_TYPES:
@@ -104,6 +105,7 @@ async def create_report(
             log.error("Web report %s: transcription failed: %s", message_id, exc)
             return error_response(502, "transcription_failed", exc.user_message)
         transcript = result.text
+        segments = result.segment_dicts()
     elif transcript is None:
         transcript = text.strip()
 
@@ -115,6 +117,7 @@ async def create_report(
             transcript=transcript,
             audio_ref=None,
             message_id=message_id,
+            segments=segments,
         )
     except ingest.ProcessingUnavailable:
         log.error("Web report %s: process_report is not available yet", message_id)

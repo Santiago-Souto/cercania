@@ -39,7 +39,9 @@ def existing_report(session: Session, message_id: str) -> Report | None:
     return session.scalar(select(Report).where(Report.message_id == message_id))
 
 
-def process_report(patient_id: str, sender_id: str, transcript: str, audio_ref: str | None, message_id: str) -> dict:
+def process_report(patient_id: str, sender_id: str, transcript: str, audio_ref: str | None, message_id: str,
+                   segments: list[dict] | None = None) -> dict:
+    """`segments`: timestamped transcript pieces from transcription; [] for typed reports."""
     try:
         module = __import__(PROCESS_REPORT_MODULE, fromlist=["process_report"])
         brain = module.process_report
@@ -51,4 +53,5 @@ def process_report(patient_id: str, sender_id: str, transcript: str, audio_ref: 
         transcript=transcript,
         audio_ref=audio_ref,
         message_id=message_id,
+        segments=segments or [],
     )

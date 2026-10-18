@@ -464,6 +464,7 @@ def deliver(message: IncomingMessage, caregiver_id: str, patient_id: str, transc
             transcript=transcript.text,
             audio_ref=None,
             message_id=message.id,
+            segments=transcript.segment_dicts(),
         )
     except ingest.ProcessingUnavailable:
         log.error("Message %s: process_report is not available yet", message.id)
