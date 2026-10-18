@@ -5,8 +5,10 @@ name: Keep Render awake
 
 on:
   schedule:
-    # Every 5 min: GitHub often starts scheduled runs late, and Render sleeps at ~15 min.
-    - cron: "*/5 * * * *"
+    # Every 5 min, 09:00-19:55 Argentina time (UTC-3, no DST). GitHub often starts
+    # scheduled runs late, and Render sleeps at ~15 min. Daytime only, so both
+    # services fit Render's 750 free instance hours a month (see docs/deploy.md).
+    - cron: "*/5 12-22 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -19,8 +21,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Ping web and API
-        # A cold start takes about a minute, so allow long requests and retry.
+        # A cold start takes about a minute, so allow long requests and retry once
+        # (worst case 2 x 90 s + 10 s, inside the job timeout and the cron interval).
         run: |
           curl --fail --silent --show-error --max-time 90 \
-            --retry 3 --retry-delay 10 --retry-all-errors \
+            --retry 1 --retry-delay 10 --retry-all-errors \
             https://cercania-web.onrender.com/api/health
