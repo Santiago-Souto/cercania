@@ -205,10 +205,10 @@ def _accept_invites(db: Session, person: Person) -> None:
 
 
 def _cookie_attrs() -> dict:
-    """SameSite=None by default: the web and the API live on different sites
-    (onrender.com is a public suffix), so a Lax cookie would never reach the API.
-    Browsers drop SameSite=None cookies that are not Secure; local http dev sets
-    SESSION_COOKIE_SECURE=0 with SESSION_COOKIE_SAMESITE=lax (localhost is one site)."""
+    """The web reaches the API through its same-origin /api rewrite, so the cookie is
+    first-party there and the deploy sets SESSION_COOKIE_SAMESITE=lax. The SameSite=None
+    default only matters for a browser calling the API host directly. Local http dev
+    also sets SESSION_COOKIE_SECURE=0."""
     return {"httponly": True, "path": "/",
             "secure": os.environ.get("SESSION_COOKIE_SECURE", "1") != "0",
             "samesite": (os.environ.get("SESSION_COOKIE_SAMESITE") or "none").lower()}

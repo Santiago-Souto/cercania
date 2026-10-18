@@ -31,25 +31,24 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Emergency notifications: web inbox | Functional | `backend/app/notify.py` writes one row per recipient; the web polls `GET /me/notifications` about every 5 s and shows a toast and a browser notification while the tab is open |
 | Emergency notifications by WhatsApp | Pending | Code path built, off by default: each attempt is recorded as `skipped` unless `NOTIFY_WHATSAPP=1`. Needs Meta approval (template or recipients on the allowed list) |
 | Cited natural-language query | Functional | `POST /patients/{id}/query` (Groq `openai/gpt-oss-120b`, switch with `QUERY_MODEL`); every citation verified in code. Live on Render: cited answer in 3.3 s, citation found verbatim in the transcript; "unclear" when the reports do not say |
-| Web timeline (caregiver view) | Pending | Web owner |
-| Family read-only view | Pending | Web owner |
+| Web timeline (caregiver view) | Functional | Patient home, report detail with versions, alerts and cited query, all from the backend |
+| Family read-only view | In progress | Screen reads the backend; family messages are a separate track (CIA-36) |
 | Doctor edits care plan (new version) | Pending | Role and permission in schema; no endpoint/view yet |
 | Patient view (how I feel + I need help; no reports or alerts) | In progress | Backend done (CIA-29, `backend/app/patient_messages.py`): "Necesito ayuda" notifies every caregiver and health-team member in the web inbox with no model call; "Cómo me siento" (text or audio) goes through triage and notifies the team only on a red flag. Replies to the patient are fixed text. WhatsApp copies are best effort (`NOTIFY_WHATSAPP`). Screen pending (CIA-35) |
-| Login with 6-digit SMS code | Functional (backend) | `POST /auth/signup`, `/auth/login`, `/auth/verify`, `/auth/logout` (`backend/app/api/auth.py`), code sent by Twilio SMS, session cookie. Web screens not wired yet (CIA-32). A Twilio trial only texts numbers verified in its console |
+| Login with 6-digit SMS code | Functional | `POST /auth/signup`, `/auth/login`, `/auth/verify`, `/auth/logout` (`backend/app/api/auth.py`), code sent by Twilio SMS, session cookie. Web screens `/login` and `/login/code` (CIA-32): sign-up / login tabs, 6-digit input with paste and `one-time-code` autofill, resend countdown, a Spanish message per error, "código vencido" state, then a lone `patient` membership opens the patient view and everyone else "Mis pacientes". Verified locally end to end against the seed data. A Twilio trial only texts numbers verified in its console |
+| Web reads the real API (no fake data) | Functional | CIA-14: every screen reads the backend as the logged-in person. Server components forward the session cookie; browser calls go through the same-origin `/api` rewrite (`web/next.config.ts`) so the cookie is first-party on Render. No session or a `401` sends the person to `/login` |
 | Eval script and 20 cases | In progress | `eval/run_eval.py` built and tested; 4 cases in `eval/cases.csv` (c003 is an emergency), all `dev`, 0 unseen. Scores emergency recall and emergency false alarms on their own lines. Groq's free tier (8,000 tokens/minute) allows only a few reports per minute: run it with `--delay 30` |
 
 ### Simulated
 
-- **Caller identity (dev fallback):** the API identifies the caller by the session cookie from `POST /auth/verify`. Until the web login is wired (CIA-32), the web app sends an `X-Person-Id` header: the **Simulado** persona picker in the app shell (Ana `cg_001` caregiver / Carmen `fam_001` family, stored in a cookie) or `NEXT_PUBLIC_DEV_PERSON_ID` (`web/lib/api-shared.ts`); anyone can claim any id, so it is honored only with `ALLOW_DEV_IDENTITY_HEADER=1` (local dev / demo with fictional data). Not for real data.
+- **Caller identity (backend dev fallback):** the API identifies the caller by the session cookie from `POST /auth/verify`, and the web app only uses that. For curl and backend tests, `ALLOW_DEV_IDENTITY_HEADER=1` also accepts an `X-Person-Id` header when there is no cookie (`backend/app/deps.py`); anyone can claim any id that way, so it stays unset in the deploy.
 - **Login code on the Twilio trial (demo only):** a trial account only sends predefined templates, so with `TWILIO_TRIAL_TEMPLATE=sms_2fa` the backend sends Twilio's `sms_2fa` template and reads the code from Twilio's reply. A real SMS arrives, but on the trial that code is **always the same**, so anyone who knows it can log in as any registered phone. Only with fictional data; leave it unset once the account is upgraded (then our own random code is sent).
 - **Login code delivery (dev only):** with `AUTH_DEV_LOG_CODES=1` the code is written to the API log instead of being texted, for local dev without Twilio. Never set in a real deploy.
 - **Fake model clients** exist only in the backend tests. The running app calls the real models.
 - Patient, care plan and history data are fictional seed data (`backend/app/seed.py`). Seeded reports are marked `channel="seed"`, `model="seed"`: they are fixtures, not model output.
-- Web app screens show contract-shaped fake data (`web/lib/fake.ts`) until the backend endpoints land; a "Datos de prueba ficticios" banner is shown while it is on. With fake data on, sending a new report returns the contract's example result whatever was sent (`fakeProcessResult`). With `NEXT_PUBLIC_USE_FAKE_DATA=0` the web reads the real backend, including the emergency notifications (inbox polled every 5 s, toast, browser Notification). Buttons that need the backend (help, invite, login) are not wired yet.
 
 ### Pending
 
-- Web login screens (CIA-32) are not wired to `/auth/*` yet.
 - WhatsApp emergency notifications, pending Meta approval. `NOTIFY_WHATSAPP=0` by default, so they are recorded as `skipped`; the web inbox is the channel in use.
 - Audio playback of citations in the web (CIA-13). The backend side is ready: voice notes are stored in a private Supabase Storage bucket (CIA-44), `GET /reports/{id}/audio` returns a 5-minute signed URL, and items and citations carry `audio_start_sec` / `audio_end_sec` (CIA-18). Timing comes from Groq's word timestamps, so a citation plays just its words (Whisper's own segments often cover the whole note).
 - Audio retention: stored voice notes are never deleted yet.
@@ -78,7 +77,7 @@ uvicorn app.main:app --reload   # http://localhost:8000/health
 pytest                          # backend tests
 ```
 
-Deploy: live URLs, env vars and troubleshooting in [`docs/deploy.md`](docs/deploy.md). `render.yaml` is a Render Blueprint (Render -> New -> Blueprint -> this repo). Health check at `/health`. It creates two services: `cercania-api` (backend) and `cercania-web` (Next.js). On first deploy Render asks for the secrets; set `NEXT_PUBLIC_API_URL` on the web to the API's public URL (`https://cercania-api.onrender.com` or whatever Render assigns). The web ships with `NEXT_PUBLIC_USE_FAKE_DATA=1` (fictional data, banner shown) until the read endpoints land. Free services sleep: open both URLs a minute before a demo.
+Deploy: live URLs, env vars and troubleshooting in [`docs/deploy.md`](docs/deploy.md). `render.yaml` is a Render Blueprint (Render -> New -> Blueprint -> this repo). Health check at `/health`. It creates two services: `cercania-api` (backend) and `cercania-web` (Next.js). On first deploy Render asks for the secrets; set `NEXT_PUBLIC_API_URL` on the web to the API's public URL (`https://cercania-api.onrender.com` or whatever Render assigns). Free services sleep: open both URLs a minute before a demo.
 
 Database on Supabase:
 1. Create a project at supabase.com (free plan). Save the database password.
@@ -91,12 +90,11 @@ Web (Node 20+, Next.js 16 + shadcn/ui, mobile-first):
 ```bash
 cd web
 npm install
-npm run dev       # fake data, http://localhost:3000 -> /login
-npm run dev:real  # real backend at NEXT_PUBLIC_API_URL
+npm run dev       # http://localhost:3000 -> /login, backend at NEXT_PUBLIC_API_URL (web/.env.local)
 npm run lint && npm run build
 ```
 
-Fake data is opt-in: only `NEXT_PUBLIC_USE_FAKE_DATA=1` (set by `npm run dev`) shows it. Without it the app calls the backend at `NEXT_PUBLIC_API_URL`, so a deploy never shows fabricated patients by accident. Design and screen map: `docs/design/DESIGN.md`.
+The web always reads the backend; there is no fake data. Log in with a seeded fictional phone (`backend/app/seed.py`, e.g. Ana `+15550100001`). Without Twilio, run the backend with `AUTH_DEV_LOG_CODES=1` (the code is printed in the API log) and, on http, `SESSION_COOKIE_SECURE=0`. Design and screen map: `docs/design/DESIGN.md`.
 
 ## Evaluation
 

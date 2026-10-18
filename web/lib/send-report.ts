@@ -1,8 +1,7 @@
 // Browser-side call for the new report screen (CIA-31): POST /patients/{id}/reports.
-// Kept apart from lib/api.ts because that file uses server-only APIs.
+// Kept apart from lib/api.ts because that file uses server-only APIs. Same-origin through the /api rewrite.
 
-import { API_URL, ApiError, errorFrom, identityHeaders, NETWORK_ERROR_MESSAGE, USE_FAKE } from "./api-shared";
-import { fakeProcessResult } from "./fake";
+import { ApiError, BROWSER_API, errorFrom, NETWORK_ERROR_MESSAGE, onUnauthorized } from "./api-shared";
 import type { ProcessResult } from "./types";
 
 export type ReportInput = { text: string } | { audio: Blob };
@@ -20,13 +19,8 @@ function audioFilename(type: string): string {
 }
 
 export async function sendReport(patientId: string, clientId: string, input: ReportInput): Promise<ProcessResult> {
-  if (USE_FAKE) {
-    await new Promise((r) => setTimeout(r, 800));
-    return fakeProcessResult;
-  }
-
   let body: BodyInit;
-  const headers: Record<string, string> = identityHeaders();
+  const headers: Record<string, string> = {};
   if ("text" in input) {
     body = JSON.stringify({ client_id: clientId, text: input.text });
     headers["Content-Type"] = "application/json";
@@ -41,16 +35,16 @@ export async function sendReport(patientId: string, clientId: string, input: Rep
 
   let res: Response;
   try {
-    res = await fetch(`${API_URL}/patients/${patientId}/reports`, {
+    res = await fetch(`${BROWSER_API}/patients/${patientId}/reports`, {
       method: "POST",
       body,
       headers,
-      credentials: "include",
       cache: "no-store",
     });
   } catch {
     throw new ApiError("network_error", NETWORK_ERROR_MESSAGE, 0);
   }
+  if (res.status === 401) onUnauthorized();
   if (!res.ok) throw await errorFrom(res);
   return res.json() as Promise<ProcessResult>;
 }
