@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.llm import API_KEY_ENV, parse_model
+from app.llm import API_KEY_ENV, LLMError, parse_model
 from app.models import (
     Base,
     Patient,
@@ -190,11 +190,21 @@ def test_recipients_never_include_patient_or_doctor_and_skip_missing_provider():
 # --- live call (needs the key for the configured TRIAGE_MODEL provider) --------------
 
 
-LIVE_KEY = API_KEY_ENV[parse_model(os.environ.get("TRIAGE_MODEL") or TRIAGE_DEFAULT_MODEL)[0]]
+def _live_key(spec: str) -> str | None:
+    """Env var with the API key for `spec`; None for an invalid spec, so a bad
+    TRIAGE_MODEL skips only the live test instead of breaking collection."""
+    try:
+        return API_KEY_ENV[parse_model(spec)[0]]
+    except LLMError:
+        return None
+
+
+LIVE_KEY = _live_key(os.environ.get("TRIAGE_MODEL") or TRIAGE_DEFAULT_MODEL)
 
 
 @pytest.mark.live
-@pytest.mark.skipif(not os.environ.get(LIVE_KEY), reason=f"needs {LIVE_KEY}")
+@pytest.mark.skipif(not (LIVE_KEY and os.environ.get(LIVE_KEY)),
+                    reason=f"needs {LIVE_KEY}" if LIVE_KEY else "TRIAGE_MODEL is not a valid model spec")
 @pytest.mark.parametrize("text,role,expected", [
     ("Che, Jorge se fue al piso en el pasillo y no responde, está pálido.", Role.caregiver, True),
     ("Me caí y no me puedo levantar, ayuda por favor.", Role.patient, True),

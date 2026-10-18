@@ -237,11 +237,21 @@ def test_extract_raises_on_invalid_json_and_empty_transcript():
 # --- live call (needs the key for the configured EXTRACT_MODEL provider) -------------
 
 
-LIVE_KEY = API_KEY_ENV[parse_model(os.environ.get("EXTRACT_MODEL") or DEFAULT_MODEL)[0]]
+def _live_key(spec: str) -> str | None:
+    """Env var with the API key for `spec`; None for an invalid spec, so a bad
+    EXTRACT_MODEL skips only the live test instead of breaking collection."""
+    try:
+        return API_KEY_ENV[parse_model(spec)[0]]
+    except LLMError:
+        return None
+
+
+LIVE_KEY = _live_key(os.environ.get("EXTRACT_MODEL") or DEFAULT_MODEL)
 
 
 @pytest.mark.live
-@pytest.mark.skipif(not os.environ.get(LIVE_KEY), reason=f"needs {LIVE_KEY}")
+@pytest.mark.skipif(not (LIVE_KEY and os.environ.get(LIVE_KEY)),
+                    reason=f"needs {LIVE_KEY}" if LIVE_KEY else "EXTRACT_MODEL is not a valid model spec")
 def test_live_extraction_unseen_transcript():
     transcript = (
         "Bueno, Rosa hoy anduvo medio bajoneada. A la mañana le di el enalapril y la metformina, "
