@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter
 
-from app.api import corrections, me, notifications, patients, query, reports
+from app.api import auth, corrections, me, notifications, patients, query, reports
 
 api_router = APIRouter()
-for module in (patients, reports, corrections, me, notifications, query):
+for module in (auth, patients, reports, corrections, me, notifications, query):
     api_router.include_router(module.router)

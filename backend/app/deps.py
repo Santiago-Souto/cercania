@@ -1,14 +1,26 @@
 """Shared FastAPI dependencies: database session and the calling person."""
 
+import hashlib
 import os
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.errors import api_error
-from app.models import ROLE_PERMISSIONS, Patient, Permission, Report, Role, SessionLocal, role_for
+from app.models import (
+    ROLE_PERMISSIONS,
+    AuthSession,
+    Patient,
+    Permission,
+    Report,
+    Role,
+    SessionLocal,
+    role_for,
+    utcnow,
+)
 
 
 def get_db() -> Iterator[Session]:
@@ -19,27 +31,37 @@ def get_db() -> Iterator[Session]:
         session.close()
 
 
-def current_person_id(request: Request) -> str:
-    """Who is calling.
+SESSION_COOKIE = "cercania_session"
 
-    SIMULATED until the login backend lands (CIA-26): the web app sends the
-    person id in the `X-Person-Id` header. Anyone can claim any id, so the
-    header is only honored when ALLOW_DEV_IDENTITY_HEADER=1 (local dev, demo
-    with fictional data); otherwise every call is 401. Replace the body of this
-    function with the session-cookie lookup; endpoints that depend on it do not change.
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def current_person_id(request: Request, db: Session = Depends(get_db)) -> str:
+    """Who is calling: the session cookie set by POST /auth/verify (api/auth.py).
+
+    SIMULATED fallback for local dev / demo with fictional data: with
+    ALLOW_DEV_IDENTITY_HEADER=1 and no valid cookie, the `X-Person-Id` header is
+    honored. Anyone can claim any id that way, so never set it in a real deploy.
     """
-    if os.environ.get("ALLOW_DEV_IDENTITY_HEADER") != "1":
-        raise HTTPException(
-            status_code=401,
-            detail={"code": "unauthenticated", "message": "El inicio de sesión todavía no está disponible."},
-        )
-    person_id = request.headers.get("X-Person-Id")
-    if not person_id:
-        raise HTTPException(
-            status_code=401,
-            detail={"code": "unauthenticated", "message": "Iniciá sesión para continuar."},
-        )
-    return person_id
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        session = db.get(AuthSession, hash_token(token))
+        if session is not None and _aware(session.expires_at) > utcnow():
+            return session.person_id
+    if os.environ.get("ALLOW_DEV_IDENTITY_HEADER") == "1":
+        person_id = request.headers.get("X-Person-Id")
+        if person_id:
+            return person_id
+    raise HTTPException(
+        status_code=401,
+        detail={"code": "unauthenticated", "message": "Iniciá sesión para continuar."},
+    )
+
+
+def _aware(dt: datetime) -> datetime:
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)  # SQLite returns naive UTC
 
 
 @dataclass(frozen=True)
