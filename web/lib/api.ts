@@ -136,9 +136,11 @@ export async function declineInvite(inviteId: string): Promise<void> {
   await request(`/me/invites/${inviteId}/decline`, { method: "POST" });
 }
 
-export async function getPatientMessages(patientId: string): Promise<PatientMessage[]> {
+/** A team member listing messages marks them seen: pass `limit` when only a few are shown. */
+export async function getPatientMessages(patientId: string, limit?: number): Promise<PatientMessage[]> {
   await connection(); // patient data is always live: render at request time
-  const data = await request<{ messages: PatientMessage[] }>(`/patients/${patientId}/patient-messages`);
+  const query = limit ? `?limit=${limit}` : "";
+  const data = await request<{ messages: PatientMessage[] }>(`/patients/${patientId}/patient-messages${query}`);
   return data.messages;
 }
 

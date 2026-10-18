@@ -1,5 +1,6 @@
 "use client";
-// Opening a patient clears its "Novedades" dot on "Mis pacientes" (CIA-60). The header badge catches up on
+// Opening a patient clears its plain-message news on "Mis pacientes" (CIA-60); urgent rows (emergencies,
+// help, red flags) stay unread so the watcher still announces them. The header badge catches up on
 // the next inbox poll. Fire and forget: a failed call only leaves the dot until the next visit.
 import { useEffect } from "react";
 import { markPatientNotificationsRead } from "@/lib/client-api";

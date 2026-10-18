@@ -285,3 +285,17 @@ def test_overlapping_polls_never_fail_on_seen(db, factory):
     patient_messages.mark_seen(db, ["pm_9"], "doc")  # a plain insert would violate the unique pair here
     with factory() as s:
         assert [x.person_id for x in s.get(PatientMessage, "pm_9").seen] == ["doc"]
+
+
+def test_opening_the_patient_clears_plain_messages_but_never_urgent_ones(db, monkeypatch):
+    """read-all?urgent=false (patient home) must not consume an emergency the watcher has not shown."""
+    fake_triage(monkeypatch)
+    plain = client.post(URL, json={"kind": "feeling", "text": "dormí bien"}, headers=as_("ptl")).json()["id"]
+    fake_triage(monkeypatch, status=TriageStatus.failed)
+    failed = client.post(URL, json={"kind": "feeling", "text": "no sé"}, headers=as_("ptl")).json()["id"]
+    no_model(monkeypatch)
+    helped = client.post(URL, json={"kind": "help"}, headers=as_("ptl")).json()["id"]
+    r = client.post("/me/notifications/read-all?patient_id=pat_x&urgent=false", headers=as_("cg"))
+    assert r.json() == {"updated": 1}
+    unread = {n["patient_message_id"] for n in client.get("/me/notifications?unread_only=1", headers=as_("cg")).json()["notifications"]}
+    assert unread == {failed, helped} and plain not in unread

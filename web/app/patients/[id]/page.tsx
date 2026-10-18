@@ -27,11 +27,11 @@ export default async function PatientHome(props: PageProps<"/patients/[id]">) {
   if (role === "patient") redirect(`/patients/${id}/me` as Route);
   const healthTeam = role === "doctor" || role === "nurse" || role === "institution";
   // Only caregivers and the health team read the patient's own messages (family gets 403). Listing them
-  // marks them as seen, so the patient sees "Lo vio ..." (CIA-60).
+  // marks them as seen, so the patient sees "Lo vio ..." (CIA-60): fetch only the ones shown.
   const [patient, reports, patientMessages] = await Promise.all([
     getPatient(id),
     getReports(id),
-    role === "caregiver" || healthTeam ? getPatientMessages(id) : Promise.resolve([]),
+    role === "caregiver" || healthTeam ? getPatientMessages(id, SHOWN_PATIENT_MESSAGES) : Promise.resolve([]),
   ]);
   const recentMessages = patientMessages.slice(0, SHOWN_PATIENT_MESSAGES);
   const last = reports[0];

@@ -362,7 +362,7 @@ Any authenticated person. One entry per membership, for the dashboard. A person 
 - `open_alerts`: count of `emergency`, `omission` and `change` alerts on the latest version of reports from the last 24 h (`missing_item` alerts are not counted).
 - `missing_report`: no report in the last 24 h.
 - Role `patient` never sees reports or alerts: `last_report_at`, `open_alerts`, `red_flag` and `missing_report` are all `null`.
-- `unread_notifications`: count of the caller's own unread web notifications for that patient (any role, `0` when none). The web shows it as a "novedades" dot; opening the patient clears it with `POST /me/notifications/read-all?patient_id=` (CIA-60).
+- `unread_notifications`: count of the caller's own unread web notifications for that patient (any role, `0` when none). The web shows it as a "novedades" dot; opening the patient clears its plain messages with `POST /me/notifications/read-all?patient_id=&urgent=false` (CIA-60); urgent rows stay unread until the person opens them, so an emergency is never consumed unseen.
 
 ```json
 {
@@ -421,7 +421,7 @@ Marks one of the caller's web notifications as read. Returns the notification ob
 
 ### `POST /me/notifications/read-all`
 
-Marks all of the caller's unread web notifications as read, or only those for one patient with the optional `patient_id` query. Returns `{ "updated": 3 }`.
+Marks all of the caller's unread web notifications as read, or only those for one patient with the optional `patient_id` query. With `urgent=false` it only marks non-urgent rows (plain "how I feel" messages) and `urgent=true` only urgent ones. Returns `{ "updated": 3 }`.
 
 ### Emergency notifications
 

@@ -82,6 +82,7 @@ export function NotificationWatcher() {
     let stopped = false;
     // Toasts on screen, by patient: the alerts screen lists them all, so "Ver alerta" clears that patient's.
     const onScreen = new Map<string, AppNotification["patient_id"]>();
+    const opened = new Set<string>();
 
     // The invite card lives on "Mis pacientes" and on the patient's own view: refresh so it renders there.
     function announceInvite(inv: MyInvite) {
@@ -104,6 +105,9 @@ export function NotificationWatcher() {
     }
 
     function open(n: AppNotification) {
+      // The toast action and the browser Notification can both fire for the same row.
+      if (opened.has(n.id)) return;
+      opened.add(n.id);
       for (const [id, patient] of onScreen) {
         if (patient !== n.patient_id) continue;
         toast.dismiss(id);

@@ -133,6 +133,11 @@ def test_read_all_for_one_patient(client, db):
     assert page["unread_count"] == 1 and [n["id"] for n in page["notifications"] if not n["read_at"]] == ["n6"]
 
 
+def test_read_all_urgent_false_keeps_emergency_alerts(client):
+    assert client.post("/me/notifications/read-all?patient_id=pat_x&urgent=false", headers=FAM).json() == {"updated": 0}
+    assert client.get("/me/notifications", headers=FAM).json()["unread_count"] == 2
+
+
 def test_emergency_rows_are_urgent(client):
     assert all(n["urgent"] for n in client.get("/me/notifications", headers=FAM).json()["notifications"])
 

@@ -60,9 +60,10 @@ export function markNotificationRead(id: string) {
   return call<AppNotification>(`/me/notifications/${id}/read`, { method: "POST" });
 }
 
-/** Opening a patient clears its "Novedades" dot (CIA-60). */
+/** Opening a patient clears its plain "how I feel" news (CIA-60). Urgent rows stay unread until announced and opened. */
 export function markPatientNotificationsRead(patientId: string) {
-  return call<{ updated: number }>(`/me/notifications/read-all?patient_id=${encodeURIComponent(patientId)}`, {
+  const q = new URLSearchParams({ patient_id: patientId, urgent: "false" });
+  return call<{ updated: number }>(`/me/notifications/read-all?${q}`, {
     method: "POST",
   });
 }
