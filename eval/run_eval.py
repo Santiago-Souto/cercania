@@ -7,7 +7,10 @@ from AGENTS.md section 11, with seen (dev) and unseen cases separated.
     python eval/run_eval.py --delay 30       # pause between cases (Groq free tier: ~2 reports/min)
 
 Each run uses a fresh temporary SQLite database with the fictional seed data,
-so it never touches the team's database. Model calls are real (needs the API
+so it never touches the team's database. The database is restored to the seeded
+state before every case, so each case is compared only against the seed history
+(expected `change` alerts in cases.csv assume that) and the order or --split of
+the cases does not change the results. Model calls are real (needs the API
 key of the configured provider, see backend/app/llm.py); nothing here is simulated.
 
 What "correct" means (scored by code, not by a model):
@@ -35,6 +38,7 @@ import argparse
 import csv
 import json
 import os
+import shutil
 import statistics
 import sys
 import tempfile
@@ -42,6 +46,7 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CASES = ROOT / "eval" / "cases.csv"
@@ -227,7 +232,9 @@ def format_summary(title: str, summary: dict) -> str:
 
 
 def prepare_backend(db_path: Path):
-    """Points the backend at a fresh SQLite file, seeds it, returns (process_report, models).
+    """Points the backend at a fresh SQLite file, seeds it, returns (process_report, models, reset).
+
+    reset() puts the database back to the seeded state (used before each case).
 
     Goes through app.ingest.process_report, the same single entry point the
     WhatsApp and web channels use, so the eval measures exactly that path.
@@ -244,7 +251,15 @@ def prepare_backend(db_path: Path):
             f"process_report is not available yet (expected in {ingest.PROCESS_REPORT_MODULE}, CIA-7). "
             f"Nothing was evaluated. ({exc})"
         ) from exc
-    return ingest.process_report, models
+    seeded = db_path.with_suffix(".seeded")
+    models.engine.dispose()
+    shutil.copyfile(db_path, seeded)
+
+    def reset() -> None:
+        models.engine.dispose()  # close pooled connections before swapping the file
+        shutil.copyfile(seeded, db_path)
+
+    return ingest.process_report, models, reset
 
 
 def caregiver_for(models, patient_id: str) -> str:
@@ -262,12 +277,15 @@ def caregiver_for(models, patient_id: str) -> str:
     return person_id
 
 
-def run(cases: list[Case], process_report, models, delay: float = 0.0) -> list[CaseScore]:
+def run(cases: list[Case], process_report, models, delay: float = 0.0,
+        reset: Callable[[], None] | None = None) -> list[CaseScore]:
     run_id = uuid.uuid4().hex[:8]
     scores = []
     for n, case in enumerate(cases):
         if n and delay:
             time.sleep(delay)  # stay under the provider's tokens-per-minute limit
+        if reset is not None:
+            reset()
         start = time.perf_counter()
         try:
             # Positional on purpose: the sender parameter is being renamed
@@ -310,9 +328,9 @@ def main() -> None:
         raise SystemExit(f"No cases for split '{args.split}' in {args.cases}.")
 
     with tempfile.TemporaryDirectory() as tmp:
-        process_report, models = prepare_backend(Path(tmp) / "eval.db")
+        process_report, models, reset = prepare_backend(Path(tmp) / "eval.db")
         print(f"Running {len(cases)} cases through process_report...")
-        scores = run(cases, process_report, models, delay=args.delay)
+        scores = run(cases, process_report, models, delay=args.delay, reset=reset)
 
     print()
     for split in ("dev", "unseen"):

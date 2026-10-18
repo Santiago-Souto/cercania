@@ -54,12 +54,14 @@ services:
       # Unset = no browser can call the API.
       - key: WEB_ORIGINS
         value: https://cercania-web.onrender.com
-      # SIMULATED identity (X-Person-Id header) until login lands. "1" only with fictional data.
+      # The browser reaches the API through the web's /api rewrite, so the session cookie is first-party.
+      - key: SESSION_COOKIE_SAMESITE
+        value: lax
+      # SIMULATED identity (X-Person-Id header), backend dev fallback only. Leave unset in the deploy.
       - key: ALLOW_DEV_IDENTITY_HEADER
         sync: false
 
-  # Next.js web app. Browser-side calls (report form, notifications) need its origin
-  # in the API's WEB_ORIGINS.
+  # Next.js web app. Browser-side calls go to /api/* on this origin, rewritten to the API.
   - type: web
     name: cercania-web
     runtime: node
@@ -70,16 +72,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20.18.1
-      # NEXT_PUBLIC_* are baked in at build time: change them, then redeploy.
+      # Baked in at build time (also the target of the /api rewrite): change it, then redeploy.
       # Public API URL with https, e.g. https://cercania-api.onrender.com. Not fromService:
       # that gives a private host, and free services cannot receive private traffic.
       - key: NEXT_PUBLIC_API_URL
-        sync: false
-      # "1" = fictional fake data with a visible banner (SIMULATED, see README).
-      # Stays on until the read endpoints land (CIA-14); then set to 0 and redeploy.
-      - key: NEXT_PUBLIC_USE_FAKE_DATA
-        value: "1"
-      # SIMULATED identity sent as X-Person-Id (e.g. cg_001) until login lands; needs
-      # ALLOW_DEV_IDENTITY_HEADER=1 on the API. Fictional data only.
-      - key: NEXT_PUBLIC_DEV_PERSON_ID
         sync: false

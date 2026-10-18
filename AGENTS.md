@@ -93,7 +93,7 @@ Appetite, sleep, urination/diuresis, medication, mood, mobility, pain, incidents
 
 ## 5. Data model (design rules)
 
-Schema lives in `backend/app/models.py`. Entities: `person` (anyone who logs in or messages the bot; name, email, WhatsApp number = identity; "user" in the contract), `patient_access` (person + patient + role; "membership" in the contract, see section 6), `invite` (pending membership by WhatsApp number), `login_code` (hashed 6-digit code sent by SMS, expiry, attempts, used flag), `auth_session` (hashed web session token), `patient` (optionally a registered health provider contact: name + phone, used only for emergency notifications), `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient). Pending in code: `message` (and the invite endpoints; the `invite` table exists).
+Schema lives in `backend/app/models.py`. Entities: `person` (anyone who logs in or messages the bot; name, email, WhatsApp number = identity; "user" in the contract), `patient_access` (person + patient + role; "membership" in the contract, see section 6), `invite` (pending membership by WhatsApp number), `login_code` (hashed 6-digit code sent by SMS, expiry, attempts, used flag), `auth_session` (hashed web session token), `patient` (optionally a registered health provider contact: name + phone, used only for emergency notifications), `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient). `message_read` records who opened the thread after each message. Pending in code: the invite endpoints (the `invite` table exists).
 
 Rules:
 - Structured data in Postgres; binaries (audio, images, documents) in object storage. `file` stores only the storage path and metadata.
@@ -164,7 +164,7 @@ backend/app/
   errors.py        {error: {code, message}} shape and handlers [shared]
   schemas.py       Pydantic models for every endpoint (mirror contract) [shared]
   serializers.py   ORM -> contract dicts, one place          [shared]
-  api/             web routes, one module per area: auth, patients, reports, corrections, me, notifications, query [shared]
+  api/             web routes, one module per area: auth, patients, reports, corrections, me, notifications, query, messages [shared]
   process.py       process_report: triage + extraction -> compare -> store [brain owner]
   notify.py        emergency notifications: web inbox, WhatsApp best effort [shared]
   llm.py           one JSON-schema call, any vendor          [brain owner]

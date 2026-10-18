@@ -107,6 +107,7 @@ class Permission(str, enum.Enum):
     raise_emergency = "raise_emergency"  # WhatsApp message that triage flags as an emergency
     send_patient_message = "send_patient_message"  # "how I feel" / "I need help" (AGENTS.md 6)
     read_patient_messages = "read_patient_messages"
+    team_messages = "team_messages"  # family <-> health team thread, human to human (CIA-36)
 
 
 # Checked by the API, per patient (a person's role comes from patient_access).
@@ -117,15 +118,18 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
                                Permission.read_reports, Permission.read_care_plan,
                                Permission.raise_emergency, Permission.send_patient_message,
                                Permission.read_patient_messages}),
+    # Family <-> health team messages: only those roles, never caregiver or patient (AGENTS.md 6).
     Role.family: frozenset({Permission.read_reports, Permission.read_care_plan,
-                            Permission.raise_emergency}),
+                            Permission.raise_emergency, Permission.team_messages}),
     Role.doctor: frozenset({Permission.read_reports, Permission.read_care_plan,
                             Permission.edit_care_plan, Permission.raise_emergency,
-                            Permission.read_patient_messages}),
+                            Permission.read_patient_messages, Permission.team_messages}),
     Role.nurse: frozenset({Permission.read_reports, Permission.read_care_plan,
-                           Permission.raise_emergency, Permission.read_patient_messages}),
+                           Permission.raise_emergency, Permission.read_patient_messages,
+                           Permission.team_messages}),
     Role.institution: frozenset({Permission.read_reports, Permission.read_care_plan,
-                                 Permission.raise_emergency, Permission.read_patient_messages}),
+                                 Permission.raise_emergency, Permission.read_patient_messages,
+                                 Permission.team_messages}),
     # The patient sees their profile, care plan and own messages, never reports about them.
     Role.patient: frozenset({Permission.read_care_plan, Permission.raise_emergency,
                              Permission.send_patient_message, Permission.read_patient_messages}),
@@ -553,6 +557,37 @@ class PatientMessageSeen(Base):
     seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
     person: Mapped[Person] = relationship()
+
+
+class Message(TimestampMixin, Base):
+    """Family <-> health team thread, one per patient (AGENTS.md 7). Human to human: the
+    model never reads or answers these. Written once."""
+
+    __tablename__ = "message"
+    # A retry after an ambiguous failure (timeout) sends the same client_id: stored once.
+    __table_args__ = (UniqueConstraint("sender_id", "client_id"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("msg"))
+    patient_id: Mapped[str] = mapped_column(ForeignKey("patient.id"), nullable=False, index=True)
+    sender_id: Mapped[str] = mapped_column(ForeignKey("person.id"), nullable=False)
+    sender_role: Mapped[Role] = mapped_column(enum_column(Role), nullable=False)  # role when sent
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    client_id: Mapped[str | None] = mapped_column(String(64))
+
+    sender: Mapped[Person] = relationship()
+    reads: Mapped[list[MessageRead]] = relationship(order_by="MessageRead.read_at")
+
+
+class MessageRead(Base):
+    """Someone other than the sender listed the thread after this message arrived."""
+
+    __tablename__ = "message_read"
+    __table_args__ = (UniqueConstraint("message_id", "person_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    message_id: Mapped[str] = mapped_column(ForeignKey("message.id"), nullable=False, index=True)
+    person_id: Mapped[str] = mapped_column(ForeignKey("person.id"), nullable=False)
+    read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
 class Notification(TimestampMixin, Base):

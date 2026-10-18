@@ -1,23 +1,9 @@
 "use client";
 // Browser-side calls (polling, form submits). Server components use lib/api.ts.
-// SIMULATED auth: sends X-Person-Id from the persona cookie (lib/persona.ts).
+// Same-origin through the /api rewrite, so the session cookie goes along; a 401 sends the browser to /login.
 
-import { DEFAULT_PERSONA_ID, PERSONA_COOKIE } from "./persona";
-import type { AppNotification } from "./types";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
-
-export function currentPersonId(): string {
-  const match = document.cookie.split("; ").find((c) => c.startsWith(`${PERSONA_COOKIE}=`));
-  return match ? decodeURIComponent(match.split("=")[1]) : DEFAULT_PERSONA_ID;
-}
-
-/** Switch the simulated identity and do a full load, so server data and the notification poller restart as the new person. */
-export function switchPerson(id: string) {
-  document.cookie = `${PERSONA_COOKIE}=${encodeURIComponent(id)}; path=/; max-age=31536000; samesite=lax`;
-  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-  window.location.href = "/patients";
-}
+import { BROWSER_API, onUnauthorized } from "./api-shared";
+import type { AppNotification, Message } from "./types";
 
 export class ClientApiError extends Error {
   constructor(
@@ -31,13 +17,17 @@ export class ClientApiError extends Error {
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, {
+    res = await fetch(`${BROWSER_API}${path}`, {
       ...init,
       cache: "no-store",
-      headers: { "Content-Type": "application/json", "X-Person-Id": currentPersonId(), ...init?.headers },
+      headers: { "Content-Type": "application/json", ...init?.headers },
     });
   } catch {
     throw new ClientApiError("network", "No pudimos conectar con el servidor. Probá de nuevo.");
+  }
+  if (res.status === 401) {
+    onUnauthorized();
+    throw new ClientApiError("unauthenticated", "Iniciá sesión para continuar.");
   }
   if (!res.ok) {
     const body = await res.json().catch(() => null);
@@ -58,4 +48,21 @@ export function fetchNotifications(opts: { since?: string; unreadOnly?: boolean 
 
 export function markNotificationRead(id: string) {
   return call<AppNotification>(`/me/notifications/${id}/read`, { method: "POST" });
+}
+
+export function fetchMessages(patientId: string) {
+  return call<{ messages: Message[] }>(`/patients/${patientId}/messages`).then((d) => d.messages);
+}
+
+/** `clientId` is reused on retry, so a send that timed out after the server stored it is not duplicated. */
+export function sendMessage(patientId: string, text: string, clientId: string) {
+  return call<Message>(`/patients/${patientId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ text, client_id: clientId }),
+  });
+}
+
+/** Signed URL for a report's voice note. `audioPath` is the report's `audio_url` (GET /reports/{id}/audio). */
+export function fetchAudioUrl(audioPath: string) {
+  return call<{ url: string; expires_in_sec: number }>(audioPath);
 }

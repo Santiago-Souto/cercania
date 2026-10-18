@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { ChevronLeftIcon, MicIcon } from "lucide-react";
+import { ChevronLeftIcon, MessageCircleIcon, MicIcon } from "lucide-react";
 import { AppShell, Brand, BottomNav } from "@/components/app/shell";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -15,9 +15,12 @@ import { CHECKLIST_LABEL, dayTime, duration, firstName } from "@/lib/format";
 
 export default async function PatientHome(props: PageProps<"/patients/[id]">) {
   const { id } = await props.params;
-  // The patient never sees reports or alerts about them (the backend also answers 403): send them to their view.
-  if ((await getMyPatients()).find((p) => p.id === id)?.role === "patient") redirect(`/patients/${id}/me` as Route);
+  // The patient never sees reports or alerts about them (the backend answers 403): send them to their view first.
+  const mine = await getMyPatients();
+  const role = mine.find((p) => p.id === id)?.role;
+  if (role === "patient") redirect(`/patients/${id}/me` as Route);
   const [patient, reports] = await Promise.all([getPatient(id), getReports(id)]);
+  const healthTeam = role === "doctor" || role === "nurse" || role === "institution";
   const last = reports[0];
   const plan = patient.care_plan;
   const covered = last ? last.items.filter((i) => i.value !== null).length : 0;
@@ -49,6 +52,15 @@ export default async function PatientHome(props: PageProps<"/patients/[id]">) {
             Nuevo reporte
           </Link>
         </Button>
+
+        {healthTeam && (
+          <Button asChild size="xl" variant="outline-primary">
+            <Link href={`/patients/${id}/messages` as Route}>
+              <MessageCircleIcon />
+              Mensajes de la familia
+            </Link>
+          </Button>
+        )}
 
         <Card className="text-base">
           <CardHeader className="flex items-center gap-3">

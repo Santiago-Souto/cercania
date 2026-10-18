@@ -1,8 +1,7 @@
 // Browser-side calls that send text or a recording: new report (CIA-31) and patient messages (CIA-35).
-// Kept apart from lib/api.ts because that file uses server-only APIs.
+// Kept apart from lib/api.ts because that file uses server-only APIs. Same-origin through the /api rewrite.
 
-import { API_URL, ApiError, errorFrom, identityHeaders, NETWORK_ERROR_MESSAGE, USE_FAKE } from "./api-shared";
-import { fakeProcessResult } from "./fake";
+import { ApiError, BROWSER_API, errorFrom, NETWORK_ERROR_MESSAGE, onUnauthorized } from "./api-shared";
 import type { PatientMessageResult, ProcessResult } from "./types";
 
 export type ReportInput = { text: string } | { audio: Blob };
@@ -22,7 +21,7 @@ function audioFilename(type: string): string {
 /** POSTs `{...fields, text}` as JSON, or `fields` + `audio` as multipart, to an endpoint that takes either. */
 async function postTextOrAudio<T>(path: string, fields: Record<string, string>, input: ReportInput): Promise<T> {
   let body: BodyInit;
-  const headers: Record<string, string> = identityHeaders();
+  const headers: Record<string, string> = {};
   if ("text" in input) {
     body = JSON.stringify({ ...fields, text: input.text });
     headers["Content-Type"] = "application/json";
@@ -40,25 +39,21 @@ async function postTextOrAudio<T>(path: string, fields: Record<string, string>, 
 async function post<T>(path: string, body: BodyInit, headers: Record<string, string>): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, {
+    res = await fetch(`${BROWSER_API}${path}`, {
       method: "POST",
       body,
       headers,
-      credentials: "include",
       cache: "no-store",
     });
   } catch {
     throw new ApiError("network_error", NETWORK_ERROR_MESSAGE, 0);
   }
+  if (res.status === 401) onUnauthorized();
   if (!res.ok) throw await errorFrom(res);
   return res.json() as Promise<T>;
 }
 
 export async function sendReport(patientId: string, clientId: string, input: ReportInput): Promise<ProcessResult> {
-  if (USE_FAKE) {
-    await new Promise((r) => setTimeout(r, 800));
-    return fakeProcessResult;
-  }
   return postTextOrAudio<ProcessResult>(`/patients/${patientId}/reports`, { client_id: clientId }, input);
 }
 
@@ -67,16 +62,9 @@ export async function sendPatientMessage(
   patientId: string,
   input: { kind: "help" } | ({ kind: "feeling" } & ReportInput),
 ): Promise<PatientMessageResult> {
-  if (USE_FAKE) {
-    // Fake data has no real team to notify: refuse plainly instead of pretending the message was sent.
-    throw new ApiError("fake_data", "Con datos de prueba no se envían mensajes. Si es una emergencia, llamá a emergencias.", 0);
-  }
   const path = `/patients/${patientId}/patient-messages`;
   if (input.kind === "help") {
-    return post<PatientMessageResult>(path, JSON.stringify({ kind: "help" }), {
-      ...identityHeaders(),
-      "Content-Type": "application/json",
-    });
+    return post<PatientMessageResult>(path, JSON.stringify({ kind: "help" }), { "Content-Type": "application/json" });
   }
   return postTextOrAudio<PatientMessageResult>(path, { kind: "feeling" }, input);
 }

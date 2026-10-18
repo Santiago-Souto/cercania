@@ -6,7 +6,7 @@ Source of truth for integration between backend, web and input layers. Change it
 
 - **Errors**: every error is `{ "error": { "code": "string", "message": "human-readable" } }`. Messages are in Spanish and safe to show as is. Validation errors (bad query or body) are `422` with code `invalid_request` and a fixed message; submitted values are never echoed back.
 - **Timestamps**: all timestamps are ISO 8601 with an offset. The API returns UTC (`2026-10-18T00:05:00Z`). Naive values from the database are read as UTC. Clients display them in the reader's timezone (`APP_TIMEZONE` on the server, default `America/Argentina/Buenos_Aires`, is used for the time inside notification text).
-- **Identity (SIMULATED)**: the caller is identified by the `X-Person-Id` header. The header is honored only when `ALLOW_DEV_IDENTITY_HEADER=1`; otherwise every call gets `401 unauthenticated`. Real login (CIA-26/32) is Pending. Allowed CORS origins come from `WEB_ORIGINS`, with credentials and the `Content-Type` and `X-Person-Id` headers.
+- **Identity**: the caller is identified by the `cercania_session` cookie from `POST /auth/verify` (see "Auth"); without a valid one every call gets `401 unauthenticated`. Backend dev fallback only (SIMULATED, never in a deploy): with `ALLOW_DEV_IDENTITY_HEADER=1` an `X-Person-Id` header is also accepted, for curl and tests; the web app never sends it. Allowed CORS origins come from `WEB_ORIGINS`, with credentials and the `Content-Type` and `X-Person-Id` headers.
 - **Access**: a person's role is per patient (`patient_access`). Permissions are in `ROLE_PERMISSIONS` in `backend/app/models.py`. For a patient the caller has no access to, the API answers `404 not_found` (no existence leak). For a role that lacks the permission, it answers `403 forbidden`.
 
 ## Checklist items (fixed enum)
@@ -189,7 +189,7 @@ Timestamped pieces of the transcript, used to play the audio fragment behind a q
 ```
 
 - `start` / `end`: seconds (float) from the start of the audio file. `text` is trimmed. Pieces are in audio order.
-- **Granularity:** one piece per **word** when the provider returns word timestamps (Groq Whisper `verbose_json` with `timestamp_granularities[]=word`, the default), otherwise the provider's segments. Whisper often returns a whole voice note as a single segment, so words are what let a citation play just the quoted words. Same shape and same rule either way.
+- **Granularity:** one piece per **word** when the provider returns word timestamps (Groq Whisper `verbose_json`; the backend sends `timestamp_granularities[]` = `word` and `segment`, the default), otherwise the provider's segments. Whisper often returns a whole voice note as a single segment, so words are what let a citation play just the quoted words. Same shape and same rule either way.
 - Typed reports (WhatsApp text or web text) have `[]`.
 - **Quote -> audio times** (code only, `backend/app/segments.py`, same for items and citations): the shortest run of consecutive segments whose joined text contains the quote, with the same normalization as quote verification (case, accents, punctuation, whitespace; whole words). `audio_start_sec` is the first segment's `start`, `audio_end_sec` the last segment's `end`. If two runs are equally short, the first one wins. No match or no segments: both `null`.
 - Example: with the segments above, `"comió poco en la cena"` -> `3.5`-`6.0`; `"las ocho. Comió poco"` -> `0.0`-`6.0`.
@@ -439,7 +439,7 @@ The signature check runs before the ack and before anything is processed; the se
 
 No passwords. The code goes out **by SMS** (Twilio, `backend/app/sms.py`); the bot, invites and emergency notifications stay on WhatsApp. The phone number is the identity either way.
 
-The web app keeps the session in a cookie (`cercania_session`) set by `POST /auth/verify` with `HttpOnly`, `Secure` and `SameSite=None`. `SameSite=None` is required because the web and the API are on different sites (`onrender.com` is a public suffix), so a `Lax` cookie would never reach the API; CORS only allows `WEB_ORIGINS` and every body is JSON, so cross-site requests need a preflight. The web must call the API with `credentials: "include"`. Sessions last `SESSION_TTL_DAYS` (default 30) and are stored hashed server-side. Every endpoint below except `/auth/*` and `/webhook/*` requires the cookie and returns `401 { "error": { "code": "unauthenticated" } }` without it. (Local dev only: `ALLOW_DEV_IDENTITY_HEADER=1` also accepts an `X-Person-Id` header; simulated identity, never in a real deploy.)
+The web app keeps the session in a cookie (`cercania_session`) set by `POST /auth/verify` (`HttpOnly`; `Secure` and `SameSite` from `SESSION_COOKIE_SECURE` / `SESSION_COOKIE_SAMESITE`). The web and the API are on different sites (`onrender.com` is a public suffix), and browsers block cross-site cookies, so **the browser never calls the API host directly**: it calls `/api/*` on the web origin, which Next.js rewrites to the API (`web/next.config.ts`). The cookie is therefore first-party on the web origin, and the deploy uses `SameSite=Lax`. Server components read the cookie and forward it to the API as a `Cookie` header (`web/lib/api.ts`). The web sends people with no cookie, or whose call returns `401`, to `/login`. The cookie is persistent (`Max-Age` = `SESSION_TTL_DAYS`), so the same device stays logged in: `/` and `/login` check `GET /me` and send a logged-in person straight to their home; a cookie the API no longer accepts shows the login form. Sessions last `SESSION_TTL_DAYS` (default 30) and are stored hashed server-side. Every endpoint below except `/auth/*` and `/webhook/*` requires the cookie and returns `401 { "error": { "code": "unauthenticated" } }` without it. (Local dev only: `ALLOW_DEV_IDENTITY_HEADER=1` also accepts an `X-Person-Id` header; simulated identity, never in a real deploy.)
 
 ### `POST /auth/signup`
 
@@ -609,16 +609,20 @@ A caregiver or health-team member listing the messages marks the listed ones as 
 ### `GET /patients/{patient_id}/messages`
 
 ```json
-{ "messages": [ { "id": "msg_001", "from": { "user_id": "usr_005", "name": "Marta (fictional)", "role": "family" }, "text": "…", "created_at": "2026-10-17T15:02:00-03:00", "read": true } ] }
+{ "messages": [ { "id": "msg_001", "from": { "user_id": "usr_005", "name": "Marta (fictional)", "role": "family" }, "text": "…", "created_at": "2026-10-17T18:02:00Z", "read": true, "mine": false } ] }
 ```
+
+The latest `limit` messages (default 100, max 200), **oldest first**. Listing marks the other people's messages as read by the caller. `read`: on the caller's own message, someone else has opened the thread since it was sent; on anyone else's, the caller had already seen it before this request (so the UI can mark new ones). `mine`: the caller sent it. The web polls this every few seconds.
 
 ### `POST /patients/{patient_id}/messages`
 
 ```json
-{ "text": "Hola doctora…" }
+{ "text": "Hola doctora…", "client_id": "b7c1…" }
 ```
 
-Only `family` and health-team roles. Human-to-human: no model call. The UI always shows "not for emergencies".
+`201` with the stored message (same shape as one item above). `text` is trimmed, 1-2000 chars; otherwise `422 invalid_request`. `client_id` (optional, up to 64 chars) is generated once per message by the client and reused on retry: a repeat with the same `client_id` returns the message already stored instead of a second copy; the same `client_id` already used for another patient is `409 client_id_conflict`.
+
+Only `family` and health-team roles (`doctor`, `nurse`, `institution`); `caregiver` and `patient` get `403 forbidden`, no access `404`. Human-to-human: no model call. The UI always shows "not for emergencies".
 
 ## Seed data
 
