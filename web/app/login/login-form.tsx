@@ -21,6 +21,7 @@ export function LoginForm({ next }: { next?: string }) {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (sending) return; // Enter in the field while a code is on its way must not send a second SMS
     if (!phone) return setError("Escribí tu celular.");
     if (!isPossiblePhoneNumber(phone)) return setError("Revisá el número: le faltan o le sobran números para ese país.");
 
@@ -50,7 +51,7 @@ export function LoginForm({ next }: { next?: string }) {
             autoFocus
             placeholder={country === "UY" ? "099 123 456" : "Número de celular"}
             required
-            aria-invalid={!!error && !phone}
+            aria-invalid={!!error}
             numberInputProps={{ className: "h-12 bg-card text-base" }}
           />
           <FieldDescription>Ahí te llega el código por SMS. Con este mismo número te pueden invitar a un paciente.</FieldDescription>
