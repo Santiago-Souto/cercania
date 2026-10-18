@@ -4,6 +4,7 @@
 // Otherwise -> the backend at NEXT_PUBLIC_API_URL (CIA-14 finishes this switch, incl. session cookies).
 
 import { connection } from "next/server";
+import { API_URL, ApiError, errorFrom, identityHeaders, USE_FAKE } from "./api-shared";
 import * as fake from "./fake";
 import type {
   Invite,
@@ -16,34 +17,16 @@ import type {
   Report,
 } from "./types";
 
-export const USE_FAKE = process.env.NEXT_PUBLIC_USE_FAKE_DATA === "1";
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
-
-export class ApiError extends Error {
-  constructor(
-    public code: string,
-    message: string,
-    public status: number,
-  ) {
-    super(message);
-  }
-}
+export { ApiError, USE_FAKE };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     credentials: "include",
     cache: "no-store",
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: { "Content-Type": "application/json", ...identityHeaders(), ...init?.headers },
   });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new ApiError(
-      body?.error?.code ?? "unknown",
-      body?.error?.message ?? "No pudimos conectar con el servidor. Probá de nuevo.",
-      res.status,
-    );
-  }
+  if (!res.ok) throw await errorFrom(res);
   return res.json() as Promise<T>;
 }
 

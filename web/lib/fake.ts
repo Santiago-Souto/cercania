@@ -9,6 +9,7 @@ import type {
   MyPatient,
   Patient,
   PatientMessage,
+  ProcessResult,
   QueryResponse,
   Report,
 } from "./types";
@@ -106,6 +107,21 @@ export const fakeReports: Report[] = [
     red_flag: false,
   },
 ];
+
+// The example ProcessResult from docs/contract.md, returned whatever was sent: it does not read the input.
+// The "Datos de prueba ficticios" banner is on whenever this is used.
+export const fakeProcessResult: ProcessResult = {
+  status: "ok",
+  report: { id: "rep_123", version: 1 },
+  items: [
+    { item: "appetite", value: "comió poco en la cena", level: "low", quote: "casi no comio nada en la cena", quote_verified: true },
+  ],
+  missing_items: ["sleep", "urination"],
+  alerts: [{ type: "omission", detail: "08:00: no se mencionó.", plan_ref: "med_002", report_refs: ["rep_123"] }],
+  red_flag: false,
+  triage: { status: "ok", emergency: false, reason: null, quote: null, quote_verified: null },
+  confirmation_text: "Registré: apetito: casi no comió en la cena. No mencionaste: sueño, diuresis. Podés mandar otra nota.",
+};
 
 export const fakeQuery: QueryResponse = {
   answer: "En los últimos 3 turnos se reportó que comió poco.",

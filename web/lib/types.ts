@@ -37,11 +37,13 @@ export type ReportItem = {
 };
 
 export type Alert = {
-  type: "omission" | "change" | "missing_item";
+  type: "omission" | "change" | "missing_item" | "emergency";
   detail: string;
   plan_ref?: string;
   report_refs?: string[];
   evidence_quote?: string | null;
+  /** False when code could not find `evidence_quote` in the transcript. */
+  evidence_verified?: boolean | null;
 };
 
 export type Report = {
@@ -103,3 +105,23 @@ export type Message = {
   created_at: string;
   read: boolean;
 };
+
+/** What `POST /patients/{id}/reports` returns (`ProcessResult` in docs/contract.md). */
+export type ProcessResult =
+  | {
+      status: "ok";
+      report: { id: string; version: number };
+      items: ReportItem[];
+      missing_items: ChecklistItem[];
+      alerts: Alert[];
+      red_flag: boolean;
+      triage: {
+        status: "ok" | "failed";
+        emergency: boolean;
+        reason: string | null;
+        quote: string | null;
+        quote_verified: boolean | null;
+      };
+      confirmation_text: string;
+    }
+  | { status: "needs_retry" | "not_a_report" | "forbidden"; message: string };
