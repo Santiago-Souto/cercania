@@ -126,7 +126,7 @@ def test_repo_cases_file_parses():
     assert cases, "eval/cases.csv is empty"
     c001 = next(c for c in cases if c.case_id == "c001")
     assert c001.expected_items == {"appetite", "pain"}
-    assert c001.expected_alerts == {"omission:med_002"}
+    assert c001.expected_alerts == {"omission:med_001", "omission:med_002", "change:appetite", "change:pain"}
     assert all(c.split in ("dev", "unseen") for c in cases)
 
 
