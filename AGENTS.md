@@ -186,6 +186,7 @@ eval/
   run_eval.py      runs cases, prints metrics                [infra/input owner]
 docs/contract.md   endpoints and data shapes (source of truth for integration)
 docs/deploy.md     Render URLs, env vars, troubleshooting
+docs/demo-script.md  3-minute live demo script
 docs/design/       DESIGN.md + screen snapshots (source of truth for the UI)  [web owner]
 README.md          Functional / Simulated / Pending
 .agents/skills/    shared agent skills, tool-agnostic (.claude/skills is a symlink here)
@@ -243,12 +244,12 @@ Rule: never tune the prompt against the same cases we will demo with and then ca
 | 14:00 | Voice note transcribing (WhatsApp or fallback). Brain processes text. Web shows fake data. **WhatsApp go/no-go.** |
 | 17:00 | First end-to-end integration: audio -> record -> alert -> view. Most important checkpoint. |
 | 19:30 | Feature freeze. Bugs, eval cases, error handling, README only. |
-| 21:00 | Venue closes. Everything deployed. Backup demo video recorded. |
+| 21:00 | Venue closes. Everything deployed. (No backup video: decided Oct 18, the live demo relies on its fallbacks.) |
 | Sun | Polish, pitch rehearsal, Q&A prep. No new features. |
 
 ## 15. Pitch notes (so the product supports them)
 
-Problem: the shift handoff gets lost. Live demo: a juror dictates a report, sees the structured record and an omission alert, then asks a question and gets a cited answer. Close by stating limitations first (no diagnosis, fictional data, simulated parts). Always keep a recorded backup of the demo and text input as a fallback to audio.
+Problem: the shift handoff gets lost. Live demo: a juror dictates a report, sees the structured record and an omission alert, then asks a question and gets a cited answer. Close by stating limitations first (no diagnosis, fictional data, simulated parts). No recorded backup video (team decision, Oct 18): the live demo relies on text input as a fallback to audio and on a second logged-in device. Step-by-step script: `docs/demo-script.md`.
 
 ## 16. Open decisions
 
