@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
   cacheComponents: true,
   partialPrefetching: true,
+  // The /api rewrite cuts a proxied request off at 30 s by default. A report (transcription + triage +
+  // extraction, a Groq 429 retry, or a Render cold start) can take longer and would show an error for a
+  // report that was actually saved.
+  experimental: { proxyTimeout: 120_000 },
   // Same-origin proxy for browser calls: the session cookie from POST /auth/verify becomes first-party on
   // the web origin. Web and API are different sites on Render, where a cross-site cookie gets blocked.
   async rewrites() {
