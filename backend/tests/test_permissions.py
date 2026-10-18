@@ -52,3 +52,8 @@ def test_health_team_reads_reports():
 def test_no_access_without_link():
     s = make_session()
     assert not can(s, "stranger", "pat_x", Permission.read_care_plan)
+
+
+def test_team_messages_only_family_and_health_team():
+    allowed = {r for r, perms in ROLE_PERMISSIONS.items() if Permission.team_messages in perms}
+    assert allowed == {Role.family, Role.doctor, Role.nurse, Role.institution}

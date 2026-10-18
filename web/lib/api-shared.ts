@@ -1,25 +1,16 @@
-// Pieces shared by server calls (lib/api.ts) and browser calls (lib/send-report.ts).
+// Pieces shared by server calls (lib/api.ts) and browser calls (lib/send-report.ts, lib/client-api.ts).
 // No server-only imports here: this file is bundled into client components.
 
-import { PERSONA_COOKIE } from "./persona";
-
-export const USE_FAKE = process.env.NEXT_PUBLIC_USE_FAKE_DATA === "1";
+// Server components call the backend directly and forward the session cookie (lib/api.ts).
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
-// SIMULATED until login lands (CIA-14 / CIA-32): who is calling, sent as `X-Person-Id`.
-// The backend honors it only with ALLOW_DEV_IDENTITY_HEADER=1 (backend/app/deps.py). Fictional data only.
-const DEV_PERSON_ID = process.env.NEXT_PUBLIC_DEV_PERSON_ID ?? "";
+// The browser calls the backend through the same-origin rewrite in next.config.ts, so the session
+// cookie set by POST /auth/verify is first-party on the web origin. Web and API are different sites
+// on Render (onrender.com is a public suffix), where a cross-site cookie would be blocked.
+export const BROWSER_API = "/api";
 
-// In the browser the persona picked in the demo bar (cookie, lib/persona.ts) wins over the env value.
-// Server calls (lib/api.ts) add the cookie themselves.
-export function identityHeaders(): Record<string, string> {
-  let id = DEV_PERSON_ID;
-  if (typeof document !== "undefined") {
-    const m = document.cookie.split("; ").find((c) => c.startsWith(`${PERSONA_COOKIE}=`));
-    if (m) id = decodeURIComponent(m.split("=")[1]);
-  }
-  return id ? { "X-Person-Id": id } : {};
-}
+/** Name of the httpOnly session cookie the backend sets (backend/app/deps.py SESSION_COOKIE). */
+export const SESSION_COOKIE = "cercania_session";
 
 export class ApiError extends Error {
   constructor(
@@ -41,4 +32,11 @@ export async function errorFrom(res: Response): Promise<ApiError> {
     body?.error?.message ?? "No pudimos conectar con el servidor. Probá de nuevo.",
     res.status,
   );
+}
+
+/** Browser only: the session is missing or expired, go log in again and come back here afterwards. */
+export function onUnauthorized(): void {
+  const next = window.location.pathname + window.location.search;
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+  window.location.href = `/login?mode=login&next=${encodeURIComponent(next)}`;
 }

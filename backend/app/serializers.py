@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     Alert,
     Invite,
+    Message,
     Notification,
     Patient,
     Person,
@@ -142,6 +143,25 @@ def serialize_patient(session: Session, patient: Patient) -> dict:
 
 def serialize_invite(invite: Invite) -> dict:
     return {"id": invite.id, "contact": invite.phone, "role": invite.role.value, "status": invite.status.value}
+
+
+def serialize_message(message: Message, viewer_id: str, read_before: set[str]) -> dict:
+    """`read`: on the viewer's own message, someone else opened the thread since; on anyone
+    else's, the viewer had already seen it before this request (so the UI can mark new ones)."""
+    if message.sender_id == viewer_id:
+        read = any(r.person_id != viewer_id for r in message.reads)
+    else:
+        read = message.id in read_before
+    return {
+        "id": message.id,
+        "from": {"user_id": message.sender_id,
+                 "name": message.sender.display_name if message.sender else "",
+                 "role": message.sender_role.value},
+        "text": message.text,
+        "created_at": message.created_at,
+        "read": read,
+        "mine": message.sender_id == viewer_id,
+    }
 
 
 def serialize_notification(n: Notification, patient_display_name: str) -> dict:

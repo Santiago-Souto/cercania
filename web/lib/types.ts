@@ -34,6 +34,9 @@ export type ReportItem = {
   level?: string | null;
   quote: string | null;
   quote_verified: boolean | null;
+  /** Where the quote is in the voice note (docs/contract.md, "Transcript segments"); null without audio times. */
+  audio_start_sec?: number | null;
+  audio_end_sec?: number | null;
 };
 
 export type NotificationRecipient = "health_provider" | "caregiver" | "family";
@@ -114,8 +117,9 @@ export type AppNotification = {
 export type Citation = {
   report_id: string;
   quote: string;
-  audio_start_sec: number;
-  audio_end_sec: number;
+  // null when the report has no segments (typed) or the quote is not in them (docs/contract.md).
+  audio_start_sec: number | null;
+  audio_end_sec: number | null;
 };
 
 export type QueryResponse = {
@@ -160,7 +164,10 @@ export type Message = {
   from: { user_id: string; name: string; role: Role };
   text: string;
   created_at: string;
+  /** Own message: someone else opened the thread since. Others': the viewer had seen it before this load. */
   read: boolean;
+  /** Sent by the viewer. */
+  mine: boolean;
 };
 
 /** What `POST /patients/{id}/reports` returns (`ProcessResult` in docs/contract.md). */
@@ -182,3 +189,14 @@ export type ProcessResult =
       confirmation_text: string;
     }
   | { status: "needs_retry" | "not_a_report" | "forbidden"; message: string };
+
+export type Membership = { patient_id: string; display_name: string; role: Role };
+
+/** GET /me */
+export type Me = { id: string; display_name: string; phone_last4: string; memberships: Membership[] };
+
+/** POST /auth/signup and /auth/login */
+export type CodeSent = { status: "code_sent"; phone_last4: string; expires_in_sec: number; resend_after_sec: number };
+
+/** POST /auth/verify */
+export type Verified = { user: { id: string; name: string }; memberships: Membership[] };
