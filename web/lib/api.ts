@@ -104,6 +104,11 @@ export async function setEmergencyContact(patientId: string, contact: EmergencyC
   return request<Patient>(`/patients/${patientId}/emergency-contact`, { method: "PATCH", body: JSON.stringify(contact) });
 }
 
+/** DELETE /patients/{id}: a caregiver archives the patient (records stay stored, nobody keeps access). */
+export async function archivePatient(patientId: string): Promise<void> {
+  await request(`/patients/${patientId}`, { method: "DELETE" });
+}
+
 /** POST /invites (CIA-48): a caregiver invites a patient who has no profile yet. */
 export async function invitePatientWithoutProfile(contact: string): Promise<Invite> {
   return request<Invite>(`/invites`, { method: "POST", body: JSON.stringify({ contact, role: "patient" }) });
@@ -162,15 +167,15 @@ export async function getSession(): Promise<Me | null> {
   }
 }
 
-// --- Admin (CIA-48) ---
+// --- Admin (CIA-48, CIA-58): roles only, never links to patients ---
 
 export async function getAdminPeople(): Promise<AdminPeople> {
   await connection();
   return request<AdminPeople>(`/admin/people`);
 }
 
-export async function adminSetMembership(personId: string, patientId: string, role: Role, confirm: boolean): Promise<AdminPerson> {
-  return request<AdminPerson>(`/admin/people/${personId}/memberships/${patientId}`, {
+export async function adminSetRole(personId: string, role: Role, confirm: boolean): Promise<AdminPerson> {
+  return request<AdminPerson>(`/admin/people/${personId}/role`, {
     method: "PUT",
     body: JSON.stringify({ role, confirm_overwrite: confirm }),
   });
@@ -183,14 +188,10 @@ export async function adminMakeAdmin(personId: string, confirm: boolean): Promis
   });
 }
 
-export async function adminRemoveMembership(personId: string, patientId: string): Promise<AdminPerson> {
-  return request<AdminPerson>(`/admin/people/${personId}/memberships/${patientId}`, { method: "DELETE" });
-}
-
-export async function adminPreRegister(phone: string, role: AdminRole, patientId: string | null, confirm: boolean): Promise<unknown> {
+export async function adminPreRegister(phone: string, role: AdminRole, confirm: boolean): Promise<unknown> {
   return request(`/admin/pre-registrations`, {
     method: "POST",
-    body: JSON.stringify({ phone, role, patient_id: patientId, confirm_overwrite: confirm }),
+    body: JSON.stringify({ phone, role, confirm_overwrite: confirm }),
   });
 }
 

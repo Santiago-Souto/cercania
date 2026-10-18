@@ -257,6 +257,8 @@ class PatientCreate(BaseModel):
     location: Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)] | None = None
     care_plan: CarePlanIn = Field(default_factory=CarePlanIn)
     emergency_contact: EmergencyContactIn | None = None
+    # The patient's own cell phone: when it signs up, it joins this profile as the patient's login.
+    phone: Annotated[str, StringConstraints(strip_whitespace=True, max_length=40)] | None = None
 
 
 class Member(BaseModel):
@@ -329,6 +331,10 @@ class MyInvites(BaseModel):
     invites: list[MyInvite]
 
 
+class PatientArchived(BaseModel):
+    status: str = "archived"
+
+
 class InviteDeclined(BaseModel):
     status: Literal["declined"]
 
@@ -338,7 +344,7 @@ class InviteDeclined(BaseModel):
 PreRegistrationRole = Literal["caregiver", "family", "patient", "doctor", "nurse", "institution", "admin"]
 
 
-class AdminMembershipIn(BaseModel):
+class AdminRoleIn(BaseModel):
     role: RoleName
     confirm_overwrite: bool = False
 
@@ -346,7 +352,6 @@ class AdminMembershipIn(BaseModel):
 class PreRegistrationIn(BaseModel):
     phone: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
     role: PreRegistrationRole
-    patient_id: str | None = None
     confirm_overwrite: bool = False
 
 
@@ -356,4 +361,3 @@ class MakeAdminIn(BaseModel):
 
 class PreRegistrationPatch(BaseModel):
     role: PreRegistrationRole
-    patient_id: str | None = None

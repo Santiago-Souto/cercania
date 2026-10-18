@@ -244,13 +244,6 @@ def prepare_backend(db_path: Path):
     from app import ingest, models, seed
 
     seed.seed()
-    try:
-        __import__(ingest.PROCESS_REPORT_MODULE, fromlist=["process_report"]).process_report
-    except (ImportError, AttributeError) as exc:
-        raise SystemExit(
-            f"process_report is not available yet (expected in {ingest.PROCESS_REPORT_MODULE}, CIA-7). "
-            f"Nothing was evaluated. ({exc})"
-        ) from exc
     seeded = db_path.with_suffix(".seeded")
     models.engine.dispose()
     shutil.copyfile(db_path, seeded)

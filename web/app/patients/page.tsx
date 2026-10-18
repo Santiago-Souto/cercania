@@ -6,6 +6,7 @@ import { MailPlusIcon, PlusIcon, UsersRoundIcon } from "lucide-react";
 import { AppShell, BottomBar, Brand } from "@/components/app/shell";
 import { Button } from "@/components/ui/button";
 import { getMe, getMyInvites, getMyPatients } from "@/lib/api";
+import { emptyCopy, listNote } from "./home-copy";
 import { PatientList } from "./patient-list";
 import { PendingInvites } from "./pending-invites";
 
@@ -24,6 +25,7 @@ export default async function PatientsPage() {
 
   // Only caregivers add patients (CIA-48), including one an admin registered before assigning any.
   const canAdd = me.can_add_patients;
+  const note = listNote(sorted);
 
   return (
     <AppShell>
@@ -42,15 +44,7 @@ export default async function PatientsPage() {
         )}
 
         <PendingInvites invites={invites} />
-        <PatientList
-          patients={sorted}
-          hideEmpty={invites.length > 0}
-          empty={
-            canAdd
-              ? { title: "Todavía no tenés pacientes asignados", description: "Agregá uno, o esperá a que una persona administradora te asigne." }
-              : undefined
-          }
-        />
+        <PatientList patients={sorted} hideEmpty={invites.length > 0} empty={emptyCopy(me)} />
 
         {canAdd && (
           <Button asChild variant="outline" size="touch">
@@ -61,7 +55,7 @@ export default async function PatientsPage() {
           </Button>
         )}
 
-        <p className="px-1 text-[13px] text-muted-foreground">Enfermería y médicos ven esta misma lista con sus pacientes asignados.</p>
+        {note && <p className="px-1 text-[13px] text-muted-foreground">{note}</p>}
       </main>
       {canAdd && (
         <BottomBar>

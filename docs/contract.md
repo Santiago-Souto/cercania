@@ -351,11 +351,11 @@ Any authenticated person. Errors: `401 unauthenticated`.
 }
 ```
 
-`is_admin`: global admin (see Admin). `can_add_patients`: the caller may use `POST /patients` (caregivers only).
+`is_admin`: global admin (see Admin). `can_add_patients`: the caller may use `POST /patients` (the person's role is `caregiver`, see Admin).
 
 ### `GET /me/patients`
 
-Any authenticated person. One entry per membership, for the dashboard. Status fields come from reports:
+Any authenticated person. One entry per membership, for the dashboard. A person with no role at all (no `person.role`, no membership, not admin, no pending invite) first gets their own patient profile with the `patient` role, as at sign-up; `POST /auth/verify` does the same for an existing account. Status fields come from reports:
 
 - `last_report_at`: `created_at` of the patient's newest report, or `null`.
 - `red_flag`: some report from the last 24 h has `red_flag`.
@@ -445,13 +445,7 @@ No passwords. The code goes out **by SMS** (Twilio, `backend/app/sms.py`); invit
 
 The web app keeps the session in a cookie (`cercania_session`) set by `POST /auth/verify` (`HttpOnly`; `Secure` and `SameSite` from `SESSION_COOKIE_SECURE` / `SESSION_COOKIE_SAMESITE`). The web and the API are on different sites (`onrender.com` is a public suffix), and browsers block cross-site cookies, so **the browser never calls the API host directly**: it calls `/api/*` on the web origin, which Next.js rewrites to the API (`web/next.config.ts`). The cookie is therefore first-party on the web origin, and the deploy uses `SameSite=Lax`. Server components read the cookie and forward it to the API as a `Cookie` header (`web/lib/api.ts`). The web sends people with no cookie, or whose call returns `401`, to `/login`. The cookie is persistent (`Max-Age` = `SESSION_TTL_DAYS`), so the same device stays logged in: `/` and `/login` check `GET /me` and send a logged-in person straight to their home; a cookie the API no longer accepts shows the login form. Sessions last `SESSION_TTL_DAYS` (default 30) and are stored hashed server-side. Every endpoint below except `/auth/*` requires the cookie and returns `401 { "error": { "code": "unauthenticated" } }` without it. (Local dev only: `ALLOW_DEV_IDENTITY_HEADER=1` also accepts an `X-Person-Id` header; simulated identity, never in a real deploy.)
 
-### `POST /auth/signup`
-
-```json
-{ "name": "Ana Pérez (fictional)", "email": "ana@example.com", "phone": "+59899000000" }
-```
-
-`email` is optional. The person is created only when the code is verified.
+One flow for sign-up and login: the web asks only for the phone (`POST /auth/login`), then the code; a phone with no account answers `profile_required` at `POST /auth/verify` and the web asks for name, last name and optional email on that step.
 
 ### `POST /auth/login`
 
@@ -459,15 +453,23 @@ The web app keeps the session in a cookie (`cercania_session`) set by `POST /aut
 { "phone": "+59899000000" }
 ```
 
+### `POST /auth/signup`
+
+```json
+{ "name": "Ana Pérez (fictional)", "email": "ana@example.com", "phone": "+59899000000" }
+```
+
+Same as login, with the name up front: for a new phone, verify then creates the person directly (no `profile_required`). `email` is optional. The person is created only when the code is verified. The web does not use it any more.
+
 Both send a 6-digit code by SMS to the phone and reply (with `TWILIO_TRIAL_TEMPLATE` set, the code comes from Twilio's trial template and `expires_in_sec` is 300; see README "Simulated"):
 
 ```json
 { "status": "code_sent", "phone_last4": "0000", "expires_in_sec": 600, "resend_after_sec": 60 }
 ```
 
-Errors: `phone_invalid` (400; must be E.164, spaces and dashes are ignored), `too_many_requests` (429; one code per phone per `resend_after_sec`, at most 5 per hour), `sms_unreachable` (502, sign-up only: the SMS could not be sent; check the number and try again). None of them is about whether the phone has an account.
+Errors: `phone_invalid` (400; must be E.164, spaces and dashes are ignored), `too_many_requests` (429; one code per phone per `resend_after_sec`, at most 5 per hour), `sms_unreachable` (502: the SMS could not be sent; check the number and try again). None of them is about whether the phone has an account.
 
-Anti-enumeration: these two endpoints must not reveal whether a phone is registered. `POST /auth/login` returns the same `code_sent` body for an unknown phone and sends nothing (the rate limit counts it the same way); if the SMS to a registered phone fails, it is logged and the answer is still `code_sent`. `POST /auth/signup` for a phone that already has an account sends a normal login code instead of creating a second user (the stored name is kept); since sign-up always texts the phone, it can report `sms_unreachable` without leaking anything. The code screen says "si no te llega en un minuto, pedí otro código". Email is contact info only: it is not verified, not unique, and never grants access, so there is no `email_taken`.
+Anti-enumeration: before the code is verified, nothing reveals whether a phone is registered. Both endpoints text **every** phone, registered or not, with the same `code_sent` body, so `sms_unreachable` leaks nothing either. `POST /auth/signup` for a phone that already has an account sends a normal login code instead of creating a second user (the stored name is kept). Only the person holding the code learns that the phone is new (`profile_required` below). The code screen says "si no te llega en un minuto, pedí otro código". Email is contact info only: it is not verified, not unique, and never grants access, so there is no `email_taken`.
 
 ### `POST /auth/verify`
 
@@ -476,15 +478,24 @@ Anti-enumeration: these two endpoints must not reveal whether a phone is registe
 ```
 
 ```json
-{ "user": { "id": "usr_001", "name": "Ana Pérez (fictional)" }, "is_admin": false, "memberships": [ { "patient_id": "pat_001", "display_name": "Rosa (fictional)", "role": "caregiver" } ] }
+{ "status": "signed_in", "user": { "id": "usr_001", "name": "Ana Pérez (fictional)" }, "is_admin": false, "memberships": [ { "patient_id": "pat_001", "display_name": "Rosa (fictional)", "role": "caregiver" } ] }
 ```
 
-Only the latest code sent to the phone is valid. Codes are single-use, expire after `LOGIN_CODE_TTL_MINUTES` (default 10), are stored as salted hashes, and lock after 5 wrong attempts. Errors: `code_invalid` (400), `code_expired` (400), `too_many_attempts` (429; ask for a new code). A code that is not 6 digits is `422 invalid_request`. Invites are matched only on the phone proven by the code, never on email, and stay pending until accepted in the app (`POST /me/invites/{invite_id}/accept`).
+**New phone.** If the code is right but the phone has no account (and no name came from `/auth/signup`), the answer is `200 { "status": "profile_required" }`: no cookie, nothing created, and the code is **not** used up (same expiry and attempt count). The web then sends the same code again with the profile, which creates the person and signs in (`signed_in` as above):
+
+```json
+{ "phone": "+59899000000", "code": "470123", "name": "Ana Pérez (fictional)", "email": "ana@example.com" }
+```
+
+`name` is 1-120 characters (the web joins first and last name), `email` optional. Both are ignored for a phone that already has an account.
+
+Only the latest code sent to the phone is valid. Codes are single-use, expire after `LOGIN_CODE_TTL_MINUTES` (default 10), are stored as salted hashes, and lock after 5 wrong attempts. Errors: `code_invalid` (400), `code_expired` (400), `too_many_attempts` (429; ask for a new code). A code that is not 6 digits, or a blank `name`, is `422 invalid_request`. Invites are matched only on the phone proven by the code, never on email, and stay pending until accepted in the app (`POST /me/invites/{invite_id}/accept`).
 
 **Starting role of a new person** (the sign-up that creates the person; logging in again changes nothing), decided in code (`backend/app/roles.py`):
-1. The phone has an **admin pre-registration**: that role is applied and the pre-registration is consumed. With a patient, that membership; `admin`, `is_admin = true`; a caregiver without a patient, no memberships but `can_add_patients = true`; `patient`, their own new patient profile.
-2. Otherwise, the phone has a **pending invite** (family or patient): nothing is applied; the person accepts it in the app.
-3. Otherwise the person signed up for themselves: they get **their own patient profile** (display name = their name, no care plan) and the `patient` role on it, so `memberships` has that one entry.
+1. The phone has an **admin pre-registration**: that role is applied and the pre-registration is consumed. It sets the person's role and never a link to a patient (CIA-58): `admin`, `is_admin = true`; `patient`, their own new patient profile; `caregiver`, no memberships but `can_add_patients = true`; family, doctor, nurse or institution, no memberships until a caregiver invites them (family) or later (health team, see README "Pending").
+2. Otherwise, a caregiver **added a patient with this phone** (`POST /patients` `phone`) and that patient has no login yet: the person becomes that patient's own login (`patient` role), with no invite. Also checked when a person with no role at all logs in.
+3. Otherwise, the phone has a **pending invite** (family or patient): nothing is applied; the person accepts it in the app.
+4. Otherwise the person signed up for themselves: they get **their own patient profile** (display name = their name, no care plan) and the `patient` role on it, so `memberships` has that one entry.
 
 If a phone has both a pre-registration and an invite, the pre-registration applies and the invite stays pending.
 
@@ -508,11 +519,15 @@ Deletes the session server-side and clears the cookie. Returns `{ "status": "log
 }
 ```
 
-`location` is optional free text and is `null` when not set. `emergency_contact` (`{ name, phone }`) is optional; the phone is normalized to E.164 like other phones. Returns `201` with the patient as in `GET /patients/{patient_id}`. Only caregivers may add a patient (`403 forbidden` otherwise): someone with a caregiver membership, or a caregiver an admin registered before assigning patients (`GET /me` `can_add_patients`). The creator becomes `caregiver` and sets the initial care plan (version 1); after that only a `doctor` can edit it. Doses are stored as entered; nothing is computed. Each medication needs `name` and `dose` (1-120 characters); `times` are `HH:MM`. `care_plan` may be omitted (empty plan). Errors: `401`; `422 invalid_request` (empty name, bad time, too long); `422 phone_invalid` (emergency contact phone without country code).
+`location` is optional free text and is `null` when not set. `emergency_contact` (`{ name, phone }`) is optional; the phone is normalized to E.164 like other phones. Returns `201` with the patient as in `GET /patients/{patient_id}`. Only caregivers may add a patient (`403 forbidden` otherwise): someone with a caregiver membership, or a caregiver an admin registered before assigning patients (`GET /me` `can_add_patients`). The creator becomes `caregiver` and sets the initial care plan (version 1); after that only a `doctor` can edit it. Doses are stored as entered; nothing is computed. Each medication needs `name` and `dose` (1-120 characters); `times` are `HH:MM`. `care_plan` may be omitted (empty plan). `phone` (optional) is the patient's own cell, normalized to E.164: when that phone signs up, the person joins this patient as its own login with no invite (see "Starting role" under Auth). If the phone already has an account, a pending `patient` invite is created for it instead (same response either way). One live patient per phone. Errors: `401`; `422 invalid_request` (empty name, bad time, too long); `422 phone_invalid` (emergency contact or patient phone without country code); `422 patient_phone_self` (the caregiver's own number); `409 patient_phone_taken` (another live patient has that phone).
 
 ### `PATCH /patients/{patient_id}/emergency-contact`
 
 Permission: `edit_emergency_contact` (**caregiver and doctor** only; other roles get `403 forbidden`). Body: `{ "name": "Emergencias Residencia", "phone": "+598 99 123 456" }` to set, or the JSON `null` to clear. Name 1-120 characters; the phone is normalized to E.164. Returns `200` with the patient as in `GET /patients/{patient_id}`. Errors: `401`, `403`, `404`, `422 invalid_request` (empty name, malformed body), `422 phone_invalid` (message in Spanish, same text as other phone errors).
+
+### `DELETE /patients/{patient_id}`
+
+Permission: `archive_patient` (**caregiver** only; other roles get `403 forbidden`). Removes the patient from the app as a **soft delete**: every membership, pending invite and pre-registration for it is deleted (the memberships it had are logged in `role_change` as `patient_archived`), and `patient.archived_at` is set. Reports, versions, alerts and messages stay stored as the evidence trail, but nobody can reach them any more (`404` for everyone, and the patient leaves every `GET /me/patients`). Admins can no longer assign roles on it. Returns `{ "status": "archived" }`. Errors: `401`, `403`, `404`.
 
 ### `GET /patients/{patient_id}/members`
 
@@ -538,7 +553,7 @@ Same invite with the patient in the body: `{ "contact": "+59899111111", "role": 
 
 ### `GET /me/invites`
 
-Any authenticated person. Pending invites addressed to the caller's own phone (the one their session proved), newest first. The web shows them on "Mis pacientes" with Aceptar / Rechazar. Errors: `401`.
+Any authenticated person. Pending invites addressed to the caller's own phone (the one their session proved), newest first. The web shows them on "Mis pacientes" and on the patient's own view (a self-signed-up patient's only screen) with Aceptar / Rechazar, and polls this endpoint with the notifications (about every 5 s) to show a toast for an invite that arrives while the app is open. Errors: `401`.
 
 ```json
 { "invites": [ { "id": "inv_001", "patient_id": "pat_001", "patient_display_name": "Rosa (fictional)", "role": "family", "invited_by": "Ana Pérez (fictional)", "created_at": "2026-10-18T00:05:00Z" } ] }
@@ -548,7 +563,7 @@ Any authenticated person. Pending invites addressed to the caller's own phone (t
 
 ### `POST /me/invites/{invite_id}/accept`
 
-Creates the membership with the invite's role, family or patient (if the caller is already a member, their current role is kept). For a `patient` invite without a patient, it first creates the caller's own patient profile and makes the inviting caregiver its caregiver; `patient_id` in the answer is that new profile and marks the invite `accepted`. Returns the membership: `{ "patient_id": "pat_001", "display_name": "Rosa (fictional)", "role": "family" }`. Errors: `401`; `404 not_found` (unknown, addressed to another phone, or no longer pending).
+Creates the membership with the invite's role, family or patient (if the caller is already a member, their current role is kept). For a `patient` invite without a patient, it first creates the caller's own patient profile and makes the inviting caregiver its caregiver; `patient_id` in the answer is that new profile and marks the invite `accepted`. For a `patient` invite to an existing patient, a caller who already has their own profile (self sign-up) gets it **merged**: if no one else has access to that profile and it has no reports, its patient messages (and their notifications) move to the invited patient and the old profile is archived as in `DELETE /patients/{patient_id}` (logged as `own_profile_merged`); otherwise both profiles stay. Returns the membership: `{ "patient_id": "pat_001", "display_name": "Rosa (fictional)", "role": "family" }`. Errors: `401`; `404 not_found` (unknown, addressed to another phone, or no longer pending).
 
 ### `POST /me/invites/{invite_id}/decline`
 
@@ -556,7 +571,7 @@ Deletes the invite, so the caregiver can invite the number again. Returns `{ "st
 
 ## Admin
 
-A global admin (`person.is_admin`) lists people and assigns roles, **nothing else**: being admin opens no patient, report, alert, care-plan or message route (those still need a membership). Admins are set by hand in the database, from an `admin` pre-registration at sign-up, or by **another admin on an existing person** (`PUT /admin/people/{id}/admin`, or a confirmed `admin` pre-registration of a registered phone). Every admin route answers `403 forbidden` to non-admins, and every change is written to `role_change` (who, when, before, after). Implemented in `backend/app/api/admin.py` and `backend/app/roles.py`.
+A global admin (`person.is_admin`) lists people and sets **each person's role** (`person.role`), **nothing else** (CIA-58): an admin never links people to patients (that comes from caregivers: creating a patient, inviting family or a patient's own login), and being admin opens no patient, report, alert, care-plan or message route (those still need a membership). Admins are set by hand in the database, from an `admin` pre-registration at sign-up, or by **another admin on an existing person** (`PUT /admin/people/{id}/admin`, or a confirmed `admin` pre-registration of a registered phone). Every admin route answers `403 forbidden` to non-admins, and every change is written to `role_change` (who, when, before, after). Implemented in `backend/app/api/admin.py` and `backend/app/roles.py`.
 
 **Overwrite warning:** a change that would replace something that exists answers `409 overwrite_required` with the current state in `error.current`, and is applied only when the same request is sent again with `"confirm_overwrite": true`.
 
@@ -565,43 +580,42 @@ A global admin (`person.is_admin`) lists people and assigns roles, **nothing els
 ```json
 {
   "people": [
-    { "id": "cg_001", "name": "Ana (fictional)", "phone": "+15550100001", "is_admin": false, "is_caregiver": false,
-      "memberships": [ { "patient_id": "pat_001", "patient_name": "Rosa (fictional)", "role": "caregiver" } ] }
+    { "id": "cg_001", "name": "Ana (fictional)", "phone": "+15550100001", "is_admin": false, "role": "caregiver" }
   ],
   "pre_registrations": [
-    { "id": "pre_1", "phone": "+15550100099", "role": "caregiver", "patient_id": null, "patient_name": null, "created_at": "2026-10-18T08:00:00Z" }
-  ],
-  "patients": [ { "id": "pat_001", "display_name": "Rosa (fictional)" } ]
+    { "id": "pre_1", "phone": "+15550100099", "role": "caregiver", "created_at": "2026-10-18T08:00:00Z" }
+  ]
 }
 ```
 
-`patients` is names only, to pick from when assigning a role. `is_caregiver` = a caregiver registered before any patient was assigned.
+`role` is one of `caregiver`, `family`, `patient`, `doctor`, `nurse`, `institution`, or `null`. Accounts from before CIA-58 have no stored role and read as: `caregiver` if an admin registered them as one, else their strongest membership role (caregiver > doctor > nurse > institution > family > patient), else `null`. No memberships and no patient list: the admin view shows no links to patients.
 
-### `PUT /admin/people/{person_id}/memberships/{patient_id}`
+### `PUT /admin/people/{person_id}/role`
 
-`{ "role": "nurse", "confirm_overwrite": false }`. Adds the membership, or changes it. Replacing a **different** role the person already has on that patient is a `409` whose `error.current` is the person (as in `people`). Returns the person. Errors: `404` (unknown person or patient), `409`, `422` (`admin` is not a membership role).
+`{ "role": "caregiver", "confirm_overwrite": false }`. Sets the person's role. Changing a **different** role they already have is a `409` whose `error.current` is the person (as in `people`); a person with no role gets it directly. The same role again: `200`, nothing changes. Effects, never a link to someone else's patient:
+- `patient`: their own patient profile, created if they have none.
+- Any other role: their `patient` memberships (their login to their own profile) are removed. The profile and its records stay. Other memberships stay.
+- `caregiver` can add patients (`GET /me` `can_add_patients`); no other role can.
+
+Logged in `role_change` as `role_set` (`after.patient_logins_removed` lists the profiles they left). Returns the person. Errors: `404`, `409`, `422` (unknown role; `admin` uses the route below).
 
 ### `PUT /admin/people/{person_id}/admin`
 
-`{ "confirm_overwrite": false }`. Another admin makes an existing person an admin. Always a `409` first, with the person in `error.current` (name and current roles); applied with `confirm_overwrite: true`. Their memberships do not change. Already admin: `200`, nothing changes. Returns the person. Errors: `404`, `409`. Removing admin is done by hand in the database.
-
-### `DELETE /admin/people/{person_id}/memberships/{patient_id}`
-
-Removes it. Returns the person. Errors: `404`.
+`{ "confirm_overwrite": false }`. Another admin makes an existing person an admin. Always a `409` first, with the person in `error.current` (name and current roles); applied with `confirm_overwrite: true`. Their role and memberships do not change. Already admin: `200`, nothing changes. Returns the person. Errors: `404`, `409`. Removing admin is done by hand in the database.
 
 ### `POST /admin/pre-registrations`
 
-`{ "phone": "+15550100099", "role": "caregiver", "patient_id": null, "confirm_overwrite": false }`. A role for a phone that has not signed up. **Nothing is sent**: the person signs up on their own and starts with this role (see `POST /auth/verify`). `role` is a membership role or `admin`. `patient_id` is **required** for family, doctor, nurse and institution (`422 patient_required`), **optional** for caregiver, and **not used** for `admin` and `patient` (`422 patient_not_used`).
+`{ "phone": "+15550100099", "role": "caregiver", "confirm_overwrite": false }`. A role for a phone that has not signed up. **Nothing is sent**: the person signs up on their own and starts with this role (see `POST /auth/verify`). `role` is a person role or `admin`. No patient (CIA-58; a `patient_id` sent by an older client is ignored).
 
-- Phone of a **registered person**: `409` with `error.current.person`. Confirmed, the role is applied to that person now and the answer is `200 { "applied_to": <person> }` (`admin` makes them an admin; their memberships stay).
+- Phone of a **registered person**: `409` with `error.current.person`. Confirmed, the role is applied to that person now, as in `PUT /admin/people/{person_id}/role`, and the answer is `200 { "applied_to": <person> }` (`admin` makes them an admin; their role stays).
 - Phone with a **pending pre-registration**: `409` with `error.current.pre_registration`. Confirmed, it is replaced (`200`).
 - Otherwise: `201 { "pre_registration": {...} }`.
 
-Errors also: `400 phone_invalid`, `404` (unknown patient).
+Errors also: `400 phone_invalid`.
 
 ### `PATCH /admin/pre-registrations/{id}` and `DELETE /admin/pre-registrations/{id}`
 
-PATCH `{ "role": "...", "patient_id": ... }` edits a pending one (same patient rules); DELETE removes it. Errors: `404`.
+PATCH `{ "role": "..." }` edits a pending one; DELETE removes it. Errors: `404`.
 
 ## Reports from the web app
 
@@ -665,7 +679,9 @@ Errors: `401`; `404 not_found` (unknown patient or no access); `403 forbidden` (
 
 ### `GET /patients/{patient_id}/patient-messages`
 
-Permission: `read_patient_messages` (caregivers, health team and the patient; not family). Query: `limit` (1-100, default 50). Latest first: `{ "messages": [ { "id", "kind", "text", "red_flag", "created_at", "seen_by": [ { "user_id", "name" } ] } ] }`. `text` is `null` for `help`.
+Permission: `read_patient_messages` (caregivers, health team and the patient; not family). Query: `limit` (1-100, default 50). Latest first: `{ "messages": [ { "id", "kind", "text", "red_flag", "reason", "created_at", "seen_by": [ { "user_id", "name" } ] } ] }`. `text` is `null` for `help`. `reason` is the triage reason when `red_flag` is `true`, else `null`.
+
+The web alerts screen (`/patients/{id}/alerts`) lists the `help` and `red_flag` messages next to the report emergencies, so "Ver" on their notification lands on them.
 
 A caregiver or health-team member listing the messages marks the listed ones as seen by them (`seen_by`, oldest first). The patient listing them does not.
 

@@ -261,6 +261,17 @@ def test_list_latest_first_and_team_reading_marks_seen(db, monkeypatch):
     assert [s["user_id"] for s in again[0]["seen_by"]] == ["doc", "nur"]
 
 
+def test_list_shows_the_triage_reason_only_on_red_flags(db, monkeypatch):
+    fake_triage(monkeypatch, emergency=True, reason="Dolor de pecho", quote="me duele el pecho")
+    client.post(URL, json={"kind": "feeling", "text": "me duele el pecho"}, headers=as_("ptl"))
+    fake_triage(monkeypatch, reason="Nada grave")
+    client.post(URL, json={"kind": "feeling", "text": "dormí bien"}, headers=as_("ptl"))
+    calm, flagged = client.get(URL, headers=as_("cg")).json()["messages"]
+    assert (flagged["red_flag"], flagged["reason"]) == (True, "Dolor de pecho")
+    assert (calm["red_flag"], calm["reason"]) == (False, None)
+    assert flagged["created_at"].endswith(("Z", "+00:00"))  # with an offset, or the browser reads it as local time
+
+
 def test_family_cannot_read_patient_messages(db):
     assert client.get(URL, headers=as_("fam")).status_code == 403
 

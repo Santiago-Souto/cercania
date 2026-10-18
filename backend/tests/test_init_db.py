@@ -28,3 +28,17 @@ def test_init_db_adds_indexes_to_existing_tables(monkeypatch):
     models.init_db()
     models.init_db()
     assert "uq_invite_pending" in {i["name"] for i in inspect(engine).get_indexes("invite")}
+
+
+def test_init_db_indexes_a_column_it_just_added(monkeypatch):
+    engine = create_engine("sqlite://")
+    with engine.begin() as conn:
+        # A patient table from before `phone` (and its index ix_patient_phone) existed.
+        conn.execute(text(
+            "CREATE TABLE patient (id VARCHAR(32) PRIMARY KEY, display_name VARCHAR(120) NOT NULL, "
+            "vocabulary JSON NOT NULL, created_at DATETIME NOT NULL)"
+        ))
+    monkeypatch.setattr(models, "engine", engine)
+    models.init_db()
+    assert "phone" in {c["name"] for c in inspect(engine).get_columns("patient")}
+    assert "ix_patient_phone" in {i["name"] for i in inspect(engine).get_indexes("patient")}

@@ -13,7 +13,7 @@ Logo: **Cercanía**. Dos puntos superpuestos: el verde forma una C que sostiene 
 - **Símbolo:** `BrandMark` en `web/components/app/shell.tsx` (círculo verde r26, aro del color de fondo r17, punto ámbar r13, centros a 18 de distancia; viewBox `14 20 72 64`). No deformar, no rotar, no cambiar las proporciones.
 - **Logotipo:** "Cercan" en tinta + "ía" en ámbar, Bricolage Grotesque 800, tracking −0.035em. Siempre con tilde.
 - **Colores:** verde `#0E5A55` (`--primary`), ámbar `#E39B35` (`--brand-amber`) para el punto y sobre fondo verde. Para el texto "ía" sobre fondos claros, `#B87418` (`--brand-amber-ink`), porque el ámbar claro no llega a 3:1 sobre blanco.
-- **Sobre fondo verde:** el círculo pasa a blanco, el aro toma el verde y el punto queda ámbar. Así son los íconos de la app (`app/icon.tsx`, `app/apple-icon.tsx`).
+- **Sobre fondo verde:** el círculo pasa a blanco, el aro toma el verde y el punto queda ámbar. Así son los íconos de la app (`app/icon.tsx`, `app/apple-icon.tsx`, dibujo en `lib/app-icon.tsx`): el fondo es un degradé verde y el aro es un hueco real en el círculo, porque el modo oscuro de iOS reemplaza un fondo de color plano por negro (y con él, el aro).
 - **Tamaño mínimo:** símbolo de 20 px; logotipo completo de 18 px de alto.
 - **Nombre:** el logo dice "Cercanía". En textos de la app y en la documentación el producto sigue figurando como "CercanIA" hasta que el equipo decida unificarlo.
 
@@ -79,7 +79,6 @@ The tokens above are wired as the shadcn theme in `web/app/globals.css` (`--prim
 | Forms | `Field`, `FieldLabel`, `FieldDescription`, `Input`, `Select` | |
 | Search and chat composer | `InputGroup` | |
 | 6-digit code | `InputOTP` | |
-| Sign-up / login switch | `Tabs` | |
 | Help confirmation | `AlertDialog` | |
 | Chat (Ask, Messages) | `Bubble`, `Message` | |
 | Empty / error states | `Empty` | |
@@ -99,7 +98,7 @@ App chrome shared by all screens (centered 480px column, top bar, bottom nav, bo
 
 | Artboard | Route | Ticket | Data |
 |---|---|---|---|
-| `SignIn` | `/login` | CIA-32 | `POST /auth/signup`, `/auth/login` |
+| `SignIn` | `/login` (phone with country picker), `/login/code` (code, then name step for a new phone) | CIA-32 | `POST /auth/login`, `/auth/verify` |
 | `Code` (+ `Link` as the expired state) | `/login/code` | CIA-32 | `POST /auth/verify` |
 | `Patients` | `/patients` | CIA-33, CIA-60 | `GET /me/patients`; red dot on the avatar + "N novedades" badge from `unread_notifications` (no artboard snapshot yet) |
 | `AddPatient` | `/patients/new` | CIA-34, CIA-51 | `POST /patients` (optional emergency number), members, invites |

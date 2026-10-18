@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
@@ -141,6 +142,10 @@ async def create_patient_message(
             "red_flag": message.red_flag, "message_for_patient": reply}
 
 
+def _aware(dt: datetime) -> datetime:
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)  # SQLite returns naive UTC
+
+
 def mark_seen(db: Session, message_ids: list[str], person_id: str) -> None:
     """Record that `person_id` saw these messages. Race-safe: the web polls every few seconds,
     so two overlapping requests may insert the same pair; the duplicate is skipped, never a 500."""
@@ -172,7 +177,8 @@ def list_patient_messages(
         for m in new:
             db.refresh(m)
     return {"messages": [
-        {"id": m.id, "kind": m.kind.value, "text": m.text, "red_flag": m.red_flag, "created_at": m.created_at,
+        {"id": m.id, "kind": m.kind.value, "text": m.text, "red_flag": m.red_flag,
+         "reason": m.triage_reason if m.red_flag else None, "created_at": _aware(m.created_at),
          "seen_by": [{"user_id": s.person_id, "name": s.person.display_name if s.person else ""} for s in m.seen]}
         for m in messages
     ]}

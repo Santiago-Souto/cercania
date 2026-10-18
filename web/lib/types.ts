@@ -181,6 +181,8 @@ export type NewPatient = {
   display_name: string;
   location: string | null;
   emergency_contact?: EmergencyContact | null;
+  /** The patient's own cell (E.164): signing up with it joins this profile as the patient. */
+  phone?: string | null;
   care_plan: { medications: Omit<Medication, "id">[]; indications: string[]; allergies: string[] };
 };
 
@@ -189,6 +191,8 @@ export type PatientMessage = {
   kind: "feeling" | "help";
   text: string | null;
   red_flag: boolean;
+  /** Triage reason, only when `red_flag` is true. */
+  reason: string | null;
   created_at: string;
   seen_by: { user_id: string; name: string }[];
 };
@@ -261,38 +265,37 @@ export type Me = {
 /** POST /auth/signup and /auth/login */
 export type CodeSent = { status: "code_sent"; phone_last4: string; expires_in_sec: number; resend_after_sec: number };
 
-/** POST /auth/verify */
-export type Verified = { user: { id: string; name: string }; is_admin: boolean; memberships: Membership[] };
+/** POST /auth/verify: signed in, or a new phone that still has to give its name. */
+export type Verified =
+  | { status: "signed_in"; user: { id: string; name: string }; is_admin: boolean; memberships: Membership[] }
+  | { status: "profile_required" };
 
-// --- Admin (CIA-48): people and roles only, never clinical data. ---
+/** Name and optional email for a new phone, sent with the same code. */
+export type NewProfile = { name: string; email?: string };
+
+// --- Admin (CIA-48, CIA-58): people and their role only; no patients, never clinical data. ---
 
 export type AdminRole = Role | "admin";
-
-export type AdminMembership = { patient_id: string; patient_name: string; role: Role };
 
 export type AdminPerson = {
   id: string;
   name: string;
   phone: string;
   is_admin: boolean;
-  /** Caregiver an admin registered before assigning any patient. */
-  is_caregiver: boolean;
-  memberships: AdminMembership[];
+  /** The person's role; null for an older account with no role and no patients. */
+  role: Role | null;
 };
 
 export type AdminPreRegistration = {
   id: string;
   phone: string;
   role: AdminRole;
-  patient_id: string | null;
-  patient_name: string | null;
   created_at: string;
 };
 
 export type AdminPeople = {
   people: AdminPerson[];
   pre_registrations: AdminPreRegistration[];
-  patients: { id: string; display_name: string }[];
 };
 
 /** `error.current` of an admin 409 `overwrite_required`. */

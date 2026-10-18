@@ -67,11 +67,16 @@ def get_my_patients(person_id: str = Depends(current_person_id), db: Session = D
     - `open_alerts`: emergency/omission/change alerts on the latest version of reports from the
       last 24 h (missing_item alerts are not counted so the number stays meaningful).
     - `missing_report`: no report in the last 24 h.
+    - A person with no role at all gets their own patient profile first (`roles.ensure_default_role`).
     - Role `patient` never sees reports or alerts (AGENTS.md section 6): all four are null.
     - `unread_notifications`: the caller's own unread web inbox rows for the patient (CIA-60).
     """
-    if db.get(Person, person_id) is None:
+    person = db.get(Person, person_id)
+    if person is None:
         raise api_error(401, "unauthenticated", "Iniciá sesión para continuar.")
+    # Someone with no role at all (older account, declined invite, memberships removed) is a patient.
+    if roles.ensure_default_role(db, person):
+        db.commit()
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     unread = dict(db.execute(
         select(Notification.patient_id, func.count())
@@ -165,6 +170,10 @@ def accept_invite(invite_id: str, person_id: str = Depends(current_person_id), d
         role = invite.role if invite.role in (Role.family, Role.patient) else Role.family
         access = PatientAccess(person_id=person.id, patient_id=invite.patient_id, role=role)
         db.add(access)
+        if role is Role.patient:
+            # Their self sign-up profile (e.g. a help request nobody saw) folds into this one.
+            db.flush()
+            roles.merge_own_profile(db, person, invite.patient_id)
     invite.status = InviteStatus.accepted
     invite.accepted_at = utcnow()
     db.commit()

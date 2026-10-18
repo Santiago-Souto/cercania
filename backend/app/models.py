@@ -110,6 +110,7 @@ class Permission(str, enum.Enum):
     read_patient_messages = "read_patient_messages"
     invite = "invite"  # POST /patients/{id}/invites, by phone number only
     edit_emergency_contact = "edit_emergency_contact"  # PATCH /patients/{id}/emergency-contact (CIA-51)
+    archive_patient = "archive_patient"  # DELETE /patients/{id}: soft delete, records stay
     team_messages = "team_messages"  # family <-> health team thread, human to human (CIA-36)
 
 
@@ -121,7 +122,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
                                Permission.read_reports, Permission.read_care_plan,
                                Permission.raise_emergency, Permission.send_patient_message,
                                Permission.read_patient_messages, Permission.invite,
-                               Permission.edit_emergency_contact}),
+                               Permission.edit_emergency_contact, Permission.archive_patient}),
     # Family <-> health team messages: only those roles, never caregiver or patient (AGENTS.md 6).
     Role.family: frozenset({Permission.read_reports, Permission.read_care_plan,
                             Permission.raise_emergency, Permission.team_messages}),
@@ -218,8 +219,10 @@ class Person(TimestampMixin, Base):
     # database, from an admin pre-registration at sign-up, or by another admin (confirmed).
     # Nullable so init_db can add it to an existing table; NULL = false.
     is_admin: Mapped[bool | None] = mapped_column(default=False)
-    # Caregiver granted by an admin before any patient is assigned (pre-registered without a
-    # patient). Lets them create patients and keeps sign-up from making them a patient.
+    # The person's role (CIA-58), a Role value set by an admin or by a pre-registration. Admins set
+    # only this, never links to patients. NULL on older accounts: read through roles.person_role.
+    role: Mapped[str | None] = mapped_column(String(20))
+    # Legacy (CIA-48): caregiver granted by an admin before `role` existed. Read only when `role` is NULL.
     is_caregiver: Mapped[bool | None] = mapped_column(default=False)
 
     access: Mapped[list[PatientAccess]] = relationship(back_populates="person")
@@ -242,6 +245,12 @@ class Patient(TimestampMixin, Base):
     # information only: it has no inbox, so it is not notified; both null = none registered.
     health_provider_name: Mapped[str | None] = mapped_column(String(120))
     health_provider_phone: Mapped[str | None] = mapped_column(String(20))  # E.164
+    # The patient's own cell phone (E.164), set by the caregiver who adds them. When that phone
+    # signs up, the person becomes this patient's own login with no invite (roles.claim_patient_by_phone).
+    phone: Mapped[str | None] = mapped_column(String(20), index=True)
+    # Archived by a caregiver (DELETE /patients/{id}): every membership and pending invite is
+    # removed, so nobody reaches it; reports and versions stay as the evidence trail.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     access: Mapped[list[PatientAccess]] = relationship(back_populates="patient")
     care_plans: Mapped[list[CarePlan]] = relationship(
@@ -303,9 +312,9 @@ class PreRegistration(TimestampMixin, Base):
     """A role an admin assigned to a phone that has not signed up yet (CIA-48).
 
     Nothing is sent. When that phone verifies its sign-up code, the role is applied and the
-    row is deleted (the role_change log keeps the history). `role` is a Role value or "admin";
-    `patient_id` is required for family/doctor/nurse/institution, optional for caregiver,
-    unused for admin and patient.
+    row is deleted (the role_change log keeps the history). `role` is a Role value or "admin".
+    `patient_id` is legacy (CIA-48): since CIA-58 admins never link people to patients, so it is
+    no longer written or read.
     """
 
     __tablename__ = "pre_registration"
@@ -722,11 +731,6 @@ def init_db() -> None:
     """Create missing tables and nullable columns, and relax NOT NULL where the model became
     nullable (Postgres). Safe to call repeatedly; never drops anything."""
     Base.metadata.create_all(engine)
-    # create_all adds indexes only with new tables; add ones introduced later (e.g. uq_invite_pending).
-    with engine.begin() as conn:
-        for table in Base.metadata.sorted_tables:
-            for index in table.indexes:
-                index.create(conn, checkfirst=True)
     # No migration tool: add nullable columns that were introduced after a table existed.
     existing = inspect(engine)
     with engine.begin() as conn:
@@ -743,6 +747,12 @@ def init_db() -> None:
                 for col in table.columns:
                     if col.nullable and db_nullable.get(col.name) is False:
                         conn.execute(text(f'ALTER TABLE "{table.name}" ALTER COLUMN "{col.name}" DROP NOT NULL'))
+    # create_all adds indexes only with new tables; add ones introduced later (e.g. uq_invite_pending).
+    # After the columns: an index may be on a column just added (e.g. ix_patient_phone).
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            for index in table.indexes:
+                index.create(conn, checkfirst=True)
 
 
 def role_for(session: Session, person_id: str, patient_id: str) -> Role | None:

@@ -15,20 +15,17 @@ import type { MyPatient } from "@/lib/types";
 /** Lowercase without accents, so "jose" finds "José" and "hab 12" finds "Hab. 12". */
 const fold = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[.]/g, "").toLowerCase();
 
-type EmptyCopy = { title: string; description: string };
-const DEFAULT_EMPTY: EmptyCopy = {
-  title: "Todavía no tenés pacientes",
-  description: "Pedile a quien cuida al paciente que te invite con este número.",
-};
+import type { EmptyCopy } from "./home-copy";
 
 export function PatientList({
   patients,
   hideEmpty = false,
-  empty = DEFAULT_EMPTY,
+  empty,
 }: {
   patients: MyPatient[];
   hideEmpty?: boolean;
-  empty?: EmptyCopy;
+  /** Fits the viewer's role (home-copy.ts emptyCopy). */
+  empty: EmptyCopy;
 }) {
   const [q, setQ] = useState("");
   // Every word must match, so "hab 12" finds "Habitación 12".
