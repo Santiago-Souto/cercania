@@ -21,7 +21,7 @@ Secrets live only in Render (service -> Environment). Never commit them. The ful
 
 | Service | Variables |
 |---|---|
-| API | `DATABASE_URL` (Supabase session pooler), `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `PUBLIC_BASE_URL` (= the API URL), `ALLOW_DEV_IDENTITY_HEADER` (simulated identity; `1` only with fictional data) |
+| API | `DATABASE_URL` (Supabase session pooler), `GROQ_API_KEY` (transcription and extraction), `ANTHROPIC_API_KEY` (triage), optional `EXTRACT_MODEL` / `TRIAGE_MODEL` / `LLM_BASE_URL` / `LLM_API_KEY` to switch LLM vendor, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `PUBLIC_BASE_URL` (= the API URL), `ALLOW_DEV_IDENTITY_HEADER` (simulated identity; `1` only with fictional data) |
 | Web | `NEXT_PUBLIC_API_URL` (= the API URL), `NEXT_PUBLIC_USE_FAKE_DATA` |
 
 ## Troubleshooting

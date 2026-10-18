@@ -20,12 +20,19 @@ const bricolage = Bricolage_Grotesque({
 export const metadata: Metadata = {
   title: "CercanIA",
   description: "El traspaso de turno que no se pierde.",
+  applicationName: "CercanIA",
+  // Installed from the home screen on iPhone: open full screen, keep the status bar readable.
+  appleWebApp: { capable: true, title: "CercanIA", statusBarStyle: "default" },
+  // Phone numbers in reports are data, not links.
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   themeColor: "#0e5a55",
+  // Lets env(safe-area-inset-*) work, so bottom bars clear the iPhone home indicator.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

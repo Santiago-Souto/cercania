@@ -19,9 +19,9 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Voice note received from WhatsApp | In progress | Meta Cloud API, bot number +1 555-674-0716 (test number: only allowed phones can write). Inbound voice notes verified against a real Meta payload; end-to-end with transcription pending the Groq key |
 | Audio transcription | In progress | Groq Whisper with a care-vocabulary prompt; live test pending |
 | `process_report` pipeline (triage + extraction + compare + store) | Functional | `backend/app/process.py`, reached through `app/ingest.py` by WhatsApp and the web app. Unit-tested with fake model clients; not yet run against the real models (see Eval) |
-| Structured extraction with verbatim quotes | Functional | `backend/app/extract.py`, Claude Haiku 5.5 structured output; every quote checked in code. Live accuracy not measured yet |
+| Structured extraction with verbatim quotes | Functional | `backend/app/extract.py`, Groq `openai/gpt-oss-120b` strict structured output by default; any other vendor via `EXTRACT_MODEL=<provider>:<model>` (`backend/app/llm.py`). Every quote checked in code. Live accuracy not measured yet |
 | Quote verification (code) | Functional | Normalized whole-word substring match; unit-tested (`backend/tests/test_extract.py`) |
-| Emergency triage (model decides) | Functional | `backend/app/triage.py`, Claude Haiku 5.5, runs on every message that reaches `process_report`. Fixed reply text and recipients in code. Criteria provisional; live accuracy not measured yet. Family, doctor and patient messages do not reach it from WhatsApp yet (see Pending) |
+| Emergency triage (model decides) | Functional | `backend/app/triage.py`, Claude Haiku 5.5 by default (any OpenAI-compatible model via `TRIAGE_MODEL=openai:<model>`), runs on every message that reaches `process_report`. Fixed reply text and recipients in code. Criteria provisional; live accuracy not measured yet. Family, doctor and patient messages do not reach it from WhatsApp yet (see Pending) |
 | Comparison vs care plan / history / checklist (code) | Functional | `backend/app/compare.py`: omissions, changes, missing checklist items. No model |
 | Confirmation reply to caregiver ("I recorded...") | Functional | Caregiver identified by phone, "which patient?" when several; `confirmation_text` written by code, with the fixed red-flag line on emergencies |
 | Report from the web app (text) | Functional | `POST /patients/{id}/reports` runs the same `process_report`; idempotent on `client_id`. Audio path needs the Groq key |
@@ -106,6 +106,6 @@ python eval/run_eval.py --split unseen  # only the held-out cases
 python eval/run_eval.py --json out.json # per-case details
 ```
 
-Runs every case in `eval/cases.csv` through the real `process_report` on a fresh temporary SQLite database with the fictional seed data (the team database is never touched). Needs `ANTHROPIC_API_KEY`.
+Runs every case in `eval/cases.csv` through the real `process_report` on a fresh temporary SQLite database with the fictional seed data (the team database is never touched). Needs the API keys of the configured providers: by default `GROQ_API_KEY` (extraction) and `ANTHROPIC_API_KEY` (triage); `LLM_API_KEY` (+ `LLM_BASE_URL`) for any `openai:<model>`.
 
 Reports: fields extracted (value + verified quote), omissions detected, missing checklist items detected, false alarms (unexpected alerts, items reported but not mentioned, items flagged missing but mentioned), quote-verification pass rate, and latency per report. Change alerts are expected as `change:<item>` in `expected_alerts`. A case where `process_report` raises or returns a status other than `ok` counts as failed: its expected counts stay in every ratio with zero detections, and the run exits with code 1. The wording of extracted values is not judged. Cases with `split=unseen` are held out from prompt tuning (keep at least 5).
