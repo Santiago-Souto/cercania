@@ -2,18 +2,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { PlusIcon } from "lucide-react";
+import { MailPlusIcon, PlusIcon, UsersRoundIcon } from "lucide-react";
 import { AppShell, BottomBar, Brand } from "@/components/app/shell";
 import { Button } from "@/components/ui/button";
-import { getMyInvites, getMyPatients } from "@/lib/api";
-import type { Role } from "@/lib/types";
+import { getMe, getMyInvites, getMyPatients } from "@/lib/api";
 import { PatientList } from "./patient-list";
 import { PendingInvites } from "./pending-invites";
 
-const ADDERS = new Set<Role>(["caregiver", "doctor", "nurse", "institution"]);
-
 export default async function PatientsPage() {
-  const [patients, invites] = await Promise.all([getMyPatients(), getMyInvites()]);
+  const [patients, invites, me] = await Promise.all([getMyPatients(), getMyInvites(), getMe()]);
   // A patient's only screen is their own view (CIA-35): no list, no other navigation.
   if (patients.length === 1 && patients[0].role === "patient" && invites.length === 0) redirect(`/patients/${patients[0].id}/me` as Route);
   // Red flags first, then by open alerts, then missing reports.
@@ -24,8 +21,8 @@ export default async function PatientsPage() {
       Number(b.missing_report ?? false) - Number(a.missing_report ?? false),
   );
 
-  // Caregivers and the health team add patients; a new user with no patients yet must be able to start.
-  const canAdd = patients.length === 0 || patients.some((p) => ADDERS.has(p.role));
+  // Only caregivers add patients (CIA-48), including one an admin registered before assigning any.
+  const canAdd = me.can_add_patients;
 
   return (
     <AppShell>
@@ -34,9 +31,34 @@ export default async function PatientsPage() {
       </header>
       <main className="flex flex-1 flex-col gap-3 px-4 pb-4">
         <h1 className="text-[28px] font-bold">Mis pacientes</h1>
+        {me.is_admin && (
+          <Button asChild variant="outline" size="touch" className="self-start">
+            <Link href="/admin">
+              <UsersRoundIcon />
+              Usuarios y roles
+            </Link>
+          </Button>
+        )}
 
         <PendingInvites invites={invites} />
-        <PatientList patients={sorted} hideEmpty={invites.length > 0} />
+        <PatientList
+          patients={sorted}
+          hideEmpty={invites.length > 0}
+          empty={
+            canAdd
+              ? { title: "Todavía no tenés pacientes asignados", description: "Agregá uno, o esperá a que una persona administradora te asigne." }
+              : undefined
+          }
+        />
+
+        {canAdd && (
+          <Button asChild variant="outline" size="touch">
+            <Link href="/patients/invite">
+              <MailPlusIcon />
+              Invitar a un paciente
+            </Link>
+          </Button>
+        )}
 
         <p className="px-1 text-[13px] text-muted-foreground">Enfermería y médicos ven esta misma lista con sus pacientes asignados.</p>
       </main>

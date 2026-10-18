@@ -7,6 +7,9 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { API_URL, ApiError, errorFrom, SESSION_COOKIE } from "./api-shared";
 import type {
+  AdminPeople,
+  AdminPerson,
+  AdminRole,
   Invite,
   Me,
   Member,
@@ -89,6 +92,11 @@ export async function createPatient(body: NewPatient): Promise<Patient> {
   return request<Patient>(`/patients`, { method: "POST", body: JSON.stringify(body) });
 }
 
+/** POST /invites (CIA-48): a caregiver invites a patient who has no profile yet. */
+export async function invitePatientWithoutProfile(contact: string): Promise<Invite> {
+  return request<Invite>(`/invites`, { method: "POST", body: JSON.stringify({ contact, role: "patient" }) });
+}
+
 export async function createInvite(patientId: string, contact: string, role: Role): Promise<Invite> {
   return request<Invite>(`/patients/${patientId}/invites`, {
     method: "POST",
@@ -140,4 +148,40 @@ export async function getSession(): Promise<Me | null> {
   } catch {
     return null;
   }
+}
+
+// --- Admin (CIA-48) ---
+
+export async function getAdminPeople(): Promise<AdminPeople> {
+  await connection();
+  return request<AdminPeople>(`/admin/people`);
+}
+
+export async function adminSetMembership(personId: string, patientId: string, role: Role, confirm: boolean): Promise<AdminPerson> {
+  return request<AdminPerson>(`/admin/people/${personId}/memberships/${patientId}`, {
+    method: "PUT",
+    body: JSON.stringify({ role, confirm_overwrite: confirm }),
+  });
+}
+
+export async function adminMakeAdmin(personId: string, confirm: boolean): Promise<AdminPerson> {
+  return request<AdminPerson>(`/admin/people/${personId}/admin`, {
+    method: "PUT",
+    body: JSON.stringify({ confirm_overwrite: confirm }),
+  });
+}
+
+export async function adminRemoveMembership(personId: string, patientId: string): Promise<AdminPerson> {
+  return request<AdminPerson>(`/admin/people/${personId}/memberships/${patientId}`, { method: "DELETE" });
+}
+
+export async function adminPreRegister(phone: string, role: AdminRole, patientId: string | null, confirm: boolean): Promise<unknown> {
+  return request(`/admin/pre-registrations`, {
+    method: "POST",
+    body: JSON.stringify({ phone, role, patient_id: patientId, confirm_overwrite: confirm }),
+  });
+}
+
+export async function adminDeletePreRegistration(id: string): Promise<unknown> {
+  return request(`/admin/pre-registrations/${id}`, { method: "DELETE" });
 }

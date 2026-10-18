@@ -288,7 +288,10 @@ function ResultAlert({ result }: { result: PatientMessageResult }) {
     return (
       <Alert variant="danger" role="alert">
         <TriangleAlertIcon />
-        <AlertTitle className="text-xl font-bold">{result.kind === "help" ? "Pediste ayuda" : "Avisamos a tu equipo"}</AlertTitle>
+        <AlertTitle className="text-xl font-bold">
+          {/* Never claim the team was told when nobody is on it yet (self sign-up, CIA-48). */}
+          {result.notified.length === 0 ? "Todavía no hay nadie para avisar" : result.kind === "help" ? "Pediste ayuda" : "Avisamos a tu equipo"}
+        </AlertTitle>
         <AlertDescription className="text-[19px]">{result.message_for_patient}</AlertDescription>
       </Alert>
     );

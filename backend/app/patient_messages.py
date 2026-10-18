@@ -47,6 +47,8 @@ HELP_MESSAGE = "Ya avisamos a tu equipo. Si es una emergencia, llamá a emergenc
 RED_FLAG_MESSAGE = "Avisamos a tu equipo. Si es una emergencia, llamá a emergencias o a tu médico ahora."
 FEELING_MESSAGE = "Gracias, tu equipo va a ver tu mensaje. Si es una emergencia, llamá a emergencias."
 FEELING_TRIAGE_FAILED_MESSAGE = "Gracias, tu equipo va a ver tu mensaje. " + triage_mod.TRIAGE_FAILED_LINE
+# A patient who signed up alone has nobody to notify yet (CIA-48): never claim "we told your team".
+NO_TEAM_MESSAGE = "Todavía no hay nadie en tu equipo para avisar. Si es una emergencia, llamá a emergencias ahora."
 
 
 @router.post("/patients/{patient_id}/patient-messages")
@@ -130,6 +132,8 @@ async def create_patient_message(
     notified: list[str] = []
     if kind is PatientMessageKind.help or message.red_flag:
         notified = notify.notify_patient_team(db, message)
+        if not notified:
+            reply = NO_TEAM_MESSAGE
     db.commit()
     log.info("Patient message %s stored kind=%s red_flag=%s notified=%d",
              message.id, kind.value, message.red_flag, len(notified))
