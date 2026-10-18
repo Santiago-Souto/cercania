@@ -52,7 +52,7 @@ export type Report = {
   created_at: string;
   caregiver: { id: string; display_name: string };
   transcript: string;
-  audio_url: string;
+  audio_url: string | null;
   audio_duration_sec?: number;
   items: ReportItem[];
   missing_items: ChecklistItem[];
