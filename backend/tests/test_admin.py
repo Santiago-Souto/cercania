@@ -1,4 +1,4 @@
-"""Admins, pre-registration and the sign-up rule (CIA-48). Fictional data only; no SMS is sent."""
+"""Admins, pre-registration, person roles and the sign-up rule (CIA-48, CIA-58). Fictional data only; no SMS is sent."""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -109,24 +109,23 @@ def test_person_with_no_role_becomes_patient_on_login(db, signup):
     assert [m["role"] for m in verified["memberships"]] == ["patient"]
 
 
-def test_no_default_patient_for_admin_caregiver_or_pending_invite(db):
+def test_no_default_patient_for_admin_caregiver_role_or_pending_invite(db):
     db.add(Person(id="cg2", phone="+15550100031", display_name="Cuidadora (ficticia)", is_caregiver=True))
+    db.add(Person(id="doc", phone="+15550100032", display_name="Médica (ficticia)", role="doctor"))
     db.add(Person(id="inv", phone=NEW, display_name="Invitada (ficticia)"))
     db.commit()
     client.post("/patients/pat_a/invites", json={"contact": NEW}, headers=h("cg"))
-    for pid in ("adm", "cg2", "inv"):
+    for pid in ("adm", "cg2", "doc", "inv"):
         assert client.get("/me/patients", headers=h(pid)).json()["patients"] == []
 
 
-@pytest.mark.parametrize("role, patient, expected", [
-    ("caregiver", "pat_a", [("pat_a", "caregiver")]),
-    ("doctor", "pat_b", [("pat_b", "doctor")]),
-])
-def test_pre_registered_phone_starts_with_that_membership(db, signup, role, patient, expected):
-    r = client.post("/admin/pre-registrations", json={"phone": NEW, "role": role, "patient_id": patient}, headers=h("adm"))
+@pytest.mark.parametrize("role", ["caregiver", "doctor", "family"])
+def test_pre_registered_phone_starts_with_that_role_and_no_patients(db, signup, role):
+    r = client.post("/admin/pre-registrations", json={"phone": NEW, "role": role}, headers=h("adm"))
     assert r.status_code == 201, r.text
     _, verified = signup()
-    assert [(m["patient_id"], m["role"]) for m in verified["memberships"]] == expected
+    assert verified["memberships"] == []  # an admin never links people to patients (CIA-58)
+    assert person(db, NEW).role == role
     assert db.scalars(select(PreRegistration)).all() == []  # consumed
     assert db.scalar(select(RoleChange).where(RoleChange.action == "pre_registration_applied")).actor_id == "adm"
 
@@ -153,40 +152,36 @@ def test_pre_registered_admin_and_patient(db, signup):
 
 def test_pre_registration_wins_over_a_pending_invite(db, signup):
     client.post("/patients/pat_a/invites", json={"contact": NEW}, headers=h("cg"))
-    client.post("/admin/pre-registrations", json={"phone": NEW, "role": "nurse", "patient_id": "pat_b"}, headers=h("adm"))
+    client.post("/admin/pre-registrations", json={"phone": NEW, "role": "nurse"}, headers=h("adm"))
     c, verified = signup()
-    assert [(m["patient_id"], m["role"]) for m in verified["memberships"]] == [("pat_b", "nurse")]
+    assert verified["memberships"] == [] and person(db, NEW).role == "nurse"
     assert len(c.get("/me/invites").json()["invites"]) == 1  # still there to accept
 
 
 # --- pre-registration validation and overwrite warning -----------------------------------------
 
 
-@pytest.mark.parametrize("body, code", [
-    ({"role": "family"}, "patient_required"),
-    ({"role": "doctor"}, "patient_required"),
-    ({"role": "admin", "patient_id": "pat_a"}, "patient_not_used"),
-    ({"role": "patient", "patient_id": "pat_a"}, "patient_not_used"),
-])
-def test_pre_registration_patient_rules(db, body, code):
-    r = client.post("/admin/pre-registrations", json={"phone": NEW, **body}, headers=h("adm"))
-    assert r.status_code == 422 and r.json()["error"]["code"] == code
+def test_pre_registration_takes_no_patient(db):
+    """CIA-58: a pre-registration is phone + role. A patient sent by an old client is ignored."""
+    r = client.post("/admin/pre-registrations", json={"phone": NEW, "role": "family", "patient_id": "pat_a"}, headers=h("adm"))
+    assert r.status_code == 201
+    assert r.json()["pre_registration"].keys() == {"id", "phone", "role", "created_at"}
+    assert db.scalar(select(PreRegistration)).patient_id is None
 
 
 def test_existing_phone_needs_confirmation_including_to_become_admin(db):
-    r = client.post("/admin/pre-registrations", json={"phone": FAM, "role": "caregiver", "patient_id": "pat_b"},
-                    headers=h("adm"))
+    r = client.post("/admin/pre-registrations", json={"phone": FAM, "role": "caregiver"}, headers=h("adm"))
     assert r.status_code == 409
     err = r.json()["error"]
     assert err["code"] == "overwrite_required"
-    assert err["current"]["person"]["name"] == "Carmen (ficticia)"
-    assert err["current"]["person"]["memberships"] == [{"patient_id": "pat_a", "patient_name": "Rosa (ficticia)", "role": "family"}]
-    assert db.scalar(select(PatientAccess).where(PatientAccess.person_id == "fam", PatientAccess.patient_id == "pat_b")) is None
+    assert err["current"]["person"] == {"id": "fam", "name": "Carmen (ficticia)", "phone": FAM, "is_admin": False, "role": "family"}
+    assert person(db, FAM).role is None
 
-    r = client.post("/admin/pre-registrations", json={"phone": FAM, "role": "caregiver", "patient_id": "pat_b",
-                                                      "confirm_overwrite": True}, headers=h("adm"))
-    assert r.status_code == 200
-    assert ("pat_b", "caregiver") in [(m["patient_id"], m["role"]) for m in r.json()["applied_to"]["memberships"]]
+    r = client.post("/admin/pre-registrations", json={"phone": FAM, "role": "caregiver", "confirm_overwrite": True},
+                    headers=h("adm"))
+    assert r.status_code == 200 and r.json()["applied_to"]["role"] == "caregiver"
+    # Her link to Rosa is not the admin's to change: it stays.
+    assert db.scalar(select(PatientAccess).where(PatientAccess.person_id == "fam")).role == Role.family
 
     # Another admin can make an existing person admin, after the same confirmation.
     r = client.post("/admin/pre-registrations", json={"phone": FAM, "role": "admin"}, headers=h("adm"))
@@ -194,53 +189,95 @@ def test_existing_phone_needs_confirmation_including_to_become_admin(db):
     assert not person(db, FAM).is_admin
     r = client.post("/admin/pre-registrations", json={"phone": FAM, "role": "admin", "confirm_overwrite": True}, headers=h("adm"))
     assert r.status_code == 200 and r.json()["applied_to"]["is_admin"] is True
-    assert len(r.json()["applied_to"]["memberships"]) == 2  # their roles stay
+    assert r.json()["applied_to"]["role"] == "caregiver"  # their role stays
 
 
 def test_pending_pre_registration_needs_confirmation_to_replace(db):
     client.post("/admin/pre-registrations", json={"phone": NEW, "role": "caregiver"}, headers=h("adm"))
-    r = client.post("/admin/pre-registrations", json={"phone": NEW, "role": "nurse", "patient_id": "pat_a"}, headers=h("adm"))
+    r = client.post("/admin/pre-registrations", json={"phone": NEW, "role": "nurse"}, headers=h("adm"))
     assert r.status_code == 409 and r.json()["error"]["current"]["pre_registration"]["role"] == "caregiver"
-    r = client.post("/admin/pre-registrations", json={"phone": NEW, "role": "nurse", "patient_id": "pat_a",
-                                                      "confirm_overwrite": True}, headers=h("adm"))
+    r = client.post("/admin/pre-registrations", json={"phone": NEW, "role": "nurse", "confirm_overwrite": True},
+                    headers=h("adm"))
     assert r.status_code == 200 and r.json()["pre_registration"]["role"] == "nurse"
     assert len(db.scalars(select(PreRegistration)).all()) == 1
 
 
 def test_edit_and_delete_pre_registration(db):
     pre = client.post("/admin/pre-registrations", json={"phone": NEW, "role": "caregiver"}, headers=h("adm")).json()["pre_registration"]
-    r = client.patch(f"/admin/pre-registrations/{pre['id']}", json={"role": "family", "patient_id": "pat_a"}, headers=h("adm"))
-    assert r.json()["pre_registration"]["patient_name"] == "Rosa (ficticia)"
+    r = client.patch(f"/admin/pre-registrations/{pre['id']}", json={"role": "family"}, headers=h("adm"))
+    assert r.json()["pre_registration"]["role"] == "family"
     assert client.delete(f"/admin/pre-registrations/{pre['id']}", headers=h("adm")).status_code == 200
     assert db.scalars(select(PreRegistration)).all() == []
 
 
-# --- memberships -----------------------------------------------------------------------------
+# --- person roles (CIA-58) ---------------------------------------------------------------------
 
 
-def test_admin_lists_people_pre_registrations_and_patient_names(db):
+def test_admin_lists_people_with_their_role_and_no_patients(db):
     client.post("/admin/pre-registrations", json={"phone": NEW, "role": "caregiver"}, headers=h("adm"))
     body = client.get("/admin/people", headers=h("adm")).json()
-    assert {p["name"] for p in body["people"]} == {"Ana (ficticia)", "Carmen (ficticia)", "Admin (ficticio)"}
+    assert body.keys() == {"people", "pre_registrations"}
+    assert {p["name"]: p["role"] for p in body["people"]} == {
+        "Ana (ficticia)": "caregiver", "Carmen (ficticia)": "family", "Admin (ficticio)": None}
+    assert all("memberships" not in p for p in body["people"])
     assert [(p["phone"], p["role"]) for p in body["pre_registrations"]] == [(NEW, "caregiver")]
-    assert body["patients"] == [{"id": "pat_b", "display_name": "Jorge (ficticio)"},
-                                {"id": "pat_a", "display_name": "Rosa (ficticia)"}]
 
 
-def test_replacing_a_role_on_a_patient_needs_confirmation_and_is_logged(db):
-    r = client.put("/admin/people/fam/memberships/pat_a", json={"role": "caregiver"}, headers=h("adm"))
-    assert r.status_code == 409 and r.json()["error"]["current"]["memberships"][0]["role"] == "family"
-    r = client.put("/admin/people/fam/memberships/pat_a", json={"role": "caregiver", "confirm_overwrite": True}, headers=h("adm"))
-    assert r.status_code == 200 and r.json()["memberships"][0]["role"] == "caregiver"
-    # A new patient for the same person is not an overwrite.
-    r = client.put("/admin/people/fam/memberships/pat_b", json={"role": "doctor"}, headers=h("adm"))
-    assert r.status_code == 200
-    r = client.delete("/admin/people/fam/memberships/pat_b", headers=h("adm"))
-    assert [m["patient_id"] for m in r.json()["memberships"]] == ["pat_a"]
+def test_changing_a_role_needs_confirmation_and_is_logged(db):
+    r = client.put("/admin/people/fam/role", json={"role": "doctor"}, headers=h("adm"))
+    assert r.status_code == 409 and r.json()["error"]["current"]["role"] == "family"
+    assert person(db, FAM).role is None
+    r = client.put("/admin/people/fam/role", json={"role": "doctor", "confirm_overwrite": True}, headers=h("adm"))
+    assert r.status_code == 200 and r.json()["role"] == "doctor"
+    assert db.scalar(select(PatientAccess).where(PatientAccess.person_id == "fam")).role == Role.family  # link untouched
+    assert client.put("/admin/people/fam/role", json={"role": "doctor"}, headers=h("adm")).status_code == 200  # same: no-op
     log = [(c.action, c.before, c.after) for c in db.scalars(select(RoleChange).order_by(RoleChange.id))]
-    assert log == [("membership_set", {"role": "family"}, {"role": "caregiver"}),
-                   ("membership_set", None, {"role": "doctor"}),
-                   ("membership_removed", {"role": "doctor"}, None)]
+    assert log == [("role_set", {"role": "family"}, {"role": "doctor"})]
+
+
+def test_a_person_with_no_role_gets_one_without_confirmation(db):
+    db.add(Person(id="nr", phone=NEW, display_name="Sin rol (ficticia)"))
+    db.commit()
+    r = client.put("/admin/people/nr/role", json={"role": "nurse"}, headers=h("adm"))
+    assert r.status_code == 200 and r.json()["role"] == "nurse"
+    assert client.get("/me/patients", headers=h("nr")).json()["patients"] == []  # not made a patient
+
+
+def test_self_signed_up_patient_made_caregiver_loses_their_own_login(db, signup):
+    """The Felipe case: signed up alone (own profile), then an admin makes them a caregiver."""
+    c, verified = signup()
+    own = verified["memberships"][0]["patient_id"]
+    pid = person(db, NEW).id
+    r = client.put(f"/admin/people/{pid}/role", json={"role": "caregiver"}, headers=h("adm"))
+    assert r.status_code == 409 and r.json()["error"]["current"]["role"] == "patient"
+    r = client.put(f"/admin/people/{pid}/role", json={"role": "caregiver", "confirm_overwrite": True}, headers=h("adm"))
+    assert r.status_code == 200 and r.json()["role"] == "caregiver"
+    assert c.get("/me/patients").json()["patients"] == []  # no longer their own patient, and no new profile
+    assert c.get("/me").json()["can_add_patients"] is True
+    assert db.get(Patient, own) is not None  # the profile and its records stay
+    assert db.scalar(select(RoleChange).where(RoleChange.action == "role_set")).after == {
+        "role": "caregiver", "patient_logins_removed": [own]}
+
+
+def test_becoming_a_patient_creates_their_own_profile_and_keeps_other_links(db):
+    r = client.put("/admin/people/cg/role", json={"role": "patient", "confirm_overwrite": True}, headers=h("adm"))
+    assert r.status_code == 200 and r.json()["role"] == "patient"
+    held = {(a.patient_id, a.role) for a in db.scalars(select(PatientAccess).where(PatientAccess.person_id == "cg"))}
+    assert ("pat_a", Role.caregiver) in held and len(held) == 2
+    own = next(pid for pid, role in held if role == Role.patient)
+    assert db.get(Patient, own).display_name == "Ana (ficticia)"
+
+
+def test_admin_cannot_link_people_to_patients(db):
+    for call in (client.put, client.delete):
+        kwargs = {"json": {"role": "doctor"}} if call is client.put else {}
+        assert call("/admin/people/fam/memberships/pat_b", headers=h("adm"), **kwargs).status_code in (404, 405)
+    assert db.scalar(select(PatientAccess).where(PatientAccess.patient_id == "pat_b")) is None
+
+
+def test_unknown_role_or_person(db):
+    assert client.put("/admin/people/fam/role", json={"role": "admin"}, headers=h("adm")).status_code == 422
+    assert client.put("/admin/people/nobody/role", json={"role": "family"}, headers=h("adm")).status_code == 404
 
 
 # --- access ----------------------------------------------------------------------------------
@@ -248,9 +285,9 @@ def test_replacing_a_role_on_a_patient_needs_confirmation_and_is_logged(db):
 
 @pytest.mark.parametrize("call", [
     lambda: client.get("/admin/people", headers=h("cg")),
-    lambda: client.put("/admin/people/fam/memberships/pat_b", json={"role": "doctor"}, headers=h("cg")),
+    lambda: client.put("/admin/people/fam/role", json={"role": "doctor"}, headers=h("cg")),
     lambda: client.post("/admin/pre-registrations", json={"phone": NEW, "role": "admin"}, headers=h("fam")),
-    lambda: client.delete("/admin/people/fam/memberships/pat_a", headers=h("fam")),
+    lambda: client.put("/admin/people/fam/admin", json={"confirm_overwrite": True}, headers=h("fam")),
 ])
 def test_non_admins_get_403(db, call):
     r = call()
@@ -299,10 +336,10 @@ def test_admin_makes_an_existing_person_admin_after_confirming(db):
     r = client.put("/admin/people/cg/admin", json={}, headers=h("adm"))
     assert r.status_code == 409
     current = r.json()["error"]["current"]
-    assert current["name"] == "Ana (ficticia)" and current["memberships"][0]["role"] == "caregiver"
+    assert current["name"] == "Ana (ficticia)" and current["role"] == "caregiver"
     assert not person(db, CG).is_admin
     r = client.put("/admin/people/cg/admin", json={"confirm_overwrite": True}, headers=h("adm"))
-    assert r.status_code == 200 and r.json()["is_admin"] is True and r.json()["memberships"][0]["role"] == "caregiver"
+    assert r.status_code == 200 and r.json()["is_admin"] is True and r.json()["role"] == "caregiver"
     assert client.get("/admin/people", headers=h("cg")).status_code == 200  # Ana can now admin
     assert db.scalar(select(RoleChange).where(RoleChange.action == "admin_granted")).actor_id == "adm"
     assert client.put("/admin/people/fam/admin", json={"confirm_overwrite": True}, headers=h("fam")).status_code == 403
@@ -322,11 +359,3 @@ def test_new_patient_invite_never_opens_an_existing_profile(db, signup):
     r = client.post(f"/me/invites/{inv['id']}/accept", headers=h(person(db, NEW).id))
     assert r.status_code == 409 and r.json()["error"]["code"] == "profile_exists"
     assert db.scalar(select(PatientAccess).where(PatientAccess.patient_id == own, PatientAccess.person_id == "cg")) is None
-
-
-def test_admin_cannot_give_a_patient_a_second_own_login(db):
-    client.put("/admin/people/fam/memberships/pat_b", json={"role": "patient"}, headers=h("adm"))
-    r = client.put("/admin/people/cg/memberships/pat_b", json={"role": "patient"}, headers=h("adm"))
-    assert r.status_code == 409 and r.json()["error"]["code"] == "patient_has_login"
-    # The same person keeping their own login is fine.
-    assert client.put("/admin/people/fam/memberships/pat_b", json={"role": "patient"}, headers=h("adm")).status_code == 200

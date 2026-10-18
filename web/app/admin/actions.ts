@@ -1,10 +1,10 @@
 "use server";
-// Admin actions (CIA-48): list people and assign roles. They call the backend through lib/api.ts with
+// Admin actions (CIA-48, CIA-58): list people and set their role (never links to patients). They call the backend through lib/api.ts with
 // the admin's session; the backend checks `is_admin`. A change that would replace something comes back
 // as `conflict` with the current state, and is sent again with `confirm` only after the admin agrees.
 
 import { revalidatePath } from "next/cache";
-import { adminDeletePreRegistration, adminMakeAdmin, adminPreRegister, adminRemoveMembership, adminSetMembership, ApiError } from "@/lib/api";
+import { adminDeletePreRegistration, adminMakeAdmin, adminPreRegister, adminSetRole, ApiError } from "@/lib/api";
 import { checkPhone } from "@/lib/team";
 import type { AdminRole, OverwriteCurrent, Role } from "@/lib/types";
 
@@ -22,9 +22,9 @@ function asResult(e: unknown): AdminResult {
   throw e; // redirects (e.g. session expired) and real bugs
 }
 
-export async function setMembershipAction(personId: string, patientId: string, role: Role, confirm = false): Promise<AdminResult> {
+export async function setRoleAction(personId: string, role: Role, confirm = false): Promise<AdminResult> {
   try {
-    await adminSetMembership(personId, patientId, role, confirm);
+    await adminSetRole(personId, role, confirm);
   } catch (e) {
     return asResult(e);
   }
@@ -42,21 +42,11 @@ export async function makeAdminAction(personId: string, confirm = false): Promis
   return { ok: true };
 }
 
-export async function removeMembershipAction(personId: string, patientId: string): Promise<AdminResult> {
-  try {
-    await adminRemoveMembership(personId, patientId);
-  } catch (e) {
-    return asResult(e);
-  }
-  revalidatePath("/admin");
-  return { ok: true };
-}
-
-export async function preRegisterAction(phone: string, role: AdminRole, patientId: string | null, confirm = false): Promise<AdminResult> {
+export async function preRegisterAction(phone: string, role: AdminRole, confirm = false): Promise<AdminResult> {
   const checked = checkPhone(phone);
   if ("error" in checked) return { error: checked.error };
   try {
-    await adminPreRegister(checked.phone, role, patientId, confirm);
+    await adminPreRegister(checked.phone, role, confirm);
   } catch (e) {
     return asResult(e);
   }

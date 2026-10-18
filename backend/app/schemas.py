@@ -342,7 +342,7 @@ class InviteDeclined(BaseModel):
 PreRegistrationRole = Literal["caregiver", "family", "patient", "doctor", "nurse", "institution", "admin"]
 
 
-class AdminMembershipIn(BaseModel):
+class AdminRoleIn(BaseModel):
     role: RoleName
     confirm_overwrite: bool = False
 
@@ -350,7 +350,6 @@ class AdminMembershipIn(BaseModel):
 class PreRegistrationIn(BaseModel):
     phone: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
     role: PreRegistrationRole
-    patient_id: str | None = None
     confirm_overwrite: bool = False
 
 
@@ -360,4 +359,3 @@ class MakeAdminIn(BaseModel):
 
 class PreRegistrationPatch(BaseModel):
     role: PreRegistrationRole
-    patient_id: str | None = None

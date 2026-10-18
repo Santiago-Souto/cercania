@@ -1,10 +1,12 @@
-"""Who gets which role, and how (CIA-48). Code only; the model never decides access.
+"""Who gets which role, and how (CIA-48, CIA-58). Code only; the model never decides access.
 
+- A person has one role (`person.role`). Admins set only that, never links to patients (CIA-58).
 - Self sign-up: a new person with no admin pre-registration and no pending invite gets their
   own patient profile and the `patient` role on it.
-- Admin pre-registration (phone + role + patient): applied when that phone signs up.
-- Caregivers invite family only; only caregivers create patients.
-- Admins list people and assign roles. Being admin opens no clinical data.
+- Admin pre-registration (phone + role): applied when that phone signs up.
+- Caregivers invite family or patients; only caregivers create patients. Nobody links the
+  health team to patients yet (README "Pending").
+- Admins list people and set roles. Being admin opens no clinical data.
 """
 
 from __future__ import annotations
@@ -28,56 +30,44 @@ from .models import (
 )
 
 ADMIN = "admin"
-# Roles that always belong to a patient in a pre-registration; caregiver may omit it.
-NEEDS_PATIENT = {Role.family.value, Role.doctor.value, Role.nurse.value, Role.institution.value}
-NO_PATIENT = {ADMIN, Role.patient.value}
-PRE_REGISTRATION_ROLES = {r.value for r in Role} | {ADMIN}
+# What an older account (no `person.role` yet) reads as: its strongest membership role.
+_DERIVED_ORDER = [Role.caregiver, Role.doctor, Role.nurse, Role.institution, Role.family, Role.patient]
 
 
 def is_admin(person: Person | None) -> bool:
     return bool(person and person.is_admin)
 
 
-def is_caregiver(session: Session, person: Person) -> bool:
-    """Granted by an admin without a patient, or caregiver of at least one patient."""
+def person_role(session: Session, person: Person) -> str | None:
+    """The person's role: `person.role` once set (CIA-58). Older accounts: the legacy
+    `is_caregiver` flag, else their strongest membership role, else None."""
+    if person.role:
+        return person.role
     if person.is_caregiver:
-        return True
-    return session.scalar(
-        select(PatientAccess.id).where(PatientAccess.person_id == person.id,
-                                       PatientAccess.role == Role.caregiver).limit(1)
-    ) is not None
+        return Role.caregiver.value
+    held = set(session.scalars(select(PatientAccess.role).where(PatientAccess.person_id == person.id)))
+    return next((r.value for r in _DERIVED_ORDER if r in held), None)
 
 
-def memberships(session: Session, person_id: str) -> list[dict]:
-    rows = session.execute(
-        select(PatientAccess, Patient).join(Patient, PatientAccess.patient_id == Patient.id)
-        .where(PatientAccess.person_id == person_id).order_by(Patient.display_name, Patient.id)
-    )
-    return [{"patient_id": p.id, "patient_name": p.display_name, "role": a.role.value} for a, p in rows]
+def is_caregiver(session: Session, person: Person) -> bool:
+    """Only caregivers create patients and invite without a patient (CIA-48)."""
+    return person_role(session, person) == Role.caregiver.value
 
 
 def person_state(session: Session, person: Person) -> dict:
-    """What an admin sees about a person, and what a 409 shows before an overwrite."""
+    """What an admin sees about a person, and what a 409 shows before an overwrite: who they
+    are and their role. No links to patients (CIA-58)."""
     return {
         "id": person.id,
         "name": person.display_name,
         "phone": person.phone,
         "is_admin": bool(person.is_admin),
-        "is_caregiver": bool(person.is_caregiver),
-        "memberships": memberships(session, person.id),
+        "role": person_role(session, person),
     }
 
 
 def pre_registration_state(session: Session, pre: PreRegistration) -> dict:
-    patient = session.get(Patient, pre.patient_id) if pre.patient_id else None
-    return {
-        "id": pre.id,
-        "phone": pre.phone,
-        "role": pre.role,
-        "patient_id": pre.patient_id,
-        "patient_name": patient.display_name if patient else None,
-        "created_at": pre.created_at,
-    }
+    return {"id": pre.id, "phone": pre.phone, "role": pre.role, "created_at": pre.created_at}
 
 
 def log(session: Session, action: str, *, actor_id: str | None, person_id: str | None = None,
@@ -176,20 +166,39 @@ def merge_own_profile(session: Session, person: Person, into_patient_id: str) ->
     return True
 
 
-def apply_role(session: Session, person: Person, role: str, patient_id: str | None) -> None:
+def set_person_role(session: Session, person: Person, role: str) -> list[str]:
+    """Set the person's role (CIA-58). Never links them to someone else's patient.
+
+    - `patient`: their own profile, created if they have none.
+    - Any other role: their `patient` logins are removed, so nobody stays their own patient while
+      holding another role. The profiles and their records stay.
+
+    Returns the ids of the patients whose login was removed (for the log).
+    """
+    person.role = role
+    if role == Role.patient.value:
+        own_patient_profile(session, person)
+        session.flush()
+        return []
+    logins = session.scalars(select(PatientAccess).where(PatientAccess.person_id == person.id,
+                                                         PatientAccess.role == Role.patient)).all()
+    for access in logins:
+        session.delete(access)
+    session.flush()
+    return [a.patient_id for a in logins]
+
+
+def apply_role(session: Session, person: Person, role: str) -> None:
     """Give an existing person a role from a pre-registration (or an admin's confirmed change).
 
     Callers validate and confirm first (an admin role on an existing person needs confirmation).
+    `admin` is a flag on top of the person's role, which stays.
     """
     if role == ADMIN:
         person.is_admin = True
-    elif role == Role.patient.value and patient_id is None:
-        own_patient_profile(session, person)
-    elif role == Role.caregiver.value and patient_id is None:
-        person.is_caregiver = True
+        session.flush()
     else:
-        set_membership(session, person, patient_id, Role(role))
-    session.flush()
+        set_person_role(session, person, role)
 
 
 def claim_patient_by_phone(session: Session, person: Person) -> Patient | None:
@@ -219,19 +228,20 @@ def on_signup(session: Session, person: Person) -> str:
     """
     pre = session.scalar(select(PreRegistration).where(PreRegistration.phone == person.phone))
     if pre is not None:
-        apply_role(session, person, pre.role, pre.patient_id)
+        # Role only: a legacy `patient_id` on the pre-registration is ignored (CIA-58).
+        apply_role(session, person, pre.role)
         log(session, "pre_registration_applied", actor_id=pre.created_by, person_id=person.id,
-            phone=person.phone, patient_id=pre.patient_id,
-            after={"role": pre.role, "patient_id": pre.patient_id})
+            phone=person.phone, after={"role": pre.role})
         session.delete(pre)
         return f"pre_registration:{pre.role}"
     if claim_patient_by_phone(session, person) is not None:
+        person.role = Role.patient.value
         return "patient_phone"
     invited = session.scalar(select(Invite.id).where(Invite.phone == person.phone,
                                                      Invite.status == InviteStatus.pending).limit(1))
     if invited is not None:
         return "invite_pending"
-    own_patient_profile(session, person)
+    set_person_role(session, person, Role.patient.value)
     return "self_signup_patient"
 
 
@@ -242,11 +252,12 @@ def _has_membership(session: Session, person: Person) -> bool:
 def ensure_default_role(session: Session, person: Person) -> bool:
     """A person left with no role at all is a patient (CIA-48 default): give them their own profile.
 
-    Covers accounts from before the sign-up rule, a declined invite, or memberships an admin
-    removed. Admins, caregivers and anyone with a pending invite are left as they are.
-    Returns True when a profile was created.
+    Covers accounts from before the sign-up rule or a declined invite. Admins, anyone with a role
+    (`person.role`, or the legacy caregiver flag) and anyone with a pending invite are left as they
+    are: a doctor an admin set has no patients yet and is not made one. Returns True when a profile
+    was created.
     """
-    if person.is_admin or person.is_caregiver or _has_membership(session, person):
+    if person.is_admin or person.role or person.is_caregiver or _has_membership(session, person):
         return False
     # Lock the person row, then check again: two concurrent requests (login, a double-mounted
     # My patients) must not each create a profile. Postgres waits here; SQLite has one writer.
@@ -254,10 +265,12 @@ def ensure_default_role(session: Session, person: Person) -> bool:
     if _has_membership(session, person):
         return False
     if claim_patient_by_phone(session, person) is not None:
+        person.role = Role.patient.value
         return False
     if session.scalar(select(Invite.id).where(Invite.phone == person.phone,
                                               Invite.status == InviteStatus.pending).limit(1)) is not None:
         return False
+    person.role = Role.patient.value
     patient = own_patient_profile(session, person)
     session.flush()
     log(session, "default_patient_applied", actor_id=None, person_id=person.id, phone=person.phone,

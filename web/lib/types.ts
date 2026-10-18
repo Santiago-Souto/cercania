@@ -265,35 +265,29 @@ export type Verified =
 /** Name and optional email for a new phone, sent with the same code. */
 export type NewProfile = { name: string; email?: string };
 
-// --- Admin (CIA-48): people and roles only, never clinical data. ---
+// --- Admin (CIA-48, CIA-58): people and their role only; no patients, never clinical data. ---
 
 export type AdminRole = Role | "admin";
-
-export type AdminMembership = { patient_id: string; patient_name: string; role: Role };
 
 export type AdminPerson = {
   id: string;
   name: string;
   phone: string;
   is_admin: boolean;
-  /** Caregiver an admin registered before assigning any patient. */
-  is_caregiver: boolean;
-  memberships: AdminMembership[];
+  /** The person's role; null for an older account with no role and no patients. */
+  role: Role | null;
 };
 
 export type AdminPreRegistration = {
   id: string;
   phone: string;
   role: AdminRole;
-  patient_id: string | null;
-  patient_name: string | null;
   created_at: string;
 };
 
 export type AdminPeople = {
   people: AdminPerson[];
   pre_registrations: AdminPreRegistration[];
-  patients: { id: string; display_name: string }[];
 };
 
 /** `error.current` of an admin 409 `overwrite_required`. */

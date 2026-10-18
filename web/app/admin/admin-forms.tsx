@@ -1,6 +1,7 @@
 "use client";
-// Admin forms (CIA-48): pre-register a phone, assign / remove a role, delete a pending pre-registration.
-// Every change that would replace something opens a confirmation with what exists now.
+// Admin forms (CIA-48, CIA-58): pre-register a phone, set a person's role, delete a pending pre-registration.
+// An admin sets roles only, never links people to patients. Every change that would replace something
+// opens a confirmation with what exists now.
 
 import { useId, useState } from "react";
 import { toast } from "sonner";
@@ -13,48 +14,39 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import type { AdminMembership, AdminPerson, AdminPreRegistration, AdminRole, OverwriteCurrent, Role } from "@/lib/types";
+import type { AdminPerson, AdminPreRegistration, AdminRole, OverwriteCurrent, Role } from "@/lib/types";
 import {
   type AdminResult,
   deletePreRegistrationAction,
   makeAdminAction,
   preRegisterAction,
-  removeMembershipAction,
-  setMembershipAction,
+  setRoleAction,
 } from "./actions";
-import { ADMIN_ROLE_LABEL, membershipLabel } from "./labels";
+import { ADMIN_ROLE_LABEL } from "./labels";
 
-type PatientOption = { id: string; display_name: string };
+const PERSON_ROLES: Role[] = ["caregiver", "family", "doctor", "nurse", "institution", "patient"];
+const PRE_ROLES: AdminRole[] = [...PERSON_ROLES, "admin"];
 
-const MEMBER_ROLES: Role[] = ["caregiver", "family", "doctor", "nurse", "institution", "patient"];
-const PRE_ROLES: AdminRole[] = ["caregiver", "family", "doctor", "nurse", "institution", "patient", "admin"];
-// Same rules as the backend (app/roles.py).
-const NEEDS_PATIENT = new Set<AdminRole>(["family", "doctor", "nurse", "institution"]);
-const NO_PATIENT = new Set<AdminRole>(["admin", "patient"]);
-const NONE = "__none__";
-
-function roleList(person: AdminPerson): string {
-  const parts = person.memberships.map((m) => membershipLabel(m, person.name).text);
-  if (person.is_caregiver && !person.memberships.some((m) => m.role === "caregiver")) parts.push("cuidador/a sin pacientes");
+function roleText(person: AdminPerson): string {
+  const parts = [person.role ? ADMIN_ROLE_LABEL[person.role].toLowerCase() : "sin rol"];
   if (person.is_admin) parts.unshift("administración");
-  return parts.length ? parts.join(", ") : "sin roles";
+  return parts.join(", ");
 }
 
-/** "Este usuario ya existe: Ana, cuidador/a de Rosa." from a 409's current state. */
+/** "Este usuario ya existe: Ana, cuidador/a." from a 409's current state. */
 export function describeCurrent(current: OverwriteCurrent): string {
   if ("pre_registration" in current) {
     const p = current.pre_registration;
-    return `Ese número ya tiene un rol pendiente de registro: ${ADMIN_ROLE_LABEL[p.role].toLowerCase()}${p.patient_name ? ` de ${p.patient_name}` : ""}.`;
+    return `Ese número ya tiene un rol pendiente de registro: ${ADMIN_ROLE_LABEL[p.role].toLowerCase()}.`;
   }
   const person = "person" in current ? current.person : current;
-  return `Este usuario ya existe: ${person.name}, ${roleList(person)}.`;
+  return `Este usuario ya existe: ${person.name}, ${roleText(person)}.`;
 }
 
 const REPLACE = { title: "¿Reemplazar?", note: "Si confirmás, el rol nuevo reemplaza al actual.", action: "Sí, reemplazar", done: "Rol reemplazado." };
@@ -114,53 +106,25 @@ function useConfirmed(copy = REPLACE) {
   return { pending, run, dialog };
 }
 
-function PatientSelect({ id, value, onChange, patients, optional }: {
-  id: string;
-  value: string;
-  onChange: (v: string) => void;
-  patients: PatientOption[];
-  optional?: boolean;
-}) {
-  return (
-    <Select value={value || (optional ? NONE : undefined)} onValueChange={(v) => onChange(v === NONE ? "" : v)}>
-      <SelectTrigger id={id} className="h-12! w-full bg-card text-base">
-        <SelectValue placeholder="Elegí el paciente" />
-      </SelectTrigger>
-      <SelectContent>
-        {optional && <SelectItem value={NONE}>Sin paciente por ahora</SelectItem>}
-        {patients.map((p) => (
-          <SelectItem key={p.id} value={p.id}>
-            {p.display_name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
-
 const MAKE_ADMIN = {
   title: "¿Hacer administrador/a?",
-  note: "Va a poder ver la lista de usuarios y asignar roles. Sus roles con pacientes no cambian.",
+  note: "Va a poder ver la lista de usuarios y elegir sus roles. Su rol no cambia.",
   action: "Sí, hacer administrador/a",
   done: "Ahora es administrador/a.",
 };
 
-export function PreRegisterForm({ patients }: { patients: PatientOption[] }) {
+export function PreRegisterForm() {
   const id = useId();
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState<AdminRole>("caregiver");
-  const [patientId, setPatientId] = useState("");
   const [error, setError] = useState<string | null>(null);
   // Making a registered person admin keeps their roles: say so instead of "reemplaza".
   const { pending, run, dialog } = useConfirmed(role === "admin" ? MAKE_ADMIN : REPLACE);
-  const showPatient = !NO_PATIENT.has(role);
 
   async function submit() {
-    if (NEEDS_PATIENT.has(role) && !patientId) return setError("Elegí el paciente para este rol.");
-    const patient = showPatient && patientId ? patientId : null;
     const err = await run(
-      () => preRegisterAction(phone, role, patient),
-      () => preRegisterAction(phone, role, patient, true),
+      () => preRegisterAction(phone, role),
+      () => preRegisterAction(phone, role, true),
       "Guardado. Cuando esa persona se registre con ese número, entra con este rol.",
     );
     setError(err);
@@ -202,12 +166,6 @@ export function PreRegisterForm({ patients }: { patients: PatientOption[] }) {
         </Select>
         {role === "patient" && <FieldDescription>Al registrarse se le crea su propio perfil de paciente.</FieldDescription>}
       </Field>
-      {showPatient && (
-        <Field>
-          <FieldLabel htmlFor={`${id}-patient`}>Paciente{role === "caregiver" ? " (opcional)" : ""}</FieldLabel>
-          <PatientSelect id={`${id}-patient`} value={patientId} onChange={setPatientId} patients={patients} optional={role === "caregiver"} />
-        </Field>
-      )}
       <Button type="button" size="touch" className="w-full" disabled={pending || !phone.trim()} onClick={() => void submit()}>
         {pending && <Spinner />}
         Guardar rol pendiente
@@ -217,50 +175,54 @@ export function PreRegisterForm({ patients }: { patients: PatientOption[] }) {
   );
 }
 
-export function AssignRole({ person, patients }: { person: AdminPerson; patients: PatientOption[] }) {
-  const id = useId();
-  const [patientId, setPatientId] = useState("");
-  const [role, setRole] = useState<Role>("caregiver");
+const LEAVES_PATIENT = " Deja de entrar a su perfil de paciente; el perfil y sus registros quedan guardados.";
+
+/** The admin sets the person's role (CIA-58). Never links them to a patient. */
+export function PersonRole({ person }: { person: AdminPerson }) {
+  const [role, setRole] = useState<Role | "">(person.role ?? "");
   const [error, setError] = useState<string | null>(null);
-  const { pending, run, dialog } = useConfirmed();
+  const leavesPatient = person.role === "patient" && role !== "patient";
+  const { pending, run, dialog } = useConfirmed(leavesPatient ? { ...REPLACE, note: REPLACE.note + LEAVES_PATIENT } : REPLACE);
 
   async function submit() {
-    if (!patientId) return setError("Elegí el paciente.");
+    if (!role) return;
     const err = await run(
-      () => setMembershipAction(person.id, patientId, role),
-      () => setMembershipAction(person.id, patientId, role, true),
-      `Rol asignado a ${person.name}.`,
+      () => setRoleAction(person.id, role),
+      () => setRoleAction(person.id, role, true),
+      `Rol guardado para ${person.name}.`,
     );
     setError(err);
   }
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="grid grid-cols-2 gap-2">
-        <PatientSelect id={`${id}-patient`} value={patientId} onChange={(v) => { setPatientId(v); setError(null); }} patients={patients} />
-        <Select value={role} onValueChange={(v) => setRole(v as Role)}>
-          <SelectTrigger aria-label="Rol" className="h-12! w-full bg-card text-base">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {MEMBER_ROLES.map((r) => (
-              <SelectItem key={r} value={r}>
-                {ADMIN_ROLE_LABEL[r]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <Select value={role || undefined} onValueChange={(v) => { setRole(v as Role); setError(null); }}>
+        <SelectTrigger aria-label={`Rol de ${person.name}`} className="h-12! w-full bg-card text-base">
+          <SelectValue placeholder="Sin rol" />
+        </SelectTrigger>
+        <SelectContent>
+          {PERSON_ROLES.map((r) => (
+            <SelectItem key={r} value={r}>
+              {ADMIN_ROLE_LABEL[r]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       {error && <p className="text-[13px] text-destructive">{error}</p>}
-      <Button type="button" variant="outline-primary" size="touch" disabled={pending} onClick={() => void submit()}>
+      <Button
+        type="button"
+        variant="outline-primary"
+        size="touch"
+        disabled={pending || !role || role === person.role}
+        onClick={() => void submit()}
+      >
         {pending && <Spinner />}
-        Asignar rol
+        Guardar rol
       </Button>
       {dialog}
     </div>
   );
 }
-
 
 /** Another admin makes an existing person admin (CIA-48); the backend asks for confirmation first. */
 export function MakeAdmin({ person }: { person: AdminPerson }) {
@@ -282,46 +244,6 @@ export function MakeAdmin({ person }: { person: AdminPerson }) {
       </Button>
       {dialog}
     </>
-  );
-}
-
-export function RemoveRole({ person, membership }: { person: AdminPerson; membership: AdminMembership }) {
-  const [pending, setPending] = useState(false);
-  const label = membershipLabel(membership, person.name).text;
-  const patientId = membership.patient_id;
-  return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button type="button" variant="ghost" size="sm" disabled={pending} aria-label={`Quitar: ${label}`}>
-          {pending ? <Spinner /> : "Quitar"}
-        </Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>¿Quitar este rol?</AlertDialogTitle>
-          <AlertDialogDescription>
-            {person.name} deja de ser {label} y pierde el acceso a {membership.role === "patient" ? "ese perfil" : "ese paciente"}.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>No</AlertDialogCancel>
-          <AlertDialogAction
-            variant="danger"
-            onClick={async () => {
-              setPending(true);
-              const res = await removeMembershipAction(person.id, patientId).catch(
-                () => ({ error: "No pudimos quitar el rol. Probá de nuevo." }) as AdminResult,
-              );
-              setPending(false);
-              if ("error" in res) toast.error(res.error);
-              else toast.success("Rol quitado.");
-            }}
-          >
-            Sí, quitar
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
   );
 }
 
