@@ -273,7 +273,7 @@ export function NewPatientForm() {
             />
           )}
           <FieldDescription>
-            Familia: solo lectura. Paciente: solo cuenta cómo se siente o pide ayuda. Equipo de salud: ve reportes y alertas. La persona entra con su número de WhatsApp y recibe el rol al ingresar.
+            Familia: solo lectura. Paciente: solo cuenta cómo se siente o pide ayuda. Equipo de salud: ve reportes y alertas. La persona entra con su número de celular y recibe el rol al ingresar.
           </FieldDescription>
         </CardContent>
       </Card>

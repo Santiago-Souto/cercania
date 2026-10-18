@@ -39,14 +39,14 @@ export type ReportItem = {
   audio_end_sec?: number | null;
 };
 
-export type NotificationRecipient = "health_provider" | "caregiver" | "family";
+export type NotificationRecipient = "caregiver" | "family";
 
 /** One delivery of an emergency alert to one recipient on one channel (contract: "Emergency notifications"). */
 export type AlertNotification = {
   to: NotificationRecipient;
   person_id: string | null;
-  channel: "web" | "whatsapp";
-  /** "skipped" = channel not active (e.g. WhatsApp off). Not an error. */
+  channel: "web";
+  /** "skipped" = channel not active (old rows only). Not an error. */
   status: "sent" | "failed" | "skipped";
   error: string | null;
 };
@@ -82,7 +82,7 @@ export type Report = {
   version: number;
   created_at: string;
   kind?: "shift" | "emergency";
-  channel?: "whatsapp" | "web" | "seed";
+  channel?: "web" | "seed";
   sender?: Person;
   /** Compatibility alias of `sender`. */
   caregiver: Person;

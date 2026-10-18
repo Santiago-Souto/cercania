@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemSeparator, ItemTitle } from "@/components/ui/item";
 import { getReport } from "@/lib/api";
-import { CHECKLIST_LABEL, dayTime, duration, firstName } from "@/lib/format";
+import { CHECKLIST_LABEL, dayTime, duration } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export default async function ReportPage(props: PageProps<"/patients/[id]/reports/[reportId]">) {
@@ -124,8 +124,7 @@ export default async function ReportPage(props: PageProps<"/patients/[id]/report
         )}
 
         <p className="text-[13px] text-muted-foreground">
-          Las correcciones se mandan por WhatsApp a {firstName(report.caregiver.display_name)} y crean una versión nueva. Las
-          anteriores quedan visibles.
+          Las correcciones se hacen acá y crean una versión nueva. Las anteriores quedan visibles.
         </p>
         </AudioPlayer>
       </main>

@@ -1,5 +1,5 @@
 "use client";
-// "Invitar a alguien" (artboard "AddPatient"): WhatsApp number + role. Used on the new-patient form
+// "Invitar a alguien" (artboard "AddPatient"): phone number + role. Used on the new-patient form
 // (queues the invite until the patient is saved) and on the team page (sends it right away). CIA-34.
 // Not a <form>: it lives inside the new-patient form, and nested forms are invalid HTML.
 
@@ -49,7 +49,7 @@ export function InviteForm({ onInvite, submitLabel }: { onInvite: OnInvite; subm
       <CardContent>
         <FieldGroup className="gap-3">
           <Field data-invalid={!!error || undefined}>
-            <FieldLabel htmlFor={`${id}-phone`}>WhatsApp</FieldLabel>
+            <FieldLabel htmlFor={`${id}-phone`}>Celular</FieldLabel>
             <Input
               id={`${id}-phone`}
               type="tel"
