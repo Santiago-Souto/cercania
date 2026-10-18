@@ -186,6 +186,7 @@ eval/
   run_eval.py      runs cases, prints metrics                [infra/input owner]
 docs/contract.md   endpoints and data shapes (source of truth for integration)
 docs/deploy.md     Render URLs, env vars, troubleshooting
+docs/demo-script.md  3-minute demo / backup video script
 docs/design/       DESIGN.md + screen snapshots (source of truth for the UI)  [web owner]
 README.md          Functional / Simulated / Pending
 .agents/skills/    shared agent skills, tool-agnostic (.claude/skills is a symlink here)
@@ -248,7 +249,7 @@ Rule: never tune the prompt against the same cases we will demo with and then ca
 
 ## 15. Pitch notes (so the product supports them)
 
-Problem: the shift handoff gets lost. Live demo: a juror dictates a report, sees the structured record and an omission alert, then asks a question and gets a cited answer. Close by stating limitations first (no diagnosis, fictional data, simulated parts). Always keep a recorded backup of the demo and text input as a fallback to audio.
+Problem: the shift handoff gets lost. Live demo: a juror dictates a report, sees the structured record and an omission alert, then asks a question and gets a cited answer. Close by stating limitations first (no diagnosis, fictional data, simulated parts). Always keep a recorded backup of the demo and text input as a fallback to audio. Step-by-step script: `docs/demo-script.md`.
 
 ## 16. Open decisions
 
