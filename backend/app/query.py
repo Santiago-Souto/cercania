@@ -19,9 +19,9 @@ from zoneinfo import ZoneInfo
 from . import llm
 from .extract import normalize, verify_quote
 
-# Sonnet: reasoning across several reports (AGENTS.md section 8).
-# QUERY_MODEL="<provider>:<model>" switches vendor; see llm.py.
-DEFAULT_MODEL = "anthropic:claude-sonnet-5-5"
+# Groq, same key and model as extraction (verified live: cited answers, "unclear" when
+# the reports do not say). QUERY_MODEL="<provider>:<model>" switches vendor; see llm.py.
+DEFAULT_MODEL = "groq:openai/gpt-oss-120b"
 MAX_TOKENS = 2000
 TIMEOUT_SEC = 25.0
 MAX_REPORTS = 30

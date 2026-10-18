@@ -24,8 +24,9 @@ from . import llm
 from .extract import verify_quote
 from .models import Role, TriageStatus
 
-# TRIAGE_MODEL="<provider>:<model>" switches vendor; see llm.py.
-DEFAULT_MODEL = "anthropic:claude-haiku-5-5"
+# Groq, same key and model as extraction (verified live: emergencies flagged with a
+# verified quote in ~1 s). TRIAGE_MODEL="<provider>:<model>" switches vendor; see llm.py.
+DEFAULT_MODEL = "groq:openai/gpt-oss-120b"
 MAX_TOKENS = 500
 TIMEOUT_SEC = 10.0
 
