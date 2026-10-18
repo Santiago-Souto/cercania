@@ -115,7 +115,8 @@ def test_audio_report_is_transcribed_with_patient_vocabulary(db, brain, groq, st
 
 
 def test_repeated_client_id_reuses_stored_transcript_without_transcribing(db, brain, groq, stored_audio):
-    db.add(Report(id="rep_1", patient_id="pat_x", sender_id="cg", message_id="web:cg:web_3", transcript="ya guardado"))
+    db.add(Report(id="rep_1", patient_id="pat_x", sender_id="cg", message_id="web:cg:web_3", transcript="ya guardado",
+                  segments=[{"start": 0.0, "end": 2.0, "text": "ya guardado"}]))
     db.commit()
     r = client.post(
         URL, data={"client_id": "web_3"}, files={"audio": ("rec.ogg", b"OggS", "audio/ogg")}, headers=AS_CAREGIVER
@@ -124,8 +125,19 @@ def test_repeated_client_id_reuses_stored_transcript_without_transcribing(db, br
     assert groq == []
     assert brain[0]["transcript"] == "ya guardado"
     assert brain[0]["message_id"] == "web:cg:web_3"
-    # The stored report has no audio yet (e.g. the first upload failed): this retry attaches it.
-    assert [audio for _, audio in stored_audio] == [ingest.Audio(b"OggS", "audio/ogg", None)]
+    # An audio report whose first upload failed (segments, no file): this retry attaches the audio.
+    assert [audio for _, audio in stored_audio] == [ingest.Audio(b"OggS", "audio/ogg", 2.0)]
+
+
+def test_retry_never_attaches_audio_to_a_typed_report(db, brain, groq, stored_audio):
+    db.add(Report(id="rep_7", patient_id="pat_x", sender_id="cg", message_id="web:cg:web_7", transcript="durmió bien"))
+    db.commit()
+    r = client.post(
+        URL, data={"client_id": "web_7"}, files={"audio": ("rec.ogg", b"OggS", "audio/ogg")}, headers=AS_CAREGIVER
+    )
+    assert r.status_code == 200
+    assert brain[0]["transcript"] == "durmió bien"
+    assert groq == [] and stored_audio == []
 
 
 def test_retry_of_a_report_that_already_has_audio_stores_nothing(db, brain, groq, stored_audio):

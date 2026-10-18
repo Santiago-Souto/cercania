@@ -173,7 +173,7 @@ Used by `GET /patients/{id}/reports`, `GET /reports/{id}` and the corrections re
 - `channel` is `whatsapp`, `web`, or `seed` (fixtures).
 - `sender.role` is the sender's role for this patient. `caregiver` is a compatibility alias of `sender` for the web (`web/lib/types.ts`). Both are additive.
 - `red_flag_quote` is the same value as `triage.quote`.
-- `audio_url`: `/reports/{id}/audio` when the original voice note is stored, else `null` (typed reports, storage not configured, or a failed upload). It is an API path, not the file: call it (with the usual identity) to get a short-lived signed URL, then play that. `audio_duration_sec` is the voice note's length in seconds from transcription, or `null`.
+- `audio_url`: `/reports/{id}/audio` when the original voice note is stored, else `null` (typed reports, storage not configured, or a failed upload). It is an API path, not the file: call it (with the usual identity) to get a short-lived signed URL, then play that. `audio_duration_sec` is the voice note's length in seconds from transcription, or `null` (when a retry with the same `client_id` re-attaches the audio of a report whose first upload failed, it is the end of the report's last transcript segment). A retry never attaches audio to a typed report.
 - `triage` is `null` for seed fixtures, which never went through triage.
 
 ## Transcript segments

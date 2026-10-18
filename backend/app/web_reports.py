@@ -84,9 +84,11 @@ async def create_report(
     transcript = existing.transcript if existing is not None else None
     segments: list[dict] = []
     voice_note: ingest.Audio | None = None
-    # Read the audio unless the stored report already has it: a retry of a stored report never
-    # transcribes again, but it still attaches a voice note whose first upload failed.
-    if audio is not None and (existing is None or existing.audio is None):
+    # A retry of a stored report never transcribes again. It only attaches a voice note to a report
+    # that came from audio (it has segments) and whose first upload failed: a typed report must never
+    # gain a recording its transcript and quotes were not verified against.
+    retry_needs_audio = existing is not None and existing.audio is None and bool(existing.segments)
+    if audio is not None and (existing is None or retry_needs_audio):
         mime = (audio.content_type or "").split(";")[0].strip()
         if mime not in AUDIO_TYPES:
             return error_response(415, "unsupported_audio", "Formato de audio no soportado. Usá webm, ogg o m4a.")
@@ -112,7 +114,7 @@ async def create_report(
             segments = result.segment_dicts()
             duration = result.duration
         else:
-            duration = existing.segments[-1].get("end") if existing.segments else None
+            duration = existing.segments[-1].get("end")  # end of the transcription's last segment
         voice_note = ingest.Audio(data, mime, duration)
     if transcript is None:
         transcript = text.strip()
