@@ -1,6 +1,8 @@
 "use client";
 // Logged-in strip on every app screen: unread badge, browser-notification opt-in and "Salir".
 // The opt-in opens as a popup the first time this browser opens the app; after "Ahora no" it stays as a button.
+// Its text fits the person's roles, and people who are never notified (a patient, an admin without
+// patients) are not asked at all (CIA-59).
 import { useEffect, useState } from "react";
 import { BellIcon, BellRingIcon, LogOutIcon } from "lucide-react";
 import {
@@ -16,6 +18,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { logout } from "@/lib/auth";
+import { fetchMe } from "@/lib/client-api";
+import { GENERIC_NOTIFICATION_TEXT, notificationText } from "./notification-copy";
 import { clearNotificationState, useUnreadCount } from "./notifications";
 
 // Per browser (localStorage), not per tab: the popup is asked once, not on every new tab or login.
@@ -41,14 +45,28 @@ export function AccountBar() {
   const [perm, setPerm] = useState<NotificationPermission | "unsupported">("unsupported");
   const [askOpen, setAskOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  // undefined while loading; null = this person is never notified (no prompt, no bell).
+  const [text, setText] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     // Client-only values: set after mount to keep server and client HTML identical.
     const p = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPerm(p);
-    if (p === "default" && !wasAsked()) setAskOpen(true);
+    let cancelled = false;
+    fetchMe().then(
+      (me) => notificationText(me),
+      () => GENERIC_NOTIFICATION_TEXT, // role unknown: ask, but without "tus pacientes"
+    ).then((t) => {
+      if (cancelled) return;
+      setText(t);
+      if (t && p === "default" && !wasAsked()) setAskOpen(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+  const notified = text !== null && text !== undefined;
 
   async function enableAlerts() {
     // Must run from a click: browsers ignore permission prompts without a user gesture.
@@ -73,21 +91,23 @@ export function AccountBar() {
 
   return (
     <div className="flex items-center gap-2 border-b px-3 py-1.5 text-[13px]">
-      {perm === "default" && (
+      {perm === "default" && notified && (
         <Button size="sm" variant="outline" onClick={enableAlerts}>
           <BellRingIcon />
           Activar avisos
         </Button>
       )}
       <span className="ml-auto flex items-center gap-3">
-        <span className="relative inline-flex" aria-label={`${unread} avisos sin leer`}>
-          <BellIcon className="size-5" />
-          {unread > 0 && (
-            <Badge variant="danger" className="absolute -top-2 -right-3 h-4 min-w-4 px-1 text-[10px]">
-              {unread}
-            </Badge>
-          )}
-        </span>
+        {text !== null && (
+          <span className="relative inline-flex" aria-label={`${unread} avisos sin leer`}>
+            <BellIcon className="size-5" />
+            {unread > 0 && (
+              <Badge variant="danger" className="absolute -top-2 -right-3 h-4 min-w-4 px-1 text-[10px]">
+                {unread}
+              </Badge>
+            )}
+          </span>
+        )}
         <Button size="sm" variant="ghost" onClick={signOut} disabled={leaving}>
           <LogOutIcon />
           Salir
@@ -98,10 +118,7 @@ export function AccountBar() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>¿Activamos los avisos?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Te avisamos en este dispositivo cuando haya una emergencia de tus pacientes, mientras tengas
-              CercanIA abierta.
-            </AlertDialogDescription>
+            <AlertDialogDescription>{text ?? GENERIC_NOTIFICATION_TEXT}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Ahora no</AlertDialogCancel>
