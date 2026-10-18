@@ -4,6 +4,7 @@ from AGENTS.md section 11, with seen (dev) and unseen cases separated.
     python eval/run_eval.py                  # all cases
     python eval/run_eval.py --split unseen   # only the held-out cases
     python eval/run_eval.py --json out.json  # also write per-case results
+    python eval/run_eval.py --delay 30       # pause between cases (Groq free tier: ~2 reports/min)
 
 Each run uses a fresh temporary SQLite database with the fictional seed data,
 so it never touches the team's database. Model calls are real (needs the API
@@ -261,10 +262,12 @@ def caregiver_for(models, patient_id: str) -> str:
     return person_id
 
 
-def run(cases: list[Case], process_report, models) -> list[CaseScore]:
+def run(cases: list[Case], process_report, models, delay: float = 0.0) -> list[CaseScore]:
     run_id = uuid.uuid4().hex[:8]
     scores = []
-    for case in cases:
+    for n, case in enumerate(cases):
+        if n and delay:
+            time.sleep(delay)  # stay under the provider's tokens-per-minute limit
         start = time.perf_counter()
         try:
             # Positional on purpose: the sender parameter is being renamed
@@ -293,6 +296,8 @@ def main() -> None:
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--split", choices=["all", "dev", "unseen"], default="all")
     parser.add_argument("--json", type=Path, help="write per-case scores to this file")
+    parser.add_argument("--delay", type=float, default=0.0,
+                        help="seconds to wait between cases; ~30 keeps Groq's free tier (8,000 tokens/min) from rejecting calls")
     args = parser.parse_args()
 
     cases = load_cases(args.cases)
@@ -307,7 +312,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         process_report, models = prepare_backend(Path(tmp) / "eval.db")
         print(f"Running {len(cases)} cases through process_report...")
-        scores = run(cases, process_report, models)
+        scores = run(cases, process_report, models, delay=args.delay)
 
     print()
     for split in ("dev", "unseen"):
