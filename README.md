@@ -52,7 +52,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 
 - Web login screens (CIA-32) are not wired to `/auth/*` yet.
 - WhatsApp emergency notifications, pending Meta approval. `NOTIFY_WHATSAPP=0` by default, so they are recorded as `skipped`; the web inbox is the channel in use.
-- Audio playback of citations in the web (CIA-13). The backend side is ready: voice notes are stored in a private Supabase Storage bucket (CIA-44), `GET /reports/{id}/audio` returns a 5-minute signed URL, and items and citations carry `audio_start_sec` / `audio_end_sec` (CIA-18). Whisper segments can be long (a 13 s note came back as one segment), so a fragment may cover more than the quote.
+- Audio playback of citations in the web (CIA-13). The backend side is ready: voice notes are stored in a private Supabase Storage bucket (CIA-44), `GET /reports/{id}/audio` returns a 5-minute signed URL, and items and citations carry `audio_start_sec` / `audio_end_sec` (CIA-18). Timing comes from Groq's word timestamps, so a citation plays just its words (Whisper's own segments often cover the whole note).
 - Audio retention: stored voice notes are never deleted yet.
 - Family <-> health team messages endpoints.
 - Invite WhatsApp message: off unless `NOTIFY_WHATSAPP=1` (Meta test number only reaches allowed-list phones); the invited person can log in with that number anyway.
