@@ -30,8 +30,6 @@ from app.deps import SESSION_COOKIE, get_db, hash_token
 from app.errors import api_error
 from app.models import (
     AuthSession,
-    Invite,
-    InviteStatus,
     LoginCode,
     Patient,
     PatientAccess,
@@ -191,19 +189,6 @@ def login(body: LoginIn, db: Session = Depends(get_db)) -> dict:
 # --- Verifying ------------------------------------------------------------------------
 
 
-def _accept_invites(db: Session, person: Person) -> None:
-    """Pending invites for this (just proven) phone become memberships."""
-    invites = db.scalars(select(Invite).where(Invite.phone == person.phone,
-                                              Invite.status == InviteStatus.pending))
-    for invite in invites:
-        exists = db.scalar(select(PatientAccess.id).where(PatientAccess.person_id == person.id,
-                                                          PatientAccess.patient_id == invite.patient_id))
-        if exists is None:
-            db.add(PatientAccess(person_id=person.id, patient_id=invite.patient_id, role=invite.role))
-        invite.status = InviteStatus.accepted
-        invite.accepted_at = utcnow()
-
-
 def _cookie_attrs() -> dict:
     """The web reaches the API through its same-origin /api rewrite, so the cookie is
     first-party there and the deploy sets SESSION_COOKIE_SAMESITE=lax. The SameSite=None
@@ -245,7 +230,6 @@ def verify(body: VerifyIn, response: Response, db: Session = Depends(get_db)) ->
         db.add(person)
         db.flush()
     row.used_at = utcnow()
-    _accept_invites(db, person)
     token = secrets.token_urlsafe(32)
     db.add(AuthSession(token_hash=hash_token(token), person_id=person.id,
                        expires_at=utcnow() + session_ttl()))

@@ -143,7 +143,7 @@ def test_login_sms_failure_still_code_sent(db, monkeypatch, client):
 # --- Verifying --------------------------------------------------------------------
 
 
-def test_signup_verify_creates_person_session_and_accepts_invites(db, texts, client):
+def test_signup_verify_creates_person_session_and_leaves_invites_to_accept(db, texts, client):
     db.add(Invite(patient_id="pat_a", phone=NEW, role=Role.family, invited_by="cg"))
     db.commit()
     client.post("/auth/signup", json={"name": "Nueva (ficticia)", "email": "n@example.com", "phone": NEW})
@@ -153,8 +153,8 @@ def test_signup_verify_creates_person_session_and_accepts_invites(db, texts, cli
     assert r.status_code == 200
     body = r.json()
     assert body["user"]["name"] == "Nueva (ficticia)"
-    assert body["memberships"] == [{"patient_id": "pat_a", "display_name": "Rosa (ficticia)", "role": "family"}]
-    assert db.scalar(select(Invite)).status == InviteStatus.accepted
+    assert body["memberships"] == []  # the invite is accepted explicitly in the app (/me/invites)
+    assert db.scalar(select(Invite)).status == InviteStatus.pending
     cookie = r.headers["set-cookie"]
     assert SESSION_COOKIE in cookie and "HttpOnly" in cookie and "Secure" in cookie
     assert "samesite=none" in cookie.lower()

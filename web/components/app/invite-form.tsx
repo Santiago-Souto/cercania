@@ -70,7 +70,7 @@ export function InviteForm({ onInvite, submitLabel }: { onInvite: OnInvite; subm
                 }
               }}
             />
-            {error ? <FieldError>{error}</FieldError> : <FieldDescription>Le llega la invitación por WhatsApp. No se invita por email.</FieldDescription>}
+            {error ? <FieldError>{error}</FieldError> : <FieldDescription>Ve la invitación en Cercanía cuando entra con ese número. No se invita por email.</FieldDescription>}
           </Field>
           <Field>
             <FieldLabel htmlFor={`${id}-role`}>Rol</FieldLabel>

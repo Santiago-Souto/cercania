@@ -296,8 +296,9 @@ class InviteStatus(str, enum.Enum):
 
 
 class Invite(TimestampMixin, Base):
-    """Pending membership for a phone number. Becomes a `patient_access` row when
-    that phone verifies a login code (matched on the phone only, never on email)."""
+    """Pending membership for a phone number. Becomes a `patient_access` row only when the
+    person with that phone accepts it in the app (POST /me/invites/{id}/accept; matched on
+    the phone their session proved, never on email). Declining deletes the row."""
 
     __tablename__ = "invite"
     # At most one pending invite per patient and phone, even under concurrent requests.
