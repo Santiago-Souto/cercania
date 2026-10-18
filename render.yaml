@@ -18,10 +18,20 @@ services:
         sync: false
       - key: PUBLIC_BASE_URL
         sync: false
-      # Claude (extraction, triage, cited query). The SDK reads it from the environment.
+      # Groq: transcription and, by default, checklist extraction.
+      - key: GROQ_API_KEY
+        sync: false
+      # LLM vendor (backend/app/llm.py). Extraction defaults to Groq, triage to
+      # Anthropic; set *_MODEL to <provider>:<model> to switch (see .env.example).
       - key: ANTHROPIC_API_KEY
         sync: false
-      - key: GROQ_API_KEY
+      - key: LLM_BASE_URL
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: EXTRACT_MODEL
+        sync: false
+      - key: TRIAGE_MODEL
         sync: false
       - key: WHATSAPP_TOKEN
         sync: false

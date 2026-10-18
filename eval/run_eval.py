@@ -6,8 +6,8 @@ from AGENTS.md section 11, with seen (dev) and unseen cases separated.
     python eval/run_eval.py --json out.json  # also write per-case results
 
 Each run uses a fresh temporary SQLite database with the fictional seed data,
-so it never touches the team's database. Model calls are real (needs
-ANTHROPIC_API_KEY); nothing here is simulated.
+so it never touches the team's database. Model calls are real (needs the API
+key of the configured provider, see backend/app/llm.py); nothing here is simulated.
 
 What "correct" means (scored by code, not by a model):
 - field detected: an expected item came back with a value and a verified quote.
