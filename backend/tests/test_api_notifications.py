@@ -122,6 +122,21 @@ def test_read_all(client):
     assert client.get("/me/notifications", headers={"X-Person-Id": "other"}).json()["unread_count"] == 1
 
 
+def test_read_all_for_one_patient(client, db):
+    db.add(Patient(id="pat_y", display_name="Otra (ficticia)"))
+    db.add(Notification(id="n6", patient_id="pat_y", person_id="fam", recipient="family",
+                        channel=NotificationChannel.web.value, status=NotificationStatus.sent,
+                        title="t", body="b", created_at=NOW))
+    db.commit()
+    assert client.post("/me/notifications/read-all?patient_id=pat_x", headers=FAM).json() == {"updated": 2}
+    page = client.get("/me/notifications", headers=FAM).json()
+    assert page["unread_count"] == 1 and [n["id"] for n in page["notifications"] if not n["read_at"]] == ["n6"]
+
+
+def test_emergency_rows_are_urgent(client):
+    assert all(n["urgent"] for n in client.get("/me/notifications", headers=FAM).json()["notifications"])
+
+
 def test_requires_auth(client):
     assert client.get("/me/notifications").status_code == 401
     assert client.post("/me/notifications/n1/read").status_code == 401

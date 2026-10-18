@@ -14,6 +14,8 @@ from app.models import (
     AlertType,
     Invite,
     InviteStatus,
+    Notification,
+    NotificationChannel,
     Patient,
     PatientAccess,
     Person,
@@ -66,15 +68,23 @@ def get_my_patients(person_id: str = Depends(current_person_id), db: Session = D
       last 24 h (missing_item alerts are not counted so the number stays meaningful).
     - `missing_report`: no report in the last 24 h.
     - Role `patient` never sees reports or alerts (AGENTS.md section 6): all four are null.
+    - `unread_notifications`: the caller's own unread web inbox rows for the patient (CIA-60).
     """
     if db.get(Person, person_id) is None:
         raise api_error(401, "unauthenticated", "Iniciá sesión para continuar.")
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    unread = dict(db.execute(
+        select(Notification.patient_id, func.count())
+        .where(Notification.person_id == person_id, Notification.channel == NotificationChannel.web.value,
+               Notification.read_at.is_(None))
+        .group_by(Notification.patient_id)
+    ).all())
     out = []
     for access, patient in _memberships(db, person_id):
         entry = {"id": patient.id, "display_name": patient.display_name, "location": patient.location,
                  "role": access.role.value, "last_report_at": None, "open_alerts": None,
-                 "red_flag": None, "missing_report": None}
+                 "red_flag": None, "missing_report": None,
+                 "unread_notifications": unread.get(patient.id, 0)}
         if access.role != Role.patient:
             entry["last_report_at"] = db.scalar(
                 select(func.max(Report.created_at)).where(Report.patient_id == patient.id))

@@ -50,6 +50,13 @@ export function markNotificationRead(id: string) {
   return call<AppNotification>(`/me/notifications/${id}/read`, { method: "POST" });
 }
 
+/** Opening a patient clears its "Novedades" dot (CIA-60). */
+export function markPatientNotificationsRead(patientId: string) {
+  return call<{ updated: number }>(`/me/notifications/read-all?patient_id=${encodeURIComponent(patientId)}`, {
+    method: "POST",
+  });
+}
+
 export function fetchMessages(patientId: string) {
   return call<{ messages: Message[] }>(`/patients/${patientId}/messages`).then((d) => d.messages);
 }

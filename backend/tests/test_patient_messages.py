@@ -123,17 +123,38 @@ def test_help_reaches_the_team_inbox(db, monkeypatch):
 # --- feeling: triaged ------------------------------------------------------------------------
 
 
-def test_feeling_without_emergency_is_stored_and_nobody_is_notified(db, monkeypatch):
+def test_feeling_without_emergency_still_notifies_the_team_as_not_urgent(db, monkeypatch):
     calls = fake_triage(monkeypatch)
     r = client.post(URL, json={"kind": "feeling", "text": "  me duele un poco la rodilla "}, headers=as_("ptl"))
     body = r.json()
     assert r.status_code == 200
-    assert body["notified"] == [] and body["red_flag"] is False
+    assert set(body["notified"]) == TEAM and body["red_flag"] is False  # CIA-60
     assert body["message_for_patient"] == patient_messages.FEELING_MESSAGE
     assert calls == [("me duele un poco la rodilla", Role.patient)]
     stored = db.get(PatientMessage, body["id"])
     assert stored.text == "me duele un poco la rodilla" and stored.triage_status is TriageStatus.ok
-    assert web_rows(db, body["id"]) == []
+    rows = web_rows(db, body["id"])
+    assert {n.person_id for n in rows} == TEAM
+    assert rows[0].title == "Mensaje de Rosa (ficticia)" and "rodilla" not in rows[0].body  # no patient words
+    [n] = client.get("/me/notifications", headers=as_("cg")).json()["notifications"]
+    assert n["urgent"] is False
+    assert client.get("/me/notifications", headers=as_("fam")).json()["notifications"] == []
+
+
+def test_feeling_with_no_team_says_nobody_was_told(factory, monkeypatch):
+    fake_triage(monkeypatch)
+    session = factory()
+    session.add(Patient(id="pat_alone", display_name="Solo (ficticio)"))
+    session.add(PatientAccess(person_id="other", patient_id="pat_alone", role=Role.patient))
+    session.commit()
+    app.dependency_overrides[get_db] = lambda: session
+    try:
+        body = client.post("/patients/pat_alone/patient-messages", json={"kind": "feeling", "text": "bien"},
+                           headers=as_("other")).json()
+    finally:
+        app.dependency_overrides.clear()
+        session.close()
+    assert body["notified"] == [] and body["message_for_patient"] == patient_messages.NO_TEAM_MESSAGE
 
 
 def test_red_flag_feeling_notifies_the_team_with_fixed_text(db, monkeypatch):
@@ -153,9 +174,11 @@ def test_red_flag_feeling_notifies_the_team_with_fixed_text(db, monkeypatch):
 def test_failed_triage_still_tells_the_patient_to_call_emergencies(db, monkeypatch):
     fake_triage(monkeypatch, status=TriageStatus.failed)
     body = client.post(URL, json={"kind": "feeling", "text": "no me siento bien"}, headers=as_("ptl")).json()
-    assert body["red_flag"] is False and body["notified"] == []
+    assert body["red_flag"] is False and set(body["notified"]) == TEAM
     assert triage_mod.TRIAGE_FAILED_LINE in body["message_for_patient"]
     assert db.get(PatientMessage, body["id"]).triage_status is TriageStatus.failed
+    [n] = client.get("/me/notifications", headers=as_("cg")).json()["notifications"]
+    assert n["urgent"] is True and n["title"] == "Revisá el mensaje de Rosa (ficticia)"
 
 
 def test_feeling_audio_is_transcribed_then_triaged(db, monkeypatch):

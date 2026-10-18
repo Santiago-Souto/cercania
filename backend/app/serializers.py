@@ -167,7 +167,7 @@ def serialize_message(message: Message, viewer_id: str, read_before: set[str]) -
     }
 
 
-def serialize_notification(n: Notification, patient_display_name: str) -> dict:
+def serialize_notification(n: Notification, patient_display_name: str, urgent: bool = True) -> dict:
     return {
         "id": n.id,
         "patient_id": n.patient_id,
@@ -180,6 +180,7 @@ def serialize_notification(n: Notification, patient_display_name: str) -> dict:
         "status": n.status.value,
         "title": n.title,
         "body": n.body,
+        "urgent": urgent,
         "created_at": n.created_at,
         "read_at": n.read_at,
     }

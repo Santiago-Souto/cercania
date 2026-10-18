@@ -199,6 +199,7 @@ class MyPatient(BaseModel):
     open_alerts: int | None = None
     red_flag: bool | None = None
     missing_report: bool | None = None
+    unread_notifications: int = 0  # the caller's unread inbox rows for this patient ("novedades", CIA-60)
 
 
 class MyPatients(BaseModel):
@@ -217,6 +218,7 @@ class Notification(BaseModel):
     status: str
     title: str
     body: str
+    urgent: bool = True  # emergency, help, red flag or failed triage; false for a plain patient message (CIA-60)
     created_at: datetime
     read_at: datetime | None = None
 

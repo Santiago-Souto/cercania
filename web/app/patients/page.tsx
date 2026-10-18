@@ -13,10 +13,11 @@ export default async function PatientsPage() {
   const [patients, invites, me] = await Promise.all([getMyPatients(), getMyInvites(), getMe()]);
   // A patient's only screen is their own view (CIA-35): no list, no other navigation.
   if (patients.length === 1 && patients[0].role === "patient" && invites.length === 0) redirect(`/patients/${patients[0].id}/me` as Route);
-  // Red flags first, then by open alerts, then missing reports.
+  // Red flags first, then patients with news (CIA-60), then by open alerts, then missing reports.
   const sorted = [...patients].sort(
     (a, b) =>
       Number(b.red_flag ?? false) - Number(a.red_flag ?? false) ||
+      Number((b.unread_notifications ?? 0) > 0) - Number((a.unread_notifications ?? 0) > 0) ||
       (b.open_alerts ?? 0) - (a.open_alerts ?? 0) ||
       Number(b.missing_report ?? false) - Number(a.missing_report ?? false),
   );

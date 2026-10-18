@@ -17,6 +17,8 @@ from app.models import (
     CarePlan,
     ChecklistItem,
     Medication,
+    Notification,
+    NotificationStatus,
     Patient,
     PatientAccess,
     Person,
@@ -194,6 +196,19 @@ def test_my_patients(db):
     assert b["missing_report"] is True and b["open_alerts"] == 0
 
 
+def test_my_patients_counts_only_my_unread_notifications(db):
+    for nid, person, read in [("n1", "cg", False), ("n2", "cg", False), ("n3", "cg", True), ("n4", "pt", False)]:
+        db.add(Notification(id=nid, patient_id="pat_a", person_id=person, recipient="caregiver", channel="web",
+                            status=NotificationStatus.sent, title="t", body="b",
+                            read_at=datetime.now(timezone.utc) if read else None))
+    db.commit()
+    by_id = {p["id"]: p for p in client.get("/me/patients", headers=h("cg")).json()["patients"]}
+    assert by_id["pat_a"]["unread_notifications"] == 2 and by_id["pat_b"]["unread_notifications"] == 0
+    client.post("/me/notifications/read-all?patient_id=pat_a", headers=h("cg"))
+    by_id = {p["id"]: p for p in client.get("/me/patients", headers=h("cg")).json()["patients"]}
+    assert by_id["pat_a"]["unread_notifications"] == 0
+
+
 def test_me_and_my_patients_accept_every_role(db):
     """nurse and institution memberships must serialize (models.Role has six roles)."""
     for i, (pid, role) in enumerate([("nur", Role.nurse), ("inst", Role.institution)]):
@@ -209,5 +224,5 @@ def test_my_patients_nulls_for_patient_role(db):
     body = client.get("/me/patients", headers=h("pt")).json()
     assert body["patients"] == [{"id": "pat_a", "display_name": "Rosa (ficticia)", "location": None,
                                  "role": "patient", "last_report_at": None, "open_alerts": None,
-                                 "red_flag": None, "missing_report": None}]
+                                 "red_flag": None, "missing_report": None, "unread_notifications": 0}]
     assert client.get("/me/patients").status_code == 401

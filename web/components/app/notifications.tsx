@@ -1,5 +1,5 @@
 "use client";
-// Emergency notifications while the tab is open: poll GET /me/notifications every 5 s, show a toast and a
+// Inbox notifications (emergencies, help, every patient message) while the tab is open: poll GET /me/notifications every 5 s, show a toast and a
 // browser Notification, keep an unread badge. No Web Push / service worker (out of scope, AGENTS.md section 10).
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
@@ -78,13 +78,16 @@ export function NotificationWatcher() {
     function open(n: AppNotification) {
       setUnread(unread - 1);
       markNotificationRead(n.id).catch(() => {});
-      routerRef.current.push(`/patients/${n.patient_id}/alerts` as Route);
+      // Patient messages are listed on the patient home (CIA-60); emergencies on the alerts panel.
+      const to = n.patient_message_id ? `/patients/${n.patient_id}#mensajes-paciente` : `/patients/${n.patient_id}/alerts`;
+      routerRef.current.push(to as Route);
     }
 
     function announce(n: AppNotification) {
-      toast.warning(n.title, {
+      const show = n.urgent === false ? toast.info : toast.warning;
+      show(n.title, {
         description: n.body,
-        duration: Infinity,
+        duration: n.urgent === false ? 10000 : Infinity,
         action: { label: "Ver", onClick: () => open(n) },
       });
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
