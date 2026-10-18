@@ -157,8 +157,9 @@ def test_needs_retry_sends_the_message_from_the_result(sent, brain, media):
     assert sent[-1] == (ANA, "No pude procesarlo, ¿lo mandás de nuevo?")
 
 
-def test_without_process_report_the_caregiver_is_told_nothing_was_stored(sent, media):
-    whatsapp.handle_message(voice(ANA))  # real ingest: app.process does not exist yet
+def test_without_process_report_the_caregiver_is_told_nothing_was_stored(sent, media, monkeypatch):
+    monkeypatch.setattr(ingest, "PROCESS_REPORT_MODULE", "app.process_not_deployed")
+    whatsapp.handle_message(voice(ANA))
     assert sent == [(ANA, whatsapp.MSG_PROCESSING_UNAVAILABLE)]
 
 

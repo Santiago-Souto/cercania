@@ -156,6 +156,12 @@ backend/app/
   web_reports.py   POST /patients/{id}/reports (text/audio)  [infra/input owner]
   ingest.py        single hand-off from channels to process_report [infra/input owner]
   deps.py          DB session + current person dependencies  [shared]
+  errors.py        {error: {code, message}} shape and handlers [shared]
+  schemas.py       Pydantic models for every endpoint (mirror contract) [shared]
+  serializers.py   ORM -> contract dicts, one place          [shared]
+  api/             web routes, one module per area: patients, reports, corrections, me, notifications, query [shared]
+  process.py       process_report: triage + extraction -> compare -> store [brain owner]
+  notify.py        emergency notifications: web inbox, WhatsApp best effort [shared]
   llm.py           one JSON-schema call, any vendor          [brain owner]
   triage.py        text -> emergency yes/no + quote (LLM)    [brain owner]
   extract.py       text -> JSON with quotes                  [brain owner]
@@ -188,7 +194,7 @@ Endpoints (initial): `GET /patients/:id`, `GET /patients/:id/reports`, `POST /pa
 
 ## 10. Out of scope (do not build)
 
-Health-system / clinical-record integration, app/browser push notifications (alerts, help requests and the emergency notifications in section 4.2 go out by WhatsApp), passwords / OAuth / SSO, voice replies from the agent (text confirmation first; audio reply only if time remains Sunday), roles beyond the six in section 6 (caregiver, family, patient, doctor, nurse, institution), AI answers inside family <-> health team messages.
+Health-system / clinical-record integration, app/browser push notifications (alerts, help requests and the emergency notifications in section 4.2 go out by WhatsApp; until Meta approves the number, the in-app web inbox, polled every ~5 s, plus the browser Notification API while the tab is open, is the interim channel), passwords / OAuth / SSO, voice replies from the agent (text confirmation first; audio reply only if time remains Sunday), roles beyond the six in section 6 (caregiver, family, patient, doctor, nurse, institution), AI answers inside family <-> health team messages.
 
 **Priority order (scope was widened on Sat 13:45; the critical path still comes first):**
 1. Critical path: voice note or web report in -> verified record + alerts -> cited query, and the views that show it.

@@ -111,11 +111,19 @@ def test_repeated_client_id_reuses_stored_transcript_without_transcribing(db, br
     assert brain[0]["message_id"] == "web:cg:web_3"
 
 
-@pytest.mark.parametrize("person", ["fam", "doc", "stranger"])
+@pytest.mark.parametrize("person", ["fam", "doc"])
 def test_only_roles_with_send_report_can_post(db, brain, person):
     r = client.post(URL, json={"client_id": "web_4", "text": "hola"}, headers={"X-Person-Id": person})
     assert r.status_code == 403
     assert r.json()["error"]["code"] == "forbidden"
+    assert brain == []
+
+
+def test_person_without_access_gets_404_not_403(db, brain):
+    """Like deps.patient_access: a stranger can't tell an existing patient from a missing one."""
+    r = client.post(URL, json={"client_id": "web_4", "text": "hola"}, headers={"X-Person-Id": "stranger"})
+    assert r.status_code == 404
+    assert r.json()["error"]["code"] == "not_found"
     assert brain == []
 
 
@@ -182,8 +190,8 @@ def test_unsupported_content_type(db, brain):
     assert r.status_code == 415
 
 
-def test_without_process_report_returns_503_not_a_fake_result(db):
-    # Real ingest.process_report: app.process does not exist until CIA-7 merges.
+def test_without_process_report_returns_503_not_a_fake_result(db, monkeypatch):
+    monkeypatch.setattr(ingest, "PROCESS_REPORT_MODULE", "app.process_not_deployed")
     r = client.post(URL, json={"client_id": "w10", "text": "hola"}, headers=AS_CAREGIVER)
     assert r.status_code == 503
     assert r.json()["error"]["code"] == "processing_unavailable"

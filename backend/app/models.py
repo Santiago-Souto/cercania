@@ -143,6 +143,17 @@ class TriageStatus(str, enum.Enum):
     failed = "failed"  # model error/timeout; the report is stored anyway
 
 
+class NotificationChannel(str, enum.Enum):
+    web = "web"  # in-app inbox (polled by the web)
+    whatsapp = "whatsapp"
+
+
+class NotificationStatus(str, enum.Enum):
+    sent = "sent"
+    failed = "failed"
+    skipped = "skipped"  # channel disabled (e.g. NOTIFY_WHATSAPP=0)
+
+
 class FileKind(str, enum.Enum):
     audio = "audio"
     image = "image"
@@ -451,6 +462,31 @@ class Alert(TimestampMixin, Base):
     notifications: Mapped[list] = mapped_column(default=list, nullable=False)
 
     report_version: Mapped[ReportVersion] = relationship(back_populates="alerts")
+
+
+class Notification(TimestampMixin, Base):
+    """One delivery of an alert to one recipient on one channel (web inbox or WhatsApp).
+
+    `alert.notifications` keeps the summary the contract exposes; this table is the inbox.
+    """
+
+    __tablename__ = "notification"
+    # Makes dispatch idempotent. person_id is NULL for the health provider; NULLs are
+    # distinct in SQL, so dispatch code also checks for existing rows itself.
+    __table_args__ = (UniqueConstraint("alert_id", "recipient", "person_id", "channel"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("ntf"))
+    alert_id: Mapped[int] = mapped_column(ForeignKey("alert.id"), nullable=False, index=True)
+    report_id: Mapped[str] = mapped_column(ForeignKey("report.id"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(ForeignKey("patient.id"), nullable=False, index=True)
+    person_id: Mapped[str | None] = mapped_column(ForeignKey("person.id"), index=True)  # null = health provider
+    recipient: Mapped[str] = mapped_column(String(20), nullable=False)  # health_provider|caregiver|family
+    channel: Mapped[NotificationChannel] = mapped_column(enum_column(NotificationChannel), nullable=False)
+    status: Mapped[NotificationStatus] = mapped_column(enum_column(NotificationStatus), nullable=False)
+    error: Mapped[str | None] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 # --- Engine and helpers ----------------------------------------------------------

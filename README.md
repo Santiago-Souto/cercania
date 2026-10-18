@@ -18,32 +18,48 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 |---|---|---|
 | Voice note received from WhatsApp | In progress | Meta Cloud API, bot number +1 555-674-0716 (test number: only allowed phones can write). Inbound voice notes verified against a real Meta payload; end-to-end with transcription pending the Groq key |
 | Audio transcription | In progress | Groq Whisper with a care-vocabulary prompt; live test pending |
-| Structured extraction with verbatim quotes | In progress | `backend/app/extract.py`, Groq `openai/gpt-oss-120b` strict structured output by default; any other vendor via `EXTRACT_MODEL=<provider>:<model>` (`backend/app/llm.py`). Unit-tested; live call not yet verified |
+| `process_report` pipeline (triage + extraction + compare + store) | Functional | `backend/app/process.py`, reached through `app/ingest.py` by WhatsApp and the web app. Unit-tested with fake model clients; not yet run against the real models (see Eval) |
+| Structured extraction with verbatim quotes | Functional | `backend/app/extract.py`, Groq `openai/gpt-oss-120b` strict structured output by default; any other vendor via `EXTRACT_MODEL=<provider>:<model>` (`backend/app/llm.py`). Every quote checked in code. Live accuracy not measured yet |
 | Quote verification (code) | Functional | Normalized whole-word substring match; unit-tested (`backend/tests/test_extract.py`) |
-| Emergency triage (model decides) | In progress | `backend/app/triage.py`, Claude Haiku 5.5 by default (any OpenAI-compatible model via `TRIAGE_MODEL=openai:<model>`), every message from a registered sender. Fixed reply text and recipients in code. Unit-tested; live call not yet verified; criteria provisional |
-| Emergency notifications by WhatsApp | Pending | Recipients chosen in code (`models.emergency_recipients`); sending not built. Needs templates or sandbox join |
-| Comparison vs care plan / history / checklist (code) | Pending | |
-| Confirmation reply to caregiver ("I recorded...") | In progress | Caregiver identified by phone, "which patient?" when several, `confirmation_text` reply with fixed red-flag line; waits on `process_report` (CIA-7) |
-| Report from the web app (text or audio) | In progress | `POST /patients/{id}/reports` built and tested; returns `processing_unavailable` until `process_report` (CIA-7) merges |
-| Versioned report storage | Pending | |
-| Web timeline (caregiver view) | Pending | |
-| Family read-only view | Pending | |
+| Emergency triage (model decides) | Functional | `backend/app/triage.py`, Claude Haiku 5.5 by default (any OpenAI-compatible model via `TRIAGE_MODEL=openai:<model>`), runs on every message that reaches `process_report`. Fixed reply text and recipients in code. Criteria provisional; live accuracy not measured yet. Family, doctor and patient messages do not reach it from WhatsApp yet (see Pending) |
+| Comparison vs care plan / history / checklist (code) | Functional | `backend/app/compare.py`: omissions, changes, missing checklist items. No model |
+| Confirmation reply to caregiver ("I recorded...") | Functional | Caregiver identified by phone, "which patient?" when several; `confirmation_text` written by code, with the fixed red-flag line on emergencies |
+| Report from the web app (text) | Functional | `POST /patients/{id}/reports` runs the same `process_report`; idempotent on `client_id`. Audio path needs the Groq key |
+| Versioned report storage and corrections | Functional | `report_version`; `POST /reports/{id}/corrections` adds a new version, earlier versions stay immutable |
+| Read API (patients, reports, alerts, versions) | Functional | `backend/app/api/`; contract in `docs/contract.md` |
+| Emergency notifications: web inbox | Functional | `backend/app/notify.py` writes one row per recipient; the web polls `GET /me/notifications` about every 5 s and shows a toast and a browser notification while the tab is open |
+| Emergency notifications by WhatsApp | Pending | Code path built, off by default: each attempt is recorded as `skipped` unless `NOTIFY_WHATSAPP=1`. Needs Meta approval (template or recipients on the allowed list) |
+| Cited natural-language query | Functional | `POST /patients/{id}/query` (Sonnet); every citation verified in code. Not yet evaluated against the real model |
+| Web timeline (caregiver view) | Pending | Web owner |
+| Family read-only view | Pending | Web owner |
 | Doctor edits care plan (new version) | Pending | Role and permission in schema; no endpoint/view yet |
 | Patient view (how I feel + I need help; no reports or alerts) | Pending | Role and permission in schema; no endpoint/view yet |
-| Cited natural-language query | Pending | |
 | Login with 6-digit WhatsApp code | Pending | |
-| Eval script and 20 cases | In progress | `eval/run_eval.py` built and tested; needs `process_report` (CIA-7) to run and the 20 cases (CIA-24); 2 cases so far, 0 unseen |
+| Eval script and 20 cases | In progress | `eval/run_eval.py` built and tested; 2 cases so far, 0 unseen. The run against the real `process_report` and query is still to do |
 
 ### Simulated
 
 - **Caller identity:** until the login backend lands, the web app identifies the user with an `X-Person-Id` header (`backend/app/deps.py`). Anyone can claim any id, so it is honored only with `ALLOW_DEV_IDENTITY_HEADER=1` (local dev / demo with fictional data); otherwise every call gets 401. Not for real data.
+- **Fake model clients** exist only in the backend tests. The running app calls the real models.
 - Patient, care plan and history data are fictional seed data (`backend/app/seed.py`). Seeded reports are marked `channel="seed"`, `model="seed"`: they are fixtures, not model output.
 - Web app screens show contract-shaped fake data (`web/lib/fake.ts`) until the backend endpoints land; a "Datos de prueba ficticios" banner is shown while it is on. Buttons that need the backend (record, send, help, invite, login) are not wired yet.
+
+- **Audio:** no audio file is stored yet. `audio_url` is a placeholder path (`/media/{id}`) with no route behind it.
+
+### Pending
+
+- Real auth: login with the 6-digit WhatsApp code (CIA-32) is not built.
+- WhatsApp emergency notifications, pending Meta approval. `NOTIFY_WHATSAPP=0` by default, so they are recorded as `skipped`; the web inbox is the channel in use.
+- Audio storage and `audio_url` (Supabase Storage, signed URLs).
+- Transcript segments: citations have no audio times yet (`audio_start_sec` / `audio_end_sec` are `null`).
+- Members, invites and messages endpoints.
+- Eval not yet run against the real model for `process_report` and the cited query.
 
 ### Out of scope (declared)
 
 - Integration with health-system or clinical records.
-- Push notifications, complex auth, agent voice replies.
+- Web Push (service worker / VAPID) and complex auth. The polled inbox and the browser Notification API are the interim channel.
+- Agent voice replies.
 
 ## Run locally
 
