@@ -17,6 +17,7 @@ from app.models import (
     TriageStatus,
     emergency_recipients,
 )
+from app.triage import DEFAULT_MODEL as TRIAGE_DEFAULT_MODEL
 from app.triage import EMERGENCY_REPLY, TRIAGE_FAILED_LINE, triage, validate
 
 TEXT = "Rosa se cayó en el baño hace un rato y no se puede levantar, le duele la cadera."
@@ -189,7 +190,7 @@ def test_recipients_never_include_patient_or_doctor_and_skip_missing_provider():
 # --- live call (needs the key for the configured TRIAGE_MODEL provider) --------------
 
 
-LIVE_KEY = API_KEY_ENV[parse_model(os.environ.get("TRIAGE_MODEL") or "claude")[0]]
+LIVE_KEY = API_KEY_ENV[parse_model(os.environ.get("TRIAGE_MODEL") or TRIAGE_DEFAULT_MODEL)[0]]
 
 
 @pytest.mark.skipif(not os.environ.get(LIVE_KEY), reason=f"needs {LIVE_KEY}")
@@ -204,3 +205,7 @@ def test_live_triage(text, role, expected):
     assert t.emergency is expected
     if expected:
         assert t.quote_verified, t.quote
+
+
+def test_default_triage_model_is_groq():
+    assert TRIAGE_DEFAULT_MODEL == "groq:openai/gpt-oss-120b"

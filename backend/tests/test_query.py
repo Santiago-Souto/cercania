@@ -86,10 +86,16 @@ def report(db):
     return r
 
 
+# The fake below speaks the Anthropic SDK interface; the query logic under test is the
+# same for every provider, so these tests pin an Anthropic model instead of the default.
+FAKE_MODEL = "anthropic:claude-sonnet-5-5"
+
+
 @pytest.fixture
 def fake(monkeypatch):
     """Install a fake client; tests set `holder['client']`."""
     holder = {}
+    monkeypatch.setenv("QUERY_MODEL", FAKE_MODEL)
     monkeypatch.setattr(query_mod, "_default_client", lambda: holder["client"])
     return holder
 
@@ -106,7 +112,7 @@ def test_answered_with_verified_citation(db, report, fake):
     assert body["citations"] == [{"report_id": "rep_1", "quote": "le di la medicación de las ocho",
                                   "audio_start_sec": 0.0, "audio_end_sec": 3.5}]
     call = fake["client"].calls[0]
-    assert call["model"] == query_mod.llm.parse_model(query_mod.DEFAULT_MODEL)[1]  # llm.py drops the provider prefix
+    assert call["model"] == query_mod.llm.parse_model(FAKE_MODEL)[1]  # llm.py drops the provider prefix
     assert call["output_config"]["format"]["type"] == "json_schema"
     assert 'id="rep_1"' in call["messages"][0]["content"]
 
@@ -209,3 +215,8 @@ def test_invalid_question_is_422(db, report, fake, body):
     r = client.post(URL, json=body, headers=AS_CAREGIVER)
     assert r.status_code == 422
     assert r.json()["error"]["code"] == "invalid_request"
+
+
+def test_default_query_model_is_groq():
+    # No Anthropic key is configured on Render; the query shares Groq with extraction.
+    assert query_mod.DEFAULT_MODEL == "groq:openai/gpt-oss-120b"
