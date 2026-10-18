@@ -1,5 +1,5 @@
 """Patient routes: reads (GET /patients/{id}, /reports, /alerts) and the team
-(POST /patients, PATCH /patients/{id}/emergency-contact, GET /patients/{id}/members, POST /patients/{id}/invites).
+(POST /patients, DELETE /patients/{id}, PATCH /patients/{id}/emergency-contact, GET /patients/{id}/members, POST /patients/{id}/invites).
 
 See docs/contract.md. Permissions via `patient_access`.
 """
@@ -120,13 +120,25 @@ def _emergency_phone(raw: str) -> str:
         raise api_error(422, "phone_invalid", exc.detail["message"]) from exc
 
 
+def _patient_phone(db: Session, caregiver: Person, raw: str) -> str:
+    """The patient's own phone: one live patient per phone, and never the caregiver's own."""
+    phone = _emergency_phone(raw)
+    if phone == caregiver.phone:
+        raise api_error(422, "patient_phone_self", "Ese es tu número. Escribí el celular del paciente.")
+    taken = db.scalar(select(Patient.id).where(Patient.phone == phone, Patient.archived_at.is_(None)).limit(1))
+    if taken is not None:
+        raise api_error(409, "patient_phone_taken", "Ese celular ya está asociado a otro paciente.")
+    return phone
+
+
 @router.post("/patients", response_model=schemas.Patient, status_code=201)
 def create_patient(
     body: schemas.PatientCreate,
     person_id: str = Depends(current_person_id),
     db: Session = Depends(get_db),
 ) -> dict:
-    """The creator becomes the patient's caregiver and sets care plan v1.
+    """The creator becomes the patient's caregiver and sets care plan v1. An optional `phone`
+    (the patient's own cell) lets that person join as the patient's login when they sign up.
 
     Doses are stored as typed (AGENTS.md 7). Only caregivers add patients (CIA-48): a caregiver
     membership on any patient, or a caregiver an admin registered before assigning patients.
@@ -136,7 +148,8 @@ def create_patient(
         raise api_error(401, "unauthenticated", "Iniciá sesión para continuar.")
     if not roles.is_caregiver(db, person):
         raise api_error(403, "forbidden", "Solo las personas cuidadoras pueden agregar pacientes.")
-    patient = Patient(display_name=body.display_name, location=body.location or None)
+    phone = _patient_phone(db, person, body.phone) if body.phone else None
+    patient = Patient(display_name=body.display_name, location=body.location or None, phone=phone)
     if body.emergency_contact is not None:
         patient.health_provider_name = body.emergency_contact.name
         patient.health_provider_phone = _emergency_phone(body.emergency_contact.phone)
@@ -149,6 +162,10 @@ def create_patient(
     for m in body.care_plan.medications:
         db.add(Medication(care_plan_id=plan.id, name=m.name, dose_text=m.dose, times=list(m.times)))
     db.add(PatientAccess(person_id=person_id, patient_id=patient.id, role=Role.caregiver))
+    if phone and db.scalar(select(Person.id).where(Person.phone == phone)) is not None:
+        # Already has an account, so sign-up will not link them: they get a patient invite to accept
+        # (accepting folds their self sign-up profile into this one). Same answer either way.
+        db.add(Invite(patient_id=patient.id, phone=phone, role=Role.patient, invited_by=person_id))
     db.commit()
     return serialize_patient(db, patient)
 
@@ -175,6 +192,18 @@ async def set_emergency_contact(
         ctx.patient.health_provider_name = body.name
     db.commit()
     return serialize_patient(db, ctx.patient)
+
+
+@router.delete("/patients/{patient_id}", response_model=schemas.PatientArchived)
+def archive_patient(
+    ctx: PatientContext = Depends(patient_access(Permission.archive_patient)),
+    db: Session = Depends(get_db),
+) -> dict:
+    """A caregiver removes the patient: soft delete. Nobody keeps access and pending invites are
+    dropped; reports and their versions stay stored (evidence trail), never shown again."""
+    roles.archive_patient(db, ctx.patient, ctx.person_id)
+    db.commit()
+    return {"status": "archived"}
 
 
 @router.get("/patients/{patient_id}/members", response_model=schemas.Members)

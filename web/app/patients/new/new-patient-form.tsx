@@ -1,5 +1,6 @@
 "use client";
 // Add patient + team form (artboard "AddPatient"). Ticket: CIA-34.
+// The patient joins with the phone set under "Datos"; the team section only queues family invites.
 // Doses are stored exactly as typed; CercanIA never computes or suggests them (AGENTS.md section 7).
 
 import Link from "next/link";
@@ -13,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Item, ItemActions, ItemContent } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
 import { checkPhone, MAX_TEXT, parseTimes } from "@/lib/team";
@@ -27,7 +29,7 @@ let nextKey = 1;
 const key = () => nextKey++;
 
 /** Builds the POST /patients body, or the errors to show next to each field. */
-function validate(name: string, location: string, ecName: string, ecPhone: string, meds: MedRow[], indications: TextRow[], allergies: TextRow[]): { body: NewPatient } | { errors: Errors } {
+function validate(name: string, location: string, phone: string | undefined, ecName: string, ecPhone: string, meds: MedRow[], indications: TextRow[], allergies: TextRow[]): { body: NewPatient } | { errors: Errors } {
   const errors: Errors = {};
   const tooLong = `Hasta ${MAX_TEXT} caracteres.`;
   if (!name.trim()) errors.name = "Escribí el nombre del paciente.";
@@ -67,6 +69,7 @@ function validate(name: string, location: string, ecName: string, ecPhone: strin
   const body: NewPatient = {
     display_name: name.trim(),
     location: location.trim() || null,
+    phone: phone || null,
     emergency_contact,
     care_plan: { medications, indications: lines(indications, "ind"), allergies: lines(allergies, "all") },
   };
@@ -76,6 +79,8 @@ function validate(name: string, location: string, ecName: string, ecPhone: strin
 export function NewPatientForm() {
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
+  const [phone, setPhone] = useState<string | undefined>();
+  const patientPhone = phone; // E.164 from PhoneInput; the invite callback below shadows `phone`
   const [ecName, setEcName] = useState("");
   const [ecPhone, setEcPhone] = useState("");
   const [meds, setMeds] = useState<MedRow[]>([]);
@@ -101,7 +106,7 @@ export function NewPatientForm() {
     e.preventDefault();
     if (saved) return;
     setFormError(null);
-    const v = validate(name, location, ecName, ecPhone, meds, indications, allergies);
+    const v = validate(name, location, phone, ecName, ecPhone, meds, indications, allergies);
     if ("errors" in v) {
       setErrors(v.errors);
       setFormError("Revisá los campos marcados.");
@@ -173,6 +178,18 @@ export function NewPatientForm() {
                 }}
               />
               <FieldError>{errors.name}</FieldError>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="pphone">Celular del paciente (opcional)</FieldLabel>
+              <PhoneInput
+                id="pphone"
+                value={phone}
+                onChange={setPhone}
+                autoComplete="off"
+                placeholder="099 123 456"
+                numberInputProps={{ className: "h-12 text-base" }}
+              />
+              <FieldDescription>Si el paciente se registra con este número, entra directo a su perfil, sin invitación.</FieldDescription>
             </Field>
             <Field {...fieldProps("location")}>
               <FieldLabel htmlFor="room">Habitación o domicilio</FieldLabel>
@@ -314,8 +331,11 @@ export function NewPatientForm() {
           />
           {!saved && (
             <InviteForm
+              title="Invitar a un familiar"
               submitLabel="Agregar invitación"
+              roles={["family"]}
               onInvite={(phone, role) => {
+                if (phone === patientPhone) return "Ese es el celular del paciente: ya entra directo con ese número.";
                 if (invites.some((x) => x.phone === phone)) return "Ese número ya está en la lista.";
                 setInvites([...invites, { phone, role }]);
                 return null;
@@ -323,7 +343,7 @@ export function NewPatientForm() {
             />
           )}
           <FieldDescription>
-            Familia: solo lectura. Paciente: solo cuenta cómo se siente o pide ayuda. El equipo de salud lo asigna una persona administradora. La persona entra con su número de celular y acepta la invitación en la app.
+            Familia: solo lectura; entra con su número de celular y acepta la invitación en la app. El paciente entra con el celular cargado arriba. El equipo de salud lo asigna una persona administradora.
           </FieldDescription>
         </CardContent>
       </Card>

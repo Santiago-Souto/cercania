@@ -1,7 +1,10 @@
 "use client";
-// Invitations addressed to the caller's own phone, on "Mis pacientes". Nothing is joined until the
-// person accepts here (POST /me/invites/{id}/accept); declining deletes the invite. CIA-27.
+// Invitations addressed to the caller's own phone, on "Mis pacientes" and on the patient's own view
+// (a self-signed-up patient never sees the list). Nothing is joined until the person accepts here
+// (POST /me/invites/{id}/accept); declining deletes the invite. CIA-27.
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import type { Route } from "next";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +15,7 @@ import type { MyInvite } from "@/lib/types";
 import { answerInviteAction } from "./actions";
 
 export function PendingInvites({ invites }: { invites: MyInvite[] }) {
+  const router = useRouter();
   const [busy, setBusy] = useState<{ id: string; accept: boolean } | null>(null);
 
   const answer = async (inv: MyInvite, accept: boolean) => {
@@ -19,8 +23,12 @@ export function PendingInvites({ invites }: { invites: MyInvite[] }) {
     try {
       const res = await answerInviteAction(inv.id, accept);
       if ("error" in res) toast.error(res.error.message);
-      else if (accept) toast.success(inv.role === "patient" ? "Listo: ya podés usar tu vista de paciente" : `Ya podés acompañar a ${inv.patient_display_name}`);
-      else toast(inv.patient_display_name ? `Rechazaste la invitación para ${inv.patient_display_name}` : "Rechazaste la invitación");
+      else if (accept) {
+        toast.success(inv.role === "patient" ? "Listo: ya podés usar tu vista de paciente" : `Ya podés acompañar a ${inv.patient_display_name}`);
+        // Open the patient just joined: a patient's own profile may have been merged into it.
+        const m = res.membership;
+        if (m) router.push((m.role === "patient" ? `/patients/${m.patient_id}/me` : `/patients/${m.patient_id}`) as Route);
+      } else toast(inv.patient_display_name ? `Rechazaste la invitación para ${inv.patient_display_name}` : "Rechazaste la invitación");
     } catch {
       toast.error("No pudimos responder la invitación. Probá de nuevo.");
     } finally {

@@ -160,6 +160,10 @@ def accept_invite(invite_id: str, person_id: str = Depends(current_person_id), d
         role = invite.role if invite.role in (Role.family, Role.patient) else Role.family
         access = PatientAccess(person_id=person.id, patient_id=invite.patient_id, role=role)
         db.add(access)
+        if role is Role.patient:
+            # Their self sign-up profile (e.g. a help request nobody saw) folds into this one.
+            db.flush()
+            roles.merge_own_profile(db, person, invite.patient_id)
     invite.status = InviteStatus.accepted
     invite.accepted_at = utcnow()
     db.commit()

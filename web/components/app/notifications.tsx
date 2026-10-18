@@ -1,12 +1,13 @@
 "use client";
 // Emergency notifications while the tab is open: poll GET /me/notifications every 5 s, show a toast and a
 // browser Notification, keep an unread badge. No Web Push / service worker (out of scope, AGENTS.md section 10).
+// Same tick polls GET /me/invites, so an invite to the caller's phone shows up without reloading.
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
 import { toast } from "sonner";
-import { ClientApiError, fetchNotifications, markNotificationRead } from "@/lib/client-api";
-import type { AppNotification } from "@/lib/types";
+import { ClientApiError, fetchMyInvites, fetchNotifications, markNotificationRead } from "@/lib/client-api";
+import type { AppNotification, MyInvite } from "@/lib/types";
 
 const POLL_MS = 5000;
 
@@ -47,11 +48,13 @@ function save(key: string, value: unknown) {
 // Per tab (sessionStorage), cleared on "Salir" so the next person in this tab starts fresh.
 const SEEN_KEY = "cercania:seen";
 const SINCE_KEY = "cercania:since";
+const SEEN_INVITES_KEY = "cercania:seen-invites";
 
 export function clearNotificationState() {
   try {
     sessionStorage.removeItem(SEEN_KEY);
     sessionStorage.removeItem(SINCE_KEY);
+    sessionStorage.removeItem(SEEN_INVITES_KEY);
   } catch {
     // storage blocked: nothing stored
   }
@@ -73,7 +76,30 @@ export function NotificationWatcher() {
     const sinceKey = SINCE_KEY;
     const seen = new Set<string>(load<string[]>(seenKey, []));
     let since = load<string | null>(sinceKey, null);
+    const seenInvites = new Set<string>(load<string[]>(SEEN_INVITES_KEY, []));
+    // Invites already pending when the tab opens are on screen as cards; only later ones get a toast.
+    let invitesPrimed = false;
     let stopped = false;
+
+    // The invite card lives on "Mis pacientes" and on the patient's own view: refresh so it renders there.
+    function announceInvite(inv: MyInvite) {
+      routerRef.current.refresh();
+      toast.info("Te invitaron", {
+        description: `${inv.invited_by ?? "Alguien del equipo"} te invitó${inv.patient_display_name ? ` a ${inv.patient_display_name}` : ""}. Aceptala para sumarte.`,
+        duration: Infinity,
+        action: { label: "Ver", onClick: () => routerRef.current.push("/patients" as Route) },
+      });
+    }
+
+    async function checkInvites() {
+      const { invites } = await fetchMyInvites();
+      if (stopped) return;
+      const fresh = invites.filter((i) => !seenInvites.has(i.id));
+      fresh.forEach((i) => seenInvites.add(i.id));
+      save(SEEN_INVITES_KEY, [...seenInvites].slice(-50));
+      if (fresh.length && invitesPrimed) announceInvite(fresh[0]);
+      invitesPrimed = true;
+    }
 
     function open(n: AppNotification) {
       setUnread(unread - 1);
@@ -117,6 +143,7 @@ export function NotificationWatcher() {
         // Only server timestamps: a skewed browser clock must never move the cursor past real notifications.
         if (newest && (!since || newest > since)) since = newest;
         if (since) save(sinceKey, since);
+        await checkInvites();
       } catch (err) {
         // Session gone: client-api already sends the browser to /login, stop polling.
         if (err instanceof ClientApiError && err.code === "unauthenticated") {

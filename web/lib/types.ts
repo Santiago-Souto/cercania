@@ -176,6 +176,8 @@ export type NewPatient = {
   display_name: string;
   location: string | null;
   emergency_contact?: EmergencyContact | null;
+  /** The patient's own cell (E.164): signing up with it joins this profile as the patient. */
+  phone?: string | null;
   care_plan: { medications: Omit<Medication, "id">[]; indications: string[]; allergies: string[] };
 };
 

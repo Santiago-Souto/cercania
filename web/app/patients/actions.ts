@@ -4,9 +4,9 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { acceptInvite, ApiError, createInvite, createPatient, declineInvite, invitePatientWithoutProfile, setEmergencyContact } from "@/lib/api";
+import { acceptInvite, ApiError, archivePatient, createInvite, createPatient, declineInvite, invitePatientWithoutProfile, setEmergencyContact } from "@/lib/api";
 import { checkPhone } from "@/lib/team";
-import type { EmergencyContact, NewPatient, Role } from "@/lib/types";
+import type { EmergencyContact, Membership, NewPatient, Role } from "@/lib/types";
 
 export type ActionError = { code: string; message: string };
 
@@ -71,16 +71,32 @@ export async function inviteAction(patientId: string, contact: string, role: Rol
   return { ok: true };
 }
 
-/** The invited person answers an invite to their own phone ("Mis pacientes"). */
-export async function answerInviteAction(inviteId: string, accept: boolean): Promise<{ error: ActionError } | { ok: true }> {
+/** The invited person answers an invite to their own phone ("Mis pacientes" or their patient view).
+ * Accepting returns the membership so the screen can open that patient. */
+export async function answerInviteAction(
+  inviteId: string,
+  accept: boolean,
+): Promise<{ error: ActionError } | { ok: true; membership?: Membership }> {
+  let membership: Membership | undefined;
   try {
-    if (accept) await acceptInvite(inviteId);
+    if (accept) membership = await acceptInvite(inviteId);
     else await declineInvite(inviteId);
   } catch (e) {
     return { error: asError(e) };
   }
-  revalidatePath("/patients");
-  return { ok: true };
+  revalidatePath("/patients", "layout");
+  return { ok: true, membership };
+}
+
+/** DELETE /patients/{id} (caregivers): archive the patient, then back to the list. */
+export async function archivePatientAction(patientId: string): Promise<{ error: ActionError }> {
+  try {
+    await archivePatient(patientId);
+  } catch (e) {
+    return { error: asError(e) };
+  }
+  revalidatePath("/patients", "layout");
+  redirect("/patients");
 }
 
 /** POST /invites (CIA-48): invite a patient who has no profile yet; accepting creates it with the

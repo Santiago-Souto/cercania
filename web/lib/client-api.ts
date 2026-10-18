@@ -3,7 +3,7 @@
 // Same-origin through the /api rewrite, so the session cookie goes along; a 401 sends the browser to /login.
 
 import { BROWSER_API, onUnauthorized } from "./api-shared";
-import type { AppNotification, ChecklistItem, Message, Report } from "./types";
+import type { AppNotification, ChecklistItem, Message, MyInvite, Report } from "./types";
 
 export class ClientApiError extends Error {
   constructor(
@@ -44,6 +44,11 @@ export function fetchNotifications(opts: { since?: string; unreadOnly?: boolean 
   if (opts.since) q.set("since", opts.since);
   if (opts.unreadOnly) q.set("unread_only", "1");
   return call<{ notifications: AppNotification[]; unread_count: number }>(`/me/notifications?${q}`);
+}
+
+/** Pending invites to the caller's phone, polled so an invite shows up while the app is open. */
+export function fetchMyInvites() {
+  return call<{ invites: MyInvite[] }>(`/me/invites`);
 }
 
 export function markNotificationRead(id: string) {

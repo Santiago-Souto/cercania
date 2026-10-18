@@ -15,12 +15,16 @@ from sqlalchemy.orm import Session
 from .models import (
     Invite,
     InviteStatus,
+    Notification,
     Patient,
     PatientAccess,
+    PatientMessage,
     Person,
     PreRegistration,
+    Report,
     Role,
     RoleChange,
+    utcnow,
 )
 
 ADMIN = "admin"
@@ -129,6 +133,49 @@ def set_membership(session: Session, person: Person, patient_id: str, role: Role
     return access
 
 
+def archive_patient(session: Session, patient: Patient, actor_id: str | None) -> None:
+    """Soft delete: drop every membership, pending invite and pre-registration for the patient,
+    so nobody reaches it any more. Reports, versions and messages stay (evidence trail); the
+    memberships it had are kept in the `role_change` log."""
+    accesses = session.scalars(select(PatientAccess).where(PatientAccess.patient_id == patient.id)).all()
+    log(session, "patient_archived", actor_id=actor_id, patient_id=patient.id,
+        before={"memberships": [{"person_id": a.person_id, "role": a.role.value} for a in accesses]})
+    for a in accesses:
+        session.delete(a)
+    for model in (Invite, PreRegistration):
+        for row in session.scalars(select(model).where(model.patient_id == patient.id)):
+            if model is PreRegistration or row.status == InviteStatus.pending:
+                session.delete(row)
+    patient.archived_at = utcnow()
+    session.flush()
+
+
+def merge_own_profile(session: Session, person: Person, into_patient_id: str) -> bool:
+    """A self-signed-up patient accepted a caregiver's invite as the login of another profile.
+    If their own profile is only theirs (no one else with access, no reports), its patient
+    messages move to the new profile and the old one is archived: one person, one profile.
+    Returns whether it merged."""
+    old = session.scalar(
+        select(Patient).join(PatientAccess, PatientAccess.patient_id == Patient.id)
+        .where(PatientAccess.person_id == person.id, PatientAccess.role == Role.patient,
+               Patient.id != into_patient_id)
+    )
+    if old is None:
+        return False
+    others = session.scalar(select(PatientAccess.id).where(PatientAccess.patient_id == old.id,
+                                                           PatientAccess.person_id != person.id).limit(1))
+    reports = session.scalar(select(Report.id).where(Report.patient_id == old.id).limit(1))
+    if others is not None or reports is not None:
+        return False
+    for model in (PatientMessage, Notification):
+        for row in session.scalars(select(model).where(model.patient_id == old.id)):
+            row.patient_id = into_patient_id
+    log(session, "own_profile_merged", actor_id=person.id, person_id=person.id, patient_id=into_patient_id,
+        before={"patient_id": old.id}, after={"patient_id": into_patient_id})
+    archive_patient(session, old, person.id)
+    return True
+
+
 def apply_role(session: Session, person: Person, role: str, patient_id: str | None) -> None:
     """Give an existing person a role from a pre-registration (or an admin's confirmed change).
 
@@ -145,11 +192,30 @@ def apply_role(session: Session, person: Person, role: str, patient_id: str | No
     session.flush()
 
 
+def claim_patient_by_phone(session: Session, person: Person) -> Patient | None:
+    """A caregiver added a patient with this person's phone: they become its own login, no invite.
+
+    Only a live patient with no login yet; the phone was proven by the SMS code.
+    """
+    patient = session.scalar(
+        select(Patient).where(Patient.phone == person.phone, Patient.archived_at.is_(None))
+        .order_by(Patient.created_at, Patient.id)
+    )
+    if patient is None or other_patient_login(session, patient.id, person.id):
+        return None
+    set_membership(session, person, patient.id, Role.patient)
+    session.flush()
+    log(session, "patient_phone_claimed", actor_id=None, person_id=person.id, phone=person.phone,
+        patient_id=patient.id, after={"role": Role.patient.value, "patient_id": patient.id})
+    return patient
+
+
 def on_signup(session: Session, person: Person) -> str:
     """Decide a brand-new person's starting role. Returns what was applied (for logs and tests).
 
-    Pre-registration first (it is the admin's explicit decision); a pending family invite
-    stays to be accepted in the app; otherwise the person signed up for themselves: patient.
+    Pre-registration first (it is the admin's explicit decision); then a patient a caregiver
+    added with this phone (they join it as its own login); a pending invite stays to be
+    accepted in the app; otherwise the person signed up for themselves: patient.
     """
     pre = session.scalar(select(PreRegistration).where(PreRegistration.phone == person.phone))
     if pre is not None:
@@ -159,6 +225,8 @@ def on_signup(session: Session, person: Person) -> str:
             after={"role": pre.role, "patient_id": pre.patient_id})
         session.delete(pre)
         return f"pre_registration:{pre.role}"
+    if claim_patient_by_phone(session, person) is not None:
+        return "patient_phone"
     invited = session.scalar(select(Invite.id).where(Invite.phone == person.phone,
                                                      Invite.status == InviteStatus.pending).limit(1))
     if invited is not None:
@@ -184,6 +252,8 @@ def ensure_default_role(session: Session, person: Person) -> bool:
     # My patients) must not each create a profile. Postgres waits here; SQLite has one writer.
     session.execute(select(Person.id).where(Person.id == person.id).with_for_update())
     if _has_membership(session, person):
+        return False
+    if claim_patient_by_phone(session, person) is not None:
         return False
     if session.scalar(select(Invite.id).where(Invite.phone == person.phone,
                                               Invite.status == InviteStatus.pending).limit(1)) is not None:

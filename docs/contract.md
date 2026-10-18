@@ -488,8 +488,9 @@ Only the latest code sent to the phone is valid. Codes are single-use, expire af
 
 **Starting role of a new person** (the sign-up that creates the person; logging in again changes nothing), decided in code (`backend/app/roles.py`):
 1. The phone has an **admin pre-registration**: that role is applied and the pre-registration is consumed. With a patient, that membership; `admin`, `is_admin = true`; a caregiver without a patient, no memberships but `can_add_patients = true`; `patient`, their own new patient profile.
-2. Otherwise, the phone has a **pending invite** (family or patient): nothing is applied; the person accepts it in the app.
-3. Otherwise the person signed up for themselves: they get **their own patient profile** (display name = their name, no care plan) and the `patient` role on it, so `memberships` has that one entry.
+2. Otherwise, a caregiver **added a patient with this phone** (`POST /patients` `phone`) and that patient has no login yet: the person becomes that patient's own login (`patient` role), with no invite. Also checked when a person with no role at all logs in.
+3. Otherwise, the phone has a **pending invite** (family or patient): nothing is applied; the person accepts it in the app.
+4. Otherwise the person signed up for themselves: they get **their own patient profile** (display name = their name, no care plan) and the `patient` role on it, so `memberships` has that one entry.
 
 If a phone has both a pre-registration and an invite, the pre-registration applies and the invite stays pending.
 
@@ -513,11 +514,15 @@ Deletes the session server-side and clears the cookie. Returns `{ "status": "log
 }
 ```
 
-`location` is optional free text and is `null` when not set. `emergency_contact` (`{ name, phone }`) is optional; the phone is normalized to E.164 like other phones. Returns `201` with the patient as in `GET /patients/{patient_id}`. Only caregivers may add a patient (`403 forbidden` otherwise): someone with a caregiver membership, or a caregiver an admin registered before assigning patients (`GET /me` `can_add_patients`). The creator becomes `caregiver` and sets the initial care plan (version 1); after that only a `doctor` can edit it. Doses are stored as entered; nothing is computed. Each medication needs `name` and `dose` (1-120 characters); `times` are `HH:MM`. `care_plan` may be omitted (empty plan). Errors: `401`; `422 invalid_request` (empty name, bad time, too long); `422 phone_invalid` (emergency contact phone without country code).
+`location` is optional free text and is `null` when not set. `emergency_contact` (`{ name, phone }`) is optional; the phone is normalized to E.164 like other phones. Returns `201` with the patient as in `GET /patients/{patient_id}`. Only caregivers may add a patient (`403 forbidden` otherwise): someone with a caregiver membership, or a caregiver an admin registered before assigning patients (`GET /me` `can_add_patients`). The creator becomes `caregiver` and sets the initial care plan (version 1); after that only a `doctor` can edit it. Doses are stored as entered; nothing is computed. Each medication needs `name` and `dose` (1-120 characters); `times` are `HH:MM`. `care_plan` may be omitted (empty plan). `phone` (optional) is the patient's own cell, normalized to E.164: when that phone signs up, the person joins this patient as its own login with no invite (see "Starting role" under Auth). If the phone already has an account, a pending `patient` invite is created for it instead (same response either way). One live patient per phone. Errors: `401`; `422 invalid_request` (empty name, bad time, too long); `422 phone_invalid` (emergency contact or patient phone without country code); `422 patient_phone_self` (the caregiver's own number); `409 patient_phone_taken` (another live patient has that phone).
 
 ### `PATCH /patients/{patient_id}/emergency-contact`
 
 Permission: `edit_emergency_contact` (**caregiver and doctor** only; other roles get `403 forbidden`). Body: `{ "name": "Emergencias Residencia", "phone": "+598 99 123 456" }` to set, or the JSON `null` to clear. Name 1-120 characters; the phone is normalized to E.164. Returns `200` with the patient as in `GET /patients/{patient_id}`. Errors: `401`, `403`, `404`, `422 invalid_request` (empty name, malformed body), `422 phone_invalid` (message in Spanish, same text as other phone errors).
+
+### `DELETE /patients/{patient_id}`
+
+Permission: `archive_patient` (**caregiver** only; other roles get `403 forbidden`). Removes the patient from the app as a **soft delete**: every membership, pending invite and pre-registration for it is deleted (the memberships it had are logged in `role_change` as `patient_archived`), and `patient.archived_at` is set. Reports, versions, alerts and messages stay stored as the evidence trail, but nobody can reach them any more (`404` for everyone, and the patient leaves every `GET /me/patients`). Admins can no longer assign roles on it. Returns `{ "status": "archived" }`. Errors: `401`, `403`, `404`.
 
 ### `GET /patients/{patient_id}/members`
 
@@ -543,7 +548,7 @@ Same invite with the patient in the body: `{ "contact": "+59899111111", "role": 
 
 ### `GET /me/invites`
 
-Any authenticated person. Pending invites addressed to the caller's own phone (the one their session proved), newest first. The web shows them on "Mis pacientes" with Aceptar / Rechazar. Errors: `401`.
+Any authenticated person. Pending invites addressed to the caller's own phone (the one their session proved), newest first. The web shows them on "Mis pacientes" and on the patient's own view (a self-signed-up patient's only screen) with Aceptar / Rechazar, and polls this endpoint with the notifications (about every 5 s) to show a toast for an invite that arrives while the app is open. Errors: `401`.
 
 ```json
 { "invites": [ { "id": "inv_001", "patient_id": "pat_001", "patient_display_name": "Rosa (fictional)", "role": "family", "invited_by": "Ana Pérez (fictional)", "created_at": "2026-10-18T00:05:00Z" } ] }
@@ -553,7 +558,7 @@ Any authenticated person. Pending invites addressed to the caller's own phone (t
 
 ### `POST /me/invites/{invite_id}/accept`
 
-Creates the membership with the invite's role, family or patient (if the caller is already a member, their current role is kept). For a `patient` invite without a patient, it first creates the caller's own patient profile and makes the inviting caregiver its caregiver; `patient_id` in the answer is that new profile and marks the invite `accepted`. Returns the membership: `{ "patient_id": "pat_001", "display_name": "Rosa (fictional)", "role": "family" }`. Errors: `401`; `404 not_found` (unknown, addressed to another phone, or no longer pending).
+Creates the membership with the invite's role, family or patient (if the caller is already a member, their current role is kept). For a `patient` invite without a patient, it first creates the caller's own patient profile and makes the inviting caregiver its caregiver; `patient_id` in the answer is that new profile and marks the invite `accepted`. For a `patient` invite to an existing patient, a caller who already has their own profile (self sign-up) gets it **merged**: if no one else has access to that profile and it has no reports, its patient messages (and their notifications) move to the invited patient and the old profile is archived as in `DELETE /patients/{patient_id}` (logged as `own_profile_merged`); otherwise both profiles stay. Returns the membership: `{ "patient_id": "pat_001", "display_name": "Rosa (fictional)", "role": "family" }`. Errors: `401`; `404 not_found` (unknown, addressed to another phone, or no longer pending).
 
 ### `POST /me/invites/{invite_id}/decline`
 

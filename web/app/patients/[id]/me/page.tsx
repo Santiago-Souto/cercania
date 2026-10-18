@@ -1,5 +1,6 @@
 // Patient's own view (artboard "Patient"). Ticket: CIA-35.
-// Only two actions, no other navigation: tell how I feel and "Necesito ayuda" (AGENTS.md §6).
+// Only two actions, no other navigation: tell how I feel and "Necesito ayuda" (AGENTS.md §6),
+// plus any pending invite to their phone (this is a patient's only screen).
 // Open to the patient role, and to caregivers testing it (they also hold `send_patient_message`).
 import { redirect } from "next/navigation";
 import type { Route } from "next";
@@ -7,8 +8,9 @@ import { CheckIcon } from "lucide-react";
 import { AppShell } from "@/components/app/shell";
 import { Badge } from "@/components/ui/badge";
 import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
-import { getMyPatients, getPatient, getPatientMessages } from "@/lib/api";
+import { getMyInvites, getMyPatients, getPatient, getPatientMessages } from "@/lib/api";
 import { dayTime, firstName } from "@/lib/format";
+import { PendingInvites } from "../../pending-invites";
 import { PatientActions } from "./patient-actions";
 
 const SHOWN_MESSAGES = 10;
@@ -20,7 +22,7 @@ export default async function PatientSelfPage(props: PageProps<"/patients/[id]/m
   // Family and health team see the patient's messages from their own screens; this one is for the patient.
   if (role && role !== "patient" && role !== "caregiver") redirect(`/patients/${id}` as Route);
 
-  const [patient, messages] = await Promise.all([getPatient(id), getPatientMessages(id)]);
+  const [patient, messages, invites] = await Promise.all([getPatient(id), getPatientMessages(id), getMyInvites()]);
   const shown = messages.slice(0, SHOWN_MESSAGES);
 
   return (
@@ -30,6 +32,9 @@ export default async function PatientSelfPage(props: PageProps<"/patients/[id]/m
           <h1 className="text-[34px] leading-tight font-bold">Hola, {firstName(patient.display_name)}</h1>
           <p className="text-ink-2">¿Cómo te sentís hoy?</p>
         </section>
+
+        {/* A caregiver's invite (e.g. to be the login of a profile they already keep) shows here too. */}
+        <PendingInvites invites={invites} />
 
         <PatientActions patientId={id} />
 
