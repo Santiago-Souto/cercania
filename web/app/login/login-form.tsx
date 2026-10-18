@@ -12,6 +12,8 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { Spinner } from "@/components/ui/spinner";
 import { authErrorMessage, requestCode, safeNext, savePending } from "@/lib/auth";
 
+const NAME_MISSING = "Escribí tu nombre.";
+
 export function LoginForm({ mode, next }: { mode: "signup" | "login"; next?: string }) {
   const router = useRouter();
   const [sending, setSending] = useState(false);
@@ -22,10 +24,11 @@ export function LoginForm({ mode, next }: { mode: "signup" | "login"; next?: str
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (sending) return; // Enter in the field while a code is on its way must not send a second SMS
     const form = new FormData(e.currentTarget);
     const name = String(form.get("name") ?? "").trim();
     const email = String(form.get("email") ?? "").trim();
-    if (!isLogin && !name) return setError("Escribí tu nombre.");
+    if (!isLogin && !name) return setError(NAME_MISSING);
     if (!phone) return setError("Escribí tu celular.");
     if (!isPossiblePhoneNumber(phone)) return setError("Revisá el número: le faltan o le sobran números para ese país.");
 
@@ -66,7 +69,7 @@ export function LoginForm({ mode, next }: { mode: "signup" | "login"; next?: str
             autoComplete="tel"
             placeholder={country === "UY" ? "099 123 456" : "Número de celular"}
             required
-            aria-invalid={!!error && !phone}
+            aria-invalid={!!error && error !== NAME_MISSING}
             numberInputProps={{ className: "h-12 bg-card text-base" }}
           />
           <FieldDescription>Ahí te llega el código por SMS. Con este mismo número te pueden invitar a un paciente.</FieldDescription>
