@@ -9,7 +9,7 @@ from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
-from app import models, storage, web_reports, whatsapp
+from app import models, patient_messages, storage, web_reports, whatsapp
 from app.api import api_router
 from app.errors import error_response, install_error_handlers
 
@@ -49,6 +49,7 @@ app.add_middleware(
 )
 install_error_handlers(app)
 app.include_router(web_reports.router)
+app.include_router(patient_messages.router)
 app.include_router(api_router)
 
 

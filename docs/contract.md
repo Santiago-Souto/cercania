@@ -401,6 +401,8 @@ Any authenticated person. The caller's own **web** notifications only. Query: `s
 }
 ```
 
+`alert_id` and `report_id` are set for emergency notifications. For patient help requests and red-flag messages they are `null` and `patient_message_id` is set instead (see Patient messages); `recipient` is then `caregiver`, `doctor`, `nurse` or `institution`.
+
 `unread_count` counts all unread web notifications of the caller, regardless of `since` and `limit`. The web polls this endpoint with `since` set to the newest `created_at` it has seen, about every 5 seconds. Errors: `401`, `422`.
 
 ### `POST /me/notifications/{notification_id}/read`
@@ -567,7 +569,7 @@ Bot behavior (all replies are WhatsApp text):
 
 ### `POST /patients/{patient_id}/patient-messages`
 
-Only for the `patient` role (and caregivers testing).
+Permission: `send_patient_message` (the `patient` role, and caregivers testing the patient view). Implemented in `backend/app/patient_messages.py`.
 
 ```json
 { "kind": "feeling", "text": "me duele un poco la rodilla" }
@@ -577,13 +579,13 @@ Only for the `patient` role (and caregivers testing).
 { "kind": "help" }
 ```
 
-`kind` is `feeling` or `help`. `feeling` accepts `text` or multipart `audio`. Response:
+`kind` is `feeling` or `help`. `feeling` accepts `text` (1-1000 characters) or multipart `kind=feeling` + `audio` (same formats and size limit as web reports). Response:
 
 ```json
 { "id": "pm_001", "kind": "help", "notified": ["usr_001", "usr_004"], "red_flag": false, "message_for_patient": "Ya avisamos a tu equipo. Si es una emergencia, llamá a emergencias." }
 ```
 
-`help` is a fixed rule: notify every caregiver and health-team member by WhatsApp immediately; the model is never involved.
+`help` is a fixed rule: notify every caregiver and health-team member (doctor, nurse, institution) of the patient immediately; the model is never involved. Never family, never the patient, never the sender (a caregiver testing). `notified` lists the person ids that got a web inbox notification (`GET /me/notifications`, with `patient_message_id` set and `alert_id` / `report_id` `null`), written before the response. WhatsApp follows after the response, best effort like emergencies (`skipped` unless `NOTIFY_WHATSAPP=1`). Notification text is written by code and never includes the patient's words.
 
 `feeling` goes through the same triage step as WhatsApp messages (`triage.py`, model decides `red_flag`): the `text` field, or for `audio` the transcript, before replying. Audio must never skip triage; if triage fails, the reply still includes the fixed emergency line; if transcription fails, return `transcription_failed` and the UI asks the patient to retry or type, always showing "si es una emergencia, llamá a emergencias". When `red_flag` is `true`, the team is notified as for `help` and `message_for_patient` is this fixed text written in code (the model only decides `red_flag`, never the wording):
 
@@ -591,9 +593,15 @@ Only for the `patient` role (and caregivers testing).
 { "id": "pm_002", "kind": "feeling", "notified": ["usr_001", "usr_004"], "red_flag": true, "message_for_patient": "Avisamos a tu equipo. Si es una emergencia, llamá a emergencias o a tu médico ahora." }
 ```
 
+When `feeling` is not an emergency, nobody is notified and `message_for_patient` is "Gracias, tu equipo va a ver tu mensaje. Si es una emergencia, llamá a emergencias." If triage fails, it is "Gracias, tu equipo va a ver tu mensaje." plus the fixed triage-failed line, and the message is stored with its triage status.
+
+Errors: `401`; `404 not_found` (unknown patient or no access); `403 forbidden` (role without `send_patient_message`); `400` `invalid_kind`, `text_missing`, `text_too_long`, `audio_missing`, `audio_empty`, `invalid_json`; `413 audio_too_large`; `415` `unsupported_audio`, `unsupported_media_type`; `502 transcription_failed` (message asks to retry or type and says to call emergency services).
+
 ### `GET /patients/{patient_id}/patient-messages`
 
-Latest first: `{ "messages": [ { "id", "kind", "text", "created_at", "seen_by": [ { "user_id", "name" } ] } ] }`.
+Permission: `read_patient_messages` (caregivers, health team and the patient; not family). Query: `limit` (1-100, default 50). Latest first: `{ "messages": [ { "id", "kind", "text", "red_flag", "created_at", "seen_by": [ { "user_id", "name" } ] } ] }`. `text` is `null` for `help`.
+
+A caregiver or health-team member listing the messages marks the listed ones as seen by them (`seen_by`, oldest first). The patient listing them does not.
 
 ## Family <-> health team messages (bonus)
 

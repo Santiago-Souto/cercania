@@ -1,4 +1,4 @@
-"""Emergency notifications (AGENTS.md 4.2, step 3).
+"""Emergency notifications (AGENTS.md 4.2, step 3) and patient help / red-flag messages (AGENTS.md 7).
 
 Who is notified comes from `models.emergency_recipients` (code, never the model).
 Primary channel: the in-app inbox (`notification` rows with channel `web`, polled by
@@ -26,11 +26,14 @@ from app.models import (
     NotificationChannel,
     NotificationStatus,
     Patient,
+    PatientMessage,
+    PatientMessageKind,
     Person,
     Report,
     ReportVersion,
     SessionLocal,
     emergency_recipients,
+    patient_team,
 )
 
 log = logging.getLogger(__name__)
@@ -47,7 +50,7 @@ def _summary(n: Notification) -> dict:
             "status": n.status.value, "error": n.error}
 
 
-def _local_time(report: Report) -> str:
+def _local_time(report: Report | PatientMessage) -> str:
     created = report.created_at
     if created.tzinfo is None:  # SQLite returns naive UTC
         created = created.replace(tzinfo=timezone.utc)
@@ -163,3 +166,68 @@ def _dispatch(report_id: str, session_factory, sender) -> list[dict]:
         alert.notifications = summaries
         session.commit()
         return summaries
+
+
+# --- patient messages (AGENTS.md 7) ----------------------------------------------------------
+
+
+def patient_message_text(patient: Patient, message: PatientMessage) -> tuple[str, str]:
+    """Title and body written by code. Never the patient's words, never clinical advice."""
+    at = _local_time(message)
+    if message.kind is PatientMessageKind.help:
+        return (f"Pedido de ayuda: {patient.display_name}",
+                f"{patient.display_name} pidió ayuda a las {at}. Abrí CercanIA.")
+    parts = [f"{patient.display_name} envió un mensaje a las {at} que puede ser una emergencia."]
+    reason = (message.triage_reason or "").strip().rstrip(".")
+    if reason:
+        parts.append(f"Motivo: {reason}.")
+    parts.append("Abrí CercanIA.")
+    return f"Posible emergencia: {patient.display_name}", " ".join(parts)
+
+
+def notify_patient_team(session: Session, message: PatientMessage) -> list[str]:
+    """Web inbox rows for every caregiver and health-team member; returns their person ids.
+
+    Committed by the caller together with the message, so the response's `notified` is true.
+    WhatsApp goes out afterwards (send_patient_message_whatsapp), never before the inbox.
+    """
+    patient = session.get(Patient, message.patient_id)
+    title, body = patient_message_text(patient, message)
+    recipients = patient_team(session, message.patient_id, message.sender_id)
+    for r in recipients:
+        session.add(Notification(patient_message_id=message.id, patient_id=message.patient_id,
+                                 person_id=r["person_id"], recipient=r["to"], channel=NotificationChannel.web,
+                                 status=NotificationStatus.sent, title=title, body=body))
+    return [r["person_id"] for r in recipients]
+
+
+def send_patient_message_whatsapp(message_id: str, *, session_factory=SessionLocal, whatsapp_sender=None) -> None:
+    """Best effort, like emergencies: one recorded row per recipient (sent/failed/skipped). Never raises."""
+    try:
+        with session_factory() as session:
+            message = session.get(PatientMessage, message_id)
+            if message is None:
+                return
+            done = set(session.scalars(
+                select(Notification.person_id).where(Notification.patient_message_id == message_id,
+                                                     Notification.channel == NotificationChannel.whatsapp)
+            ).all())
+            patient = session.get(Patient, message.patient_id)
+            title, body = patient_message_text(patient, message)
+            enabled = whatsapp_enabled()
+            for r in patient_team(session, message.patient_id, message.sender_id):
+                if r["person_id"] in done:
+                    continue
+                if enabled:
+                    status, error = _send_whatsapp(whatsapp_sender or whatsapp, r["phone"], f"{title}\n{body}")
+                else:
+                    status, error = NotificationStatus.skipped, WHATSAPP_DISABLED
+                session.add(Notification(patient_message_id=message_id, patient_id=message.patient_id,
+                                         person_id=r["person_id"], recipient=r["to"],
+                                         channel=NotificationChannel.whatsapp, status=status, error=error,
+                                         title=title, body=body))
+                if status is NotificationStatus.failed:
+                    log.error("Patient message WhatsApp to %s failed: %s", r["to"], error)
+            session.commit()
+    except Exception:  # noqa: BLE001
+        log.exception("Patient message WhatsApp dispatch failed for %s", message_id)
