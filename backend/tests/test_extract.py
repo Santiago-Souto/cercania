@@ -240,6 +240,7 @@ def test_extract_raises_on_invalid_json_and_empty_transcript():
 LIVE_KEY = API_KEY_ENV[parse_model(os.environ.get("EXTRACT_MODEL") or DEFAULT_MODEL)[0]]
 
 
+@pytest.mark.live
 @pytest.mark.skipif(not os.environ.get(LIVE_KEY), reason=f"needs {LIVE_KEY}")
 def test_live_extraction_unseen_transcript():
     transcript = (

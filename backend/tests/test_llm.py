@@ -221,6 +221,7 @@ def test_groq_without_key_is_a_config_error(monkeypatch):
 # --- live call (needs LLM_API_KEY and an openai: EXTRACT_MODEL) ------------------------
 
 
+@pytest.mark.live
 @pytest.mark.skipif(not (os.environ.get("LLM_API_KEY")
                          and os.environ.get("EXTRACT_MODEL", "").startswith("openai:")),
                     reason="needs LLM_API_KEY and EXTRACT_MODEL=openai:<model>")

@@ -192,6 +192,7 @@ def test_recipients_never_include_patient_or_doctor_and_skip_missing_provider():
 LIVE_KEY = API_KEY_ENV[parse_model(os.environ.get("TRIAGE_MODEL") or "claude")[0]]
 
 
+@pytest.mark.live
 @pytest.mark.skipif(not os.environ.get(LIVE_KEY), reason=f"needs {LIVE_KEY}")
 @pytest.mark.parametrize("text,role,expected", [
     ("Che, Jorge se fue al piso en el pasillo y no responde, está pálido.", Role.caregiver, True),
