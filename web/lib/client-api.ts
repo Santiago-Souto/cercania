@@ -59,3 +59,8 @@ export function fetchNotifications(opts: { since?: string; unreadOnly?: boolean 
 export function markNotificationRead(id: string) {
   return call<AppNotification>(`/me/notifications/${id}/read`, { method: "POST" });
 }
+
+/** Signed URL for a report's voice note. `audioPath` is the report's `audio_url` (GET /reports/{id}/audio). */
+export function fetchAudioUrl(audioPath: string) {
+  return call<{ url: string; expires_in_sec: number }>(audioPath);
+}
