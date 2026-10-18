@@ -1,6 +1,6 @@
 # Contract
 
-Source of truth for integration between backend, web and input layers. Change it only in the same commit as the code that changes. The web owner builds against fake data shaped exactly like this and must not wait for the backend.
+Source of truth for integration between backend, web and input layers. Change it only in the same commit as the code that changes.
 
 ## General
 
@@ -215,7 +215,7 @@ Permission: `read_care_plan` (all roles). Errors: `401`, `404 not_found`.
 }
 ```
 
-`care_plan` is the active plan (`null` if none). `location` has no storage yet and is always `null`. The doctor edits the plan (new plan version); the edit endpoint is Pending.
+`care_plan` is the active plan (`null` if none). `location` is free text stored on the patient (`patient.location`) and is `null` when not set. The doctor edits the plan (new plan version); the edit endpoint is Pending.
 
 ### `GET /patients/{patient_id}/reports`
 
@@ -307,7 +307,7 @@ Errors: `401`; `404 not_found`; `403 forbidden` (role is not caregiver); `409 no
 
 ### `POST /patients/{patient_id}/query`
 
-Permission: `read_reports`. Cited answer over the patient's reports from the last 14 days (at most 30, newest first). Model: Sonnet (`query.py`).
+Permission: `read_reports`. Cited answer over the patient's reports from the last 14 days (at most 30, newest first). Model: Groq `openai/gpt-oss-120b` by default (`QUERY_MODEL` overrides; `query.py`).
 
 ```json
 { "question": "Did she take the evening medication yesterday?" }
