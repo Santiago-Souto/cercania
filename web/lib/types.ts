@@ -95,19 +95,6 @@ export type Report = {
   confirmation_text?: string;
 };
 
-/** Response of POST /patients/{id}/reports (ProcessResult). */
-export type ProcessResult =
-  | {
-      status: "ok";
-      report: { id: string; version: number };
-      missing_items: ChecklistItem[];
-      alerts: Alert[];
-      red_flag: boolean;
-      triage: Triage | null;
-      confirmation_text: string;
-    }
-  | { status: "needs_retry" | "not_a_report" | "forbidden"; message: string };
-
 /** Web inbox row from GET /me/notifications. */
 export type AppNotification = {
   id: string;
@@ -168,3 +155,23 @@ export type Message = {
   created_at: string;
   read: boolean;
 };
+
+/** What `POST /patients/{id}/reports` returns (`ProcessResult` in docs/contract.md). */
+export type ProcessResult =
+  | {
+      status: "ok";
+      report: { id: string; version: number };
+      items: ReportItem[];
+      missing_items: ChecklistItem[];
+      alerts: Alert[];
+      red_flag: boolean;
+      triage: {
+        status: "ok" | "failed";
+        emergency: boolean;
+        reason: string | null;
+        quote: string | null;
+        quote_verified: boolean | null;
+      };
+      confirmation_text: string;
+    }
+  | { status: "needs_retry" | "not_a_report" | "forbidden"; message: string };

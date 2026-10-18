@@ -128,3 +128,66 @@ def test_repo_cases_file_parses():
     assert c001.expected_items == {"appetite", "pain"}
     assert c001.expected_alerts == {"omission:med_002"}
     assert all(c.split in ("dev", "unseen") for c in cases)
+
+
+C003 = ev.Case(
+    case_id="c003",
+    patient_id="pat_002",
+    transcript="jorge se fue al piso en el pasillo y no se puede levantar, le sangra la cabeza",
+    expected_items={"incidents", "mobility"},
+    expected_missing=set(),
+    expected_alerts={"emergency:"},
+    split="dev",
+)
+
+
+def emergency_alert():
+    return {"type": "emergency", "item": None, "plan_ref": None, "detail": "caída con sangrado"}
+
+
+def test_emergency_detected_when_expected():
+    s = ev.score_case(C003, {"status": "ok", "items": [], "missing_items": [], "alerts": [emergency_alert()]})
+    assert (s.emergencies_detected, s.emergencies_expected) == (1, 1)
+    assert s.emergency_false_alarms == 0
+    assert "emergency:" not in s.unexpected_alerts
+
+
+def test_missed_emergency_counts_against_recall():
+    s = ev.score_case(C003, {"status": "ok", "items": [], "missing_items": [], "alerts": []})
+    assert (s.emergencies_detected, s.emergencies_expected) == (0, 1)
+
+
+def test_emergency_on_a_calm_report_is_an_emergency_false_alarm():
+    s = ev.score_case(C001, {"status": "ok", "items": [], "missing_items": [],
+                             "alerts": [{"type": "omission", "plan_ref": "med_002"}, emergency_alert()]})
+    assert s.emergencies_expected == 0
+    assert s.emergency_false_alarms == 1
+    assert s.unexpected_alerts == ["emergency:"]
+    assert s.false_alarms == 1
+
+
+def test_failed_case_keeps_its_expected_emergency():
+    assert ev.failed_score(C003, 1.0, "boom").emergencies_expected == 1
+
+
+def test_summary_prints_emergency_lines():
+    hit = ev.score_case(C003, {"status": "ok", "items": [], "missing_items": [], "alerts": [emergency_alert()]})
+    false_alarm = ev.score_case(C001, {"status": "ok", "items": [], "missing_items": [], "alerts": [emergency_alert()]})
+    text = ev.format_summary("All", ev.summarize([hit, false_alarm]))
+    assert "Emergencies detected:                      1/1 (100%)" in text
+    assert "Emergency false alarms:                    1" in text
+
+
+def test_repo_emergency_case_parses_as_expected_emergency():
+    cases = {c.case_id: c for c in ev.load_cases(ROOT / "eval" / "cases.csv")}
+    assert "emergency:" in cases["c003"].expected_alerts
+
+
+def test_delay_waits_between_cases_not_after_the_last(monkeypatch):
+    waited = []
+    monkeypatch.setattr(ev.time, "sleep", waited.append)
+    monkeypatch.setattr(ev, "caregiver_for", lambda models, patient_id: "cg")
+    ok = {"status": "ok", "items": [], "missing_items": [], "alerts": []}
+    other = ev.Case("c002", "pat_001", "durmio bien", set(), set(), set(), "dev")
+    ev.run([C001, other, C003], lambda *args: ok, models=None, delay=30)
+    assert waited == [30, 30]

@@ -18,10 +18,11 @@ from zoneinfo import ZoneInfo
 
 from . import llm
 from .extract import normalize, verify_quote
+from .segments import quote_times
 
-# Sonnet: reasoning across several reports (AGENTS.md section 8).
-# QUERY_MODEL="<provider>:<model>" switches vendor; see llm.py.
-DEFAULT_MODEL = "anthropic:claude-sonnet-5-5"
+# Groq, same key and model as extraction (verified live: cited answers, "unclear" when
+# the reports do not say). QUERY_MODEL="<provider>:<model>" switches vendor; see llm.py.
+DEFAULT_MODEL = "groq:openai/gpt-oss-120b"
 MAX_TOKENS = 2000
 TIMEOUT_SEC = 25.0
 MAX_REPORTS = 30
@@ -115,18 +116,6 @@ def _user_message(question: str, reports: list[dict], now: str) -> str:
 # --- Verification (code, no model) --------------------------------------------------
 
 
-def _segment_times(quote: str, segments: list[dict]) -> tuple[float | None, float | None]:
-    """Timing of the single segment that contains the quote; None if it spans several."""
-    q = normalize(quote)
-    if not q:
-        return None, None
-    for seg in segments or []:
-        text = normalize(str(seg.get("text") or ""))
-        if f" {q} " in f" {text} ":
-            return seg.get("start"), seg.get("end")
-    return None, None
-
-
 def verify_citations(raw_citations: list[dict], reports: list[dict]) -> list[dict]:
     by_id = {r["id"]: r for r in reports}
     out: list[dict] = []
@@ -140,7 +129,7 @@ def verify_citations(raw_citations: list[dict], reports: list[dict]) -> list[dic
         if key in seen:
             continue
         seen.add(key)
-        start, end = _segment_times(quote, report.get("segments") or [])
+        start, end = quote_times(quote, report.get("segments"))
         out.append({"report_id": report["id"], "quote": quote.strip(),
                     "audio_start_sec": start, "audio_end_sec": end})
     return out

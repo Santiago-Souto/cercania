@@ -15,7 +15,9 @@ validate the returned object: a vendor may not enforce the schema strictly.
 from __future__ import annotations
 
 import json
+import math
 import os
+import re
 import time
 
 import httpx
@@ -26,6 +28,13 @@ PROVIDERS = tuple(API_KEY_ENV)
 OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1"
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 RETRY_DELAY_SEC = 0.5  # one retry on transient errors, like the Anthropic SDK with max_retries=1
+# On a 429 the provider says how long to wait (Groq's free tier: ~2 extractions per minute).
+# Waiting up to this long beats failing; asked to wait longer, give up at once instead.
+MAX_RATE_LIMIT_WAIT_SEC = 15.0
+_TRY_AGAIN = re.compile(r"try again in (?:(\d+)m)?(\d+(?:\.\d+)?)(ms|s)\b")
+# Groq checks strict-schema output after generating it and answers 400 with this code
+# when the model left out a required field. Sampling again usually fixes it.
+SCHEMA_REJECTED_CODES = {"json_validate_failed"}
 
 
 class LLMError(Exception):
@@ -144,15 +153,25 @@ def _openai(system, user, schema, name, max_tokens, timeout, client, base_url, a
                 if attempt:
                     raise LLMError("unavailable", str(e)) from e
             else:
-                transient = response.status_code == 429 or response.status_code >= 500
+                transient = (response.status_code == 429 or response.status_code >= 500
+                             or _schema_rejected(response))
                 if attempt or not transient:
                     break
+                if response.status_code == 429:
+                    wait = _rate_limit_wait(response)
+                    if wait is None:
+                        break  # asked to wait too long: fail now with the 429
+                    time.sleep(wait)
+                    continue
             time.sleep(RETRY_DELAY_SEC)
     finally:
         if own_client:
             client.close()
 
     status = response.status_code
+    if _schema_rejected(response):
+        # Our request was fine; the model's output was not. Retryable for the caller.
+        raise LLMError("bad_output", f"schema rejected by the provider: {_error_message(response)[:300]}")
     if status in (401, 403):
         raise LLMError("auth", response.text[:200])
     if status in (400, 404, 422):
@@ -171,3 +190,45 @@ def _openai(system, user, schema, name, max_tokens, timeout, client, base_url, a
         raise LLMError("refused")
     content = message.get("content")
     return content if isinstance(content, str) else None
+
+
+def _error_body(response) -> dict:
+    try:
+        error = response.json().get("error")
+    except (ValueError, AttributeError):
+        return {}
+    return error if isinstance(error, dict) else {}
+
+
+def _schema_rejected(response) -> bool:
+    return response.status_code == 400 and _error_body(response).get("code") in SCHEMA_REJECTED_CODES
+
+
+def _error_message(response) -> str:
+    return str(_error_body(response).get("message") or response.text)
+
+
+def _rate_limit_wait(response) -> float | None:
+    """Seconds to wait before retrying a 429, or None if that is over the cap.
+
+    Uses the Retry-After header (Groq sends whole seconds), else the
+    "try again in 8.385s" / "1m2.5s" / "450ms" hint in the error message, else
+    the default short delay.
+    """
+    seconds = None
+    header = response.headers.get("retry-after")
+    if header:
+        try:
+            seconds = float(header)
+        except ValueError:
+            seconds = None
+    if seconds is None:
+        match = _TRY_AGAIN.search(_error_message(response))
+        if match:
+            minutes, value, unit = match.groups()
+            seconds = float(value) / (1000 if unit == "ms" else 1) + 60 * int(minutes or 0)
+    if seconds is None:
+        return RETRY_DELAY_SEC
+    if seconds > MAX_RATE_LIMIT_WAIT_SEC:
+        return None
+    return max(RETRY_DELAY_SEC, math.ceil(seconds * 10) / 10)

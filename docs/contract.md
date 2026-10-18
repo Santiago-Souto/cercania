@@ -18,14 +18,15 @@ Edit this list only after validating with a caregiver contact. Update `AGENTS.md
 ## Core function
 
 ```
-process_report(patient_id, sender_id, transcript, audio_ref, message_id) -> ProcessResult
+process_report(patient_id, sender_id, transcript, audio_ref, message_id, segments=[]) -> ProcessResult
 ```
 
 Implemented in `backend/app/process.py` (the entry point is reached through `app/ingest.py`). `sender_id` is a caregiver for shift reports; any registered role can trigger an emergency report (`report.kind = "emergency"`, no checklist items).
 
 - Idempotent on `message_id`: a repeated delivery returns the stored result and creates nothing.
 - Never raises to the caller for model errors. Caregiver reports that cannot be extracted return `status: "needs_retry"`.
-- `audio_ref` is accepted but not stored yet; channels pass `null`.
+- `audio_ref` is unused; channels pass `null`. The original voice note is stored by the channel after `process_report` returns (`ingest.store_audio`) and served through `GET /reports/{report_id}/audio`.
+- `segments` are the transcript segments from transcription (see Transcript segments); `[]` for typed reports. They are stored on the report.
 
 ### ProcessResult statuses
 
@@ -107,7 +108,7 @@ Rules:
 - `triage.quote` is verified like any other quote, but `quote_verified: false` **never** turns an emergency off; it is only shown as unverified.
 - `triage.status` is `ok` or `failed` (model error/timeout). On `failed`, `red_flag` is `false`, the report is still stored and the reply still includes the fixed emergency line.
 - On an emergency, `confirmation_text` is the fixed emergency message and asks no checklist questions.
-- `audio_start_sec` / `audio_end_sec` on items are `null` until transcript segment times are wired (see Pending in README).
+- `audio_start_sec` / `audio_end_sec` on items come from the report's transcript segments by the rule in Transcript segments, only for verified quotes; `null` when there are none, the quote is unverified or it is not in them.
 
 ## Alert types
 
@@ -172,8 +173,26 @@ Used by `GET /patients/{id}/reports`, `GET /reports/{id}` and the corrections re
 - `channel` is `whatsapp`, `web`, or `seed` (fixtures).
 - `sender.role` is the sender's role for this patient. `caregiver` is a compatibility alias of `sender` for the web (`web/lib/types.ts`). Both are additive.
 - `red_flag_quote` is the same value as `triage.quote`.
-- `audio_url` and `audio_duration_sec`: **SIMULATED**. Audio is not stored yet, so both are `null` for new reports. A stored audio file returns `/media/{report_id}` as a placeholder path; no `/media` route exists yet.
+- `audio_url`: `/reports/{id}/audio` when the original voice note is stored, else `null` (typed reports, storage not configured, or a failed upload). It is an API path, not the file: call it (with the usual identity) to get a short-lived signed URL, then play that. `audio_duration_sec` is the voice note's length in seconds from transcription, or `null` (when a retry with the same `client_id` re-attaches the audio of a report whose first upload failed, it is the end of the report's last transcript segment). A retry never attaches audio to a typed report.
 - `triage` is `null` for seed fixtures, which never went through triage.
+
+## Transcript segments
+
+Timestamped pieces of the transcript, used to play the audio fragment behind a quote. Stored on `report.segments` (`backend/app/models.py`); not returned by the API. The web only sees the resulting `audio_start_sec` / `audio_end_sec` on items and citations.
+
+```json
+[
+  { "start": 0.0, "end": 3.5, "text": "Anoche le di la medicación de las ocho." },
+  { "start": 3.5, "end": 6.0, "text": "Comió poco en la cena." },
+  { "start": 6.0, "end": 8.0, "text": "Durmió bien." }
+]
+```
+
+- `start` / `end`: seconds (float) from the start of the audio file, as the transcription provider returns them (Groq Whisper `verbose_json`). `text` is the segment text, trimmed. Segments are in audio order.
+- Typed reports (WhatsApp text or web text) have `[]`.
+- **Quote -> audio times** (code only, `backend/app/segments.py`, same for items and citations): the shortest run of consecutive segments whose joined text contains the quote, with the same normalization as quote verification (case, accents, punctuation, whitespace; whole words). `audio_start_sec` is the first segment's `start`, `audio_end_sec` the last segment's `end`. If two runs are equally short, the first one wins. No match or no segments: both `null`.
+- Example: with the segments above, `"comió poco en la cena"` -> `3.5`-`6.0`; `"las ocho. Comió poco"` -> `0.0`-`6.0`.
+- The model never sees or returns times.
 
 ## Endpoints
 
@@ -222,6 +241,19 @@ Permission: `read_reports`. Query: `since` (ISO datetime; returns alerts created
 ### `GET /reports/{report_id}`
 
 Permission: `read_reports` on the report's patient. Returns the **latest version** in the Report shape. Errors: `401`, `404 not_found` (unknown report, or no access), `403 forbidden`.
+
+### `GET /reports/{report_id}/audio`
+
+Permission: `read_reports` on the report's patient. Returns a signed URL for the original voice note in the private bucket. Anyone holding the URL can play it until it expires, so the web asks for a fresh one each time it plays and never stores it.
+
+```json
+{ "url": "https://<project>.supabase.co/storage/v1/object/sign/media/reports/pat_001/rep_123.webm?token=…", "expires_in_sec": 300 }
+```
+
+- Voice notes are stored after the report (web: after the response; WhatsApp: after the reply), so `audio_url` can stay `null` for a moment after `POST /patients/{id}/reports` returns.
+- Play a citation: fetch `url`, set it as the player's source, seek to `audio_start_sec`, stop at `audio_end_sec`.
+
+Errors: `401`; `404 not_found` (unknown report, no access, or the report has no stored audio); `403 forbidden` (patient role); `502 audio_unavailable` (storage did not answer or is not configured; the message is safe to show and asks to retry).
 
 ### `GET /reports/{report_id}/versions`
 
@@ -296,7 +328,7 @@ Permission: `read_reports`. Cited answer over the patient's reports from the las
 
 - `confidence` is `answered` or `unclear`. If the records do not contain the answer, return `unclear` and say so; never guess.
 - Every citation is checked in code: `report_id` must be one of the reports sent to the model and the quote must verify against that report's transcript. Unverified citations are dropped. An `answered` reply with no surviving citation becomes `unclear` with a note.
-- `audio_start_sec` / `audio_end_sec` come from stored transcript segments; `null` when there are none or the quote spans several segments.
+- `audio_start_sec` / `audio_end_sec` come from the report's transcript segments by the rule in Transcript segments; `null` when there are none or the quote is not in them.
 - With no reports in the window, the answer is `unclear` with `citations: []` and no model call.
 
 Errors: `401`; `404`; `403` (role without `read_reports`, i.e. patient); `422 invalid_request` (empty or too long question); `502 query_failed` (model unavailable, timed out, refused, or returned an unusable answer; the message is safe to show and asks to retry).
@@ -400,9 +432,11 @@ The signature check runs before the ack and before anything is processed; the se
 
 `caregiver`, `family`, `patient`, `doctor`, `nurse`, `institution`. `doctor`, `nurse` and `institution` share the "health team" permissions in `AGENTS.md` section 6. A role belongs to a membership (user + patient), not to the user. Only `doctor` edits the care plan after creation (each edit is a new plan version); `patient` never sees reports or alerts. Endpoints return `403` with error `code: "forbidden"` when the role lacks the permission (`ROLE_PERMISSIONS` in `backend/app/models.py`).
 
-## Auth (6-digit code by WhatsApp)
+## Auth (6-digit code by SMS)
 
-No passwords. The web app keeps the session in a cookie set by `POST /auth/verify` with `HttpOnly`, `Secure` and `SameSite=Lax`; every endpoint below except `/auth/*` and `/webhook/*` requires it and returns `401 { "error": { "code": "unauthenticated" } }` without it.
+No passwords. The code goes out **by SMS** (Twilio, `backend/app/sms.py`); the bot, invites and emergency notifications stay on WhatsApp. The phone number is the identity either way.
+
+The web app keeps the session in a cookie (`cercania_session`) set by `POST /auth/verify` with `HttpOnly`, `Secure` and `SameSite=None`. `SameSite=None` is required because the web and the API are on different sites (`onrender.com` is a public suffix), so a `Lax` cookie would never reach the API; CORS only allows `WEB_ORIGINS` and every body is JSON, so cross-site requests need a preflight. The web must call the API with `credentials: "include"`. Sessions last `SESSION_TTL_DAYS` (default 30) and are stored hashed server-side. Every endpoint below except `/auth/*` and `/webhook/*` requires the cookie and returns `401 { "error": { "code": "unauthenticated" } }` without it. (Local dev only: `ALLOW_DEV_IDENTITY_HEADER=1` also accepts an `X-Person-Id` header; simulated identity, never in a real deploy.)
 
 ### `POST /auth/signup`
 
@@ -410,21 +444,23 @@ No passwords. The web app keeps the session in a cookie set by `POST /auth/verif
 { "name": "Ana Pérez (fictional)", "email": "ana@example.com", "phone": "+59899000000" }
 ```
 
+`email` is optional. The person is created only when the code is verified.
+
 ### `POST /auth/login`
 
 ```json
 { "phone": "+59899000000" }
 ```
 
-Both send a 6-digit code to the WhatsApp number and reply:
+Both send a 6-digit code by SMS to the phone and reply (with `TWILIO_TRIAL_TEMPLATE` set, the code comes from Twilio's trial template and `expires_in_sec` is 300; see README "Simulated"):
 
 ```json
 { "status": "code_sent", "phone_last4": "0000", "expires_in_sec": 600, "resend_after_sec": 60 }
 ```
 
-Errors: `phone_invalid`, `too_many_requests`. Neither is about whether the phone has an account.
+Errors: `phone_invalid` (400; must be E.164, spaces and dashes are ignored), `too_many_requests` (429; one code per phone per `resend_after_sec`, at most 5 per hour), `sms_unreachable` (502, sign-up only: the SMS could not be sent; check the number and try again). None of them is about whether the phone has an account.
 
-Anti-enumeration: these two endpoints must not reveal whether a phone is registered. `POST /auth/login` returns the same `code_sent` body for an unknown phone and sends nothing. `POST /auth/signup` for a phone that already has an account sends a normal login code instead of creating a second user. If WhatsApp cannot deliver the code (e.g. the user has not messaged the bot yet), the response is still `code_sent`; the code screen always says "si no te llega, mandale \"hola\" al bot y pedí otro código". Email is contact info only: it is not verified, not unique, and never grants access, so there is no `email_taken`.
+Anti-enumeration: these two endpoints must not reveal whether a phone is registered. `POST /auth/login` returns the same `code_sent` body for an unknown phone and sends nothing (the rate limit counts it the same way); if the SMS to a registered phone fails, it is logged and the answer is still `code_sent`. `POST /auth/signup` for a phone that already has an account sends a normal login code instead of creating a second user (the stored name is kept); since sign-up always texts the phone, it can report `sms_unreachable` without leaking anything. The code screen says "si no te llega en un minuto, pedí otro código". Email is contact info only: it is not verified, not unique, and never grants access, so there is no `email_taken`.
 
 ### `POST /auth/verify`
 
@@ -433,14 +469,14 @@ Anti-enumeration: these two endpoints must not reveal whether a phone is registe
 ```
 
 ```json
-{ "user": { "id": "usr_001", "name": "Ana Pérez (fictional)" }, "memberships": [ { "patient_id": "pat_001", "role": "caregiver" } ] }
+{ "user": { "id": "usr_001", "name": "Ana Pérez (fictional)" }, "memberships": [ { "patient_id": "pat_001", "display_name": "Rosa (fictional)", "role": "caregiver" } ] }
 ```
 
-Codes are single-use, expire after `LOGIN_CODE_TTL_MINUTES` (default 10), are stored hashed, and lock after 5 wrong attempts. Errors: `code_invalid`, `code_expired`, `too_many_attempts`. Pending invites for the verified phone become memberships here. Invites are matched only on the phone proven by the code, never on email.
+Only the latest code sent to the phone is valid. Codes are single-use, expire after `LOGIN_CODE_TTL_MINUTES` (default 10), are stored as salted hashes, and lock after 5 wrong attempts. Errors: `code_invalid` (400), `code_expired` (400), `too_many_attempts` (429; ask for a new code). A code that is not 6 digits is `422 invalid_request`. Pending invites for the verified phone become memberships here. Invites are matched only on the phone proven by the code, never on email.
 
 ### `POST /auth/logout`
 
-Clears the session.
+Deletes the session server-side and clears the cookie. Returns `{ "status": "logged_out" }`.
 
 ## Patients and team
 
@@ -472,7 +508,7 @@ Clears the session.
 { "contact": "+59899111111", "role": "family" }
 ```
 
-`contact` is a WhatsApp number (E.164); emails are rejected with `phone_invalid` because email ownership is never verified. Sends a WhatsApp invite; the membership is created when that person verifies a code (`POST /auth/verify`). Only `caregiver` memberships can invite (`403 forbidden` otherwise), matching `AGENTS.md` section 6. Health-team and family members cannot invite.
+`contact` is a WhatsApp number (E.164); emails are rejected with `phone_invalid` because email ownership is never verified. Sends a WhatsApp invite; the membership is created when that person verifies an SMS code (`POST /auth/verify`). Only `caregiver` memberships can invite (`403 forbidden` otherwise), matching `AGENTS.md` section 6. Health-team and family members cannot invite.
 
 ## Reports from the web app
 

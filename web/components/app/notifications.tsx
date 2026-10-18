@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Route } from "next";
 import { toast } from "sonner";
 import { fetchNotifications, markNotificationRead, currentPersonId } from "@/lib/client-api";
-import { USE_FAKE } from "@/lib/api-mode";
+import { USE_FAKE } from "@/lib/api-shared";
 import type { AppNotification } from "@/lib/types";
 
 const POLL_MS = 5000;

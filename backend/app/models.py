@@ -243,15 +243,56 @@ class PatientAccess(TimestampMixin, Base):
     patient: Mapped[Patient] = relationship(back_populates="access")
 
 
-class MagicLink(TimestampMixin, Base):
-    """Single-use login link. Only the token hash is stored."""
+class LoginCode(TimestampMixin, Base):
+    """6-digit code sent by SMS (api/auth.py). Only a salted hash of the code is stored.
 
-    __tablename__ = "magic_link"
+    A sign-up code carries the name and email typed at sign-up: the person row is
+    created only when the code is verified, so nobody can claim a phone without it.
+    """
+
+    __tablename__ = "login_code"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    phone: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # E.164
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False)  # hmac-sha256 hex
+    salt: Mapped[str] = mapped_column(String(32), nullable=False)
+    signup_name: Mapped[str | None] = mapped_column(String(120))
+    signup_email: Mapped[str | None] = mapped_column(String(254))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AuthSession(TimestampMixin, Base):
+    """Web session behind the cookie. Only the token hash is stored."""
+
+    __tablename__ = "auth_session"
 
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)  # sha256 hex
     person_id: Mapped[str] = mapped_column(ForeignKey("person.id"), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class InviteStatus(str, enum.Enum):
+    pending = "pending"
+    accepted = "accepted"
+
+
+class Invite(TimestampMixin, Base):
+    """Pending membership for a phone number. Becomes a `patient_access` row when
+    that phone verifies a login code (matched on the phone only, never on email)."""
+
+    __tablename__ = "invite"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("inv"))
+    patient_id: Mapped[str] = mapped_column(ForeignKey("patient.id"), nullable=False)
+    phone: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # E.164
+    role: Mapped[Role] = mapped_column(enum_column(Role), nullable=False)
+    invited_by: Mapped[str | None] = mapped_column(ForeignKey("person.id"))
+    status: Mapped[InviteStatus] = mapped_column(
+        enum_column(InviteStatus), default=InviteStatus.pending, nullable=False
+    )
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 # --- Care plan -----------------------------------------------------------------

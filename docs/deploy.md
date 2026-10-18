@@ -21,8 +21,8 @@ Secrets live only in Render (service -> Environment). Never commit them. The ful
 
 | Service | Variables |
 |---|---|
-| API | `DATABASE_URL` (Supabase session pooler), `GROQ_API_KEY` (transcription and extraction), `ANTHROPIC_API_KEY` (triage), optional `EXTRACT_MODEL` / `TRIAGE_MODEL` / `LLM_BASE_URL` / `LLM_API_KEY` to switch LLM vendor, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `PUBLIC_BASE_URL` (= the API URL), `ALLOW_DEV_IDENTITY_HEADER` (simulated identity; `1` only with fictional data) |
-| Web | `NEXT_PUBLIC_API_URL` (= the API URL), `NEXT_PUBLIC_USE_FAKE_DATA` |
+| API | `DATABASE_URL` (Supabase session pooler), `GROQ_API_KEY` (transcription, extraction, triage and cited query), optional `ANTHROPIC_API_KEY`, `EXTRACT_MODEL` / `TRIAGE_MODEL` / `QUERY_MODEL` / `LLM_BASE_URL` / `LLM_API_KEY` to switch LLM vendor, `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` / `SUPABASE_BUCKET` (voice notes; private bucket `media`, service key backend only: legacy `service_role` JWT or new `sb_secret_` key), `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `PUBLIC_BASE_URL` (= the API URL), `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` (login code by SMS), `TWILIO_TRIAL_TEMPLATE=sms_2fa` while the Twilio account is a trial (simulated security, see README), `WEB_ORIGINS` (= the web URL; the session cookie needs it), `ALLOW_DEV_IDENTITY_HEADER` (simulated identity; `1` only with fictional data) |
+| Web | `NEXT_PUBLIC_API_URL` (= the API URL), `NEXT_PUBLIC_USE_FAKE_DATA`, `NEXT_PUBLIC_DEV_PERSON_ID` (simulated identity sent as `X-Person-Id`; only with `ALLOW_DEV_IDENTITY_HEADER=1` and fictional data) |
 
 ## Troubleshooting
 

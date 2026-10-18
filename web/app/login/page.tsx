@@ -17,7 +17,7 @@ export default async function LoginPage(props: PageProps<"/login">) {
         <Brand />
         <section className="flex flex-col gap-2">
           <h1 className="text-[30px] leading-tight font-bold">{isLogin ? "Entrar" : "Crear cuenta"}</h1>
-          <p className="text-ink-2">Te mandamos un código de 6 dígitos por WhatsApp para entrar. Sin contraseñas.</p>
+          <p className="text-ink-2">Te mandamos un código de 6 dígitos por SMS para entrar. Sin contraseñas.</p>
         </section>
 
         <Tabs value={isLogin ? "login" : "signup"}>
@@ -46,18 +46,18 @@ export default async function LoginPage(props: PageProps<"/login">) {
               </Field>
             )}
             <Field>
-              <FieldLabel htmlFor="phone">WhatsApp</FieldLabel>
+              <FieldLabel htmlFor="phone">Celular</FieldLabel>
               <Input id="phone" type="tel" autoComplete="tel" placeholder="+598 9X XXX XXX" className="h-12 bg-card text-base" />
-              <FieldDescription>Ahí te llega el código y ahí mandás los reportes.</FieldDescription>
+              <FieldDescription>Ahí te llega el código por SMS. Con este mismo número mandás los reportes por WhatsApp.</FieldDescription>
             </Field>
           </FieldGroup>
         </form>
 
         <div className="mt-auto flex flex-col gap-3">
           <Button asChild size="xl">
-            <Link href="/login/code">Enviar código por WhatsApp</Link>
+            <Link href="/login/code">Enviar código por SMS</Link>
           </Button>
-          <p className="text-center text-[13px] text-muted-foreground">Al continuar aceptás recibir mensajes de CercanIA por WhatsApp.</p>
+          <p className="text-center text-[13px] text-muted-foreground">Al continuar aceptás recibir el código por SMS y mensajes de CercanIA por WhatsApp.</p>
         </div>
       </main>
     </AppShell>

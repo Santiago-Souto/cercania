@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 import httpx
 
@@ -66,6 +66,10 @@ class Transcript:
     language: str | None = None
     duration: float | None = None
     segments: list[Segment] = field(default_factory=list)
+
+    def segment_dicts(self) -> list[dict]:
+        """Segments in the stored format, {start, end, text} (docs/contract.md)."""
+        return [asdict(s) for s in self.segments]
 
 
 def build_prompt(vocabulary: list[str] | None) -> str:

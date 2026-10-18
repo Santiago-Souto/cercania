@@ -5,8 +5,8 @@
 
 import { cookies } from "next/headers";
 import { connection } from "next/server";
+import { API_URL, ApiError, errorFrom, identityHeaders, USE_FAKE } from "./api-shared";
 import * as fake from "./fake";
-import { USE_FAKE } from "./api-mode";
 import { DEFAULT_PERSONA_ID, PERSONA_COOKIE } from "./persona";
 import type {
   Invite,
@@ -19,18 +19,7 @@ import type {
   Report,
 } from "./types";
 
-export { USE_FAKE };
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
-
-export class ApiError extends Error {
-  constructor(
-    public code: string,
-    message: string,
-    public status: number,
-  ) {
-    super(message);
-  }
-}
+export { ApiError, USE_FAKE };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const personId = (await cookies()).get(PERSONA_COOKIE)?.value ?? DEFAULT_PERSONA_ID;
@@ -38,17 +27,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     credentials: "include",
     cache: "no-store",
-    // SIMULATED auth: X-Person-Id until real sessions land (see lib/persona.ts).
-    headers: { "Content-Type": "application/json", "X-Person-Id": personId, ...init?.headers },
+    // SIMULATED persona (cookie) wins over NEXT_PUBLIC_DEV_PERSON_ID: see lib/persona.ts.
+    headers: { "Content-Type": "application/json", ...identityHeaders(), "X-Person-Id": personId, ...init?.headers },
   });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new ApiError(
-      body?.error?.code ?? "unknown",
-      body?.error?.message ?? "No pudimos conectar con el servidor. Probá de nuevo.",
-      res.status,
-    );
-  }
+  if (!res.ok) throw await errorFrom(res);
   return res.json() as Promise<T>;
 }
 

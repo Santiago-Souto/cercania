@@ -6,7 +6,7 @@ from sqlalchemy.pool import StaticPool
 
 from app import ingest, whatsapp
 from app.models import Base, CarePlan, Medication, Patient, PatientAccess, Person, Role
-from app.transcribe import Transcript, TranscriptionError
+from app.transcribe import Segment, Transcript, TranscriptionError
 from app.whatsapp import IncomingMessage
 
 ANA = "15550100001"     # caregiver of one patient
@@ -64,6 +64,13 @@ def brain(monkeypatch):
     return calls
 
 
+@pytest.fixture(autouse=True)
+def stored_audio(monkeypatch):
+    calls = []
+    monkeypatch.setattr(ingest, "store_audio", lambda result, audio: calls.append((result, audio)))
+    return calls
+
+
 @pytest.fixture
 def media(monkeypatch):
     transcribed = []
@@ -71,7 +78,8 @@ def media(monkeypatch):
 
     def fake_transcribe(audio, mime_type, vocabulary):
         transcribed.append({"mime_type": mime_type, "vocabulary": vocabulary})
-        return Transcript(text="comió poco en la cena")
+        return Transcript(text="comió poco en la cena", duration=1.8,
+                          segments=[Segment(0.0, 1.8, "comió poco en la cena")])
 
     monkeypatch.setattr(whatsapp, "transcribe", fake_transcribe)
     return transcribed
@@ -85,14 +93,22 @@ def text(sender, body, message_id="wamid.t1"):
     return IncomingMessage(id=message_id, sender=sender, type="text", text=body)
 
 
-def test_voice_note_from_caregiver_with_one_patient_is_processed_and_confirmed(sent, brain, media):
+def test_voice_note_from_caregiver_with_one_patient_is_processed_and_confirmed(sent, brain, media, stored_audio):
     whatsapp.handle_message(voice(ANA))
     assert media == [{"mime_type": "audio/ogg", "vocabulary": ["andador", "Enalapril"]}]
     assert brain == [{
         "patient_id": "pat_rosa", "sender_id": "ana", "transcript": "comió poco en la cena",
         "audio_ref": None, "message_id": "wamid.v1",
+        "segments": [{"start": 0.0, "end": 1.8, "text": "comió poco en la cena"}],
     }]
     assert sent == [(ANA, "Registré: comió poco. ¿Cómo durmió?")]
+    assert [audio for _, audio in stored_audio] == [ingest.Audio(b"OggS", "audio/ogg", 1.8)]
+
+
+def test_typed_report_stores_no_audio(sent, brain, media, stored_audio):
+    whatsapp.handle_message(text(ANA, "Rosa comió poco en la cena y durmió bien"))
+    assert len(brain) == 1 and media == []
+    assert [audio for _, audio in stored_audio] == [None]
 
 
 def test_unknown_number_gets_a_clear_message(sent, brain, media):

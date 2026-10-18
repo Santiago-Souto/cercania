@@ -82,7 +82,13 @@ async def create_report(
     if existing is not None and existing.patient_id != patient_id:
         return error_response(409, "client_id_conflict", "Ese identificador ya se usó para otro paciente. Generá uno nuevo.")
     transcript = existing.transcript if existing is not None else None
-    if transcript is None and audio is not None:
+    segments: list[dict] = []
+    voice_note: ingest.Audio | None = None
+    # A retry of a stored report never transcribes again. It only attaches a voice note to a report
+    # that came from audio (it has segments) and whose first upload failed: a typed report must never
+    # gain a recording its transcript and quotes were not verified against.
+    retry_needs_audio = existing is not None and existing.audio is None and bool(existing.segments)
+    if audio is not None and (existing is None or retry_needs_audio):
         mime = (audio.content_type or "").split(";")[0].strip()
         if mime not in AUDIO_TYPES:
             return error_response(415, "unsupported_audio", "Formato de audio no soportado. Usá webm, ogg o m4a.")
@@ -91,20 +97,26 @@ async def create_report(
             return error_response(400, "audio_empty", "El audio llegó vacío. Grabalo de nuevo.")
         if len(data) > MAX_AUDIO_BYTES:
             return error_response(413, "audio_too_large", "El audio es demasiado largo. Grabá un reporte más corto.")
-        try:
-            # Blocking network call: run it off the event loop so other requests keep flowing.
-            result = await run_in_threadpool(
-                transcribe,
-                data,
-                filename=AUDIO_TYPES[mime],
-                mime_type=mime,
-                vocabulary=ingest.vocabulary_for(db, patient_id),
-            )
-        except TranscriptionError as exc:
-            log.error("Web report %s: transcription failed: %s", message_id, exc)
-            return error_response(502, "transcription_failed", exc.user_message)
-        transcript = result.text
-    elif transcript is None:
+        if transcript is None:
+            try:
+                # Blocking network call: run it off the event loop so other requests keep flowing.
+                result = await run_in_threadpool(
+                    transcribe,
+                    data,
+                    filename=AUDIO_TYPES[mime],
+                    mime_type=mime,
+                    vocabulary=ingest.vocabulary_for(db, patient_id),
+                )
+            except TranscriptionError as exc:
+                log.error("Web report %s: transcription failed: %s", message_id, exc)
+                return error_response(502, "transcription_failed", exc.user_message)
+            transcript = result.text
+            segments = result.segment_dicts()
+            duration = result.duration
+        else:
+            duration = existing.segments[-1].get("end")  # end of the transcription's last segment
+        voice_note = ingest.Audio(data, mime, duration)
+    if transcript is None:
         transcript = text.strip()
 
     try:
@@ -115,6 +127,7 @@ async def create_report(
             transcript=transcript,
             audio_ref=None,
             message_id=message_id,
+            segments=segments,
         )
     except ingest.ProcessingUnavailable:
         log.error("Web report %s: process_report is not available yet", message_id)
@@ -127,4 +140,7 @@ async def create_report(
     if isinstance(result, dict) and result.get("red_flag") and report_id:
         # Runs after the response is sent; dispatch is idempotent, so repeats are harmless.
         background.add_task(notify.dispatch_emergency, report_id)
+    if voice_note is not None:
+        # After the response: the caregiver never waits for storage, and a failure never loses the report.
+        background.add_task(ingest.store_audio, result, voice_note)
     return result

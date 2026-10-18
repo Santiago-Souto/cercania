@@ -21,8 +21,8 @@ services:
       # Groq: transcription and, by default, checklist extraction.
       - key: GROQ_API_KEY
         sync: false
-      # LLM vendor (backend/app/llm.py). Extraction defaults to Groq, triage to
-      # Anthropic; set *_MODEL to <provider>:<model> to switch (see .env.example).
+      # LLM vendor (backend/app/llm.py). Extraction, triage and the cited query all
+      # default to Groq (GROQ_API_KEY); set *_MODEL to <provider>:<model> to switch.
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: LLM_BASE_URL
@@ -33,6 +33,15 @@ services:
         sync: false
       - key: TRIAGE_MODEL
         sync: false
+      - key: QUERY_MODEL
+        sync: false
+      # Supabase Storage for voice notes (private bucket, signed URLs). Service key: backend only.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_BUCKET
+        value: media
       - key: WHATSAPP_TOKEN
         sync: false
       - key: WHATSAPP_PHONE_NUMBER_ID
@@ -70,3 +79,7 @@ services:
       # Stays on until the read endpoints land (CIA-14); then set to 0 and redeploy.
       - key: NEXT_PUBLIC_USE_FAKE_DATA
         value: "1"
+      # SIMULATED identity sent as X-Person-Id (e.g. cg_001) until login lands; needs
+      # ALLOW_DEV_IDENTITY_HEADER=1 on the API. Fictional data only.
+      - key: NEXT_PUBLIC_DEV_PERSON_ID
+        sync: false
