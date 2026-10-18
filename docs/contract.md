@@ -440,13 +440,7 @@ No passwords. The code goes out **by SMS** (Twilio, `backend/app/sms.py`); invit
 
 The web app keeps the session in a cookie (`cercania_session`) set by `POST /auth/verify` (`HttpOnly`; `Secure` and `SameSite` from `SESSION_COOKIE_SECURE` / `SESSION_COOKIE_SAMESITE`). The web and the API are on different sites (`onrender.com` is a public suffix), and browsers block cross-site cookies, so **the browser never calls the API host directly**: it calls `/api/*` on the web origin, which Next.js rewrites to the API (`web/next.config.ts`). The cookie is therefore first-party on the web origin, and the deploy uses `SameSite=Lax`. Server components read the cookie and forward it to the API as a `Cookie` header (`web/lib/api.ts`). The web sends people with no cookie, or whose call returns `401`, to `/login`. The cookie is persistent (`Max-Age` = `SESSION_TTL_DAYS`), so the same device stays logged in: `/` and `/login` check `GET /me` and send a logged-in person straight to their home; a cookie the API no longer accepts shows the login form. Sessions last `SESSION_TTL_DAYS` (default 30) and are stored hashed server-side. Every endpoint below except `/auth/*` requires the cookie and returns `401 { "error": { "code": "unauthenticated" } }` without it. (Local dev only: `ALLOW_DEV_IDENTITY_HEADER=1` also accepts an `X-Person-Id` header; simulated identity, never in a real deploy.)
 
-### `POST /auth/signup`
-
-```json
-{ "name": "Ana Pérez (fictional)", "email": "ana@example.com", "phone": "+59899000000" }
-```
-
-`email` is optional. The person is created only when the code is verified.
+One flow for sign-up and login: the web asks only for the phone (`POST /auth/login`), then the code; a phone with no account answers `profile_required` at `POST /auth/verify` and the web asks for name, last name and optional email on that step.
 
 ### `POST /auth/login`
 
@@ -454,15 +448,23 @@ The web app keeps the session in a cookie (`cercania_session`) set by `POST /aut
 { "phone": "+59899000000" }
 ```
 
+### `POST /auth/signup`
+
+```json
+{ "name": "Ana Pérez (fictional)", "email": "ana@example.com", "phone": "+59899000000" }
+```
+
+Same as login, with the name up front: for a new phone, verify then creates the person directly (no `profile_required`). `email` is optional. The person is created only when the code is verified. The web does not use it any more.
+
 Both send a 6-digit code by SMS to the phone and reply (with `TWILIO_TRIAL_TEMPLATE` set, the code comes from Twilio's trial template and `expires_in_sec` is 300; see README "Simulated"):
 
 ```json
 { "status": "code_sent", "phone_last4": "0000", "expires_in_sec": 600, "resend_after_sec": 60 }
 ```
 
-Errors: `phone_invalid` (400; must be E.164, spaces and dashes are ignored), `too_many_requests` (429; one code per phone per `resend_after_sec`, at most 5 per hour), `sms_unreachable` (502, sign-up only: the SMS could not be sent; check the number and try again). None of them is about whether the phone has an account.
+Errors: `phone_invalid` (400; must be E.164, spaces and dashes are ignored), `too_many_requests` (429; one code per phone per `resend_after_sec`, at most 5 per hour), `sms_unreachable` (502: the SMS could not be sent; check the number and try again). None of them is about whether the phone has an account.
 
-Anti-enumeration: these two endpoints must not reveal whether a phone is registered. `POST /auth/login` returns the same `code_sent` body for an unknown phone and sends nothing (the rate limit counts it the same way); if the SMS to a registered phone fails, it is logged and the answer is still `code_sent`. `POST /auth/signup` for a phone that already has an account sends a normal login code instead of creating a second user (the stored name is kept); since sign-up always texts the phone, it can report `sms_unreachable` without leaking anything. The code screen says "si no te llega en un minuto, pedí otro código". Email is contact info only: it is not verified, not unique, and never grants access, so there is no `email_taken`.
+Anti-enumeration: before the code is verified, nothing reveals whether a phone is registered. Both endpoints text **every** phone, registered or not, with the same `code_sent` body, so `sms_unreachable` leaks nothing either. `POST /auth/signup` for a phone that already has an account sends a normal login code instead of creating a second user (the stored name is kept). Only the person holding the code learns that the phone is new (`profile_required` below). The code screen says "si no te llega en un minuto, pedí otro código". Email is contact info only: it is not verified, not unique, and never grants access, so there is no `email_taken`.
 
 ### `POST /auth/verify`
 
@@ -471,10 +473,18 @@ Anti-enumeration: these two endpoints must not reveal whether a phone is registe
 ```
 
 ```json
-{ "user": { "id": "usr_001", "name": "Ana Pérez (fictional)" }, "is_admin": false, "memberships": [ { "patient_id": "pat_001", "display_name": "Rosa (fictional)", "role": "caregiver" } ] }
+{ "status": "signed_in", "user": { "id": "usr_001", "name": "Ana Pérez (fictional)" }, "is_admin": false, "memberships": [ { "patient_id": "pat_001", "display_name": "Rosa (fictional)", "role": "caregiver" } ] }
 ```
 
-Only the latest code sent to the phone is valid. Codes are single-use, expire after `LOGIN_CODE_TTL_MINUTES` (default 10), are stored as salted hashes, and lock after 5 wrong attempts. Errors: `code_invalid` (400), `code_expired` (400), `too_many_attempts` (429; ask for a new code). A code that is not 6 digits is `422 invalid_request`. Invites are matched only on the phone proven by the code, never on email, and stay pending until accepted in the app (`POST /me/invites/{invite_id}/accept`).
+**New phone.** If the code is right but the phone has no account (and no name came from `/auth/signup`), the answer is `200 { "status": "profile_required" }`: no cookie, nothing created, and the code is **not** used up (same expiry and attempt count). The web then sends the same code again with the profile, which creates the person and signs in (`signed_in` as above):
+
+```json
+{ "phone": "+59899000000", "code": "470123", "name": "Ana Pérez (fictional)", "email": "ana@example.com" }
+```
+
+`name` is 1-120 characters (the web joins first and last name), `email` optional. Both are ignored for a phone that already has an account.
+
+Only the latest code sent to the phone is valid. Codes are single-use, expire after `LOGIN_CODE_TTL_MINUTES` (default 10), are stored as salted hashes, and lock after 5 wrong attempts. Errors: `code_invalid` (400), `code_expired` (400), `too_many_attempts` (429; ask for a new code). A code that is not 6 digits, or a blank `name`, is `422 invalid_request`. Invites are matched only on the phone proven by the code, never on email, and stay pending until accepted in the app (`POST /me/invites/{invite_id}/accept`).
 
 **Starting role of a new person** (the sign-up that creates the person; logging in again changes nothing), decided in code (`backend/app/roles.py`):
 1. The phone has an **admin pre-registration**: that role is applied and the pre-registration is consumed. With a patient, that membership; `admin`, `is_admin = true`; a caregiver without a patient, no memberships but `can_add_patients = true`; `patient`, their own new patient profile.
