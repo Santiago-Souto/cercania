@@ -13,7 +13,7 @@ Both services deploy from `main` through the Render Blueprint in `render.yaml`. 
 
 - **The web reads the real API** with a real login (6-digit SMS code, CIA-32 / CIA-14). There is no fake data anymore. The browser calls `/api/*` on the web, which Next.js rewrites to `NEXT_PUBLIC_API_URL`, so the session cookie is first-party on the web origin. `NEXT_PUBLIC_*` values and the rewrite are fixed at build time: change them, then redeploy the web.
 - Keep `ALLOW_DEV_IDENTITY_HEADER` unset on the API (the web never sends `X-Person-Id`).
-- **Free plan: both services sleep** after ~15 minutes idle, and the first request then takes about a minute. Open both URLs a minute before a demo.
+- **Free plan: both services sleep** after ~15 minutes idle, and the first request then takes about a minute. The GitHub Action `.github/workflows/keep-awake.yml` pings `https://cercania-web.onrender.com/api/health` every 5 minutes; that one request reaches both services (the web's `/api/*` rewrite forwards it to the API). GitHub can start scheduled runs late or skip them under load, so still open both URLs a minute before a demo. Keeping both services awake uses about 48 of the workspace's 750 free instance hours a month per day; when they run out Render suspends the services until next month. Disable the workflow in the Actions tab when not needed.
 
 ## Environment variables
 
