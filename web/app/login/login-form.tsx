@@ -1,35 +1,35 @@
 "use client";
-// Sign-up / login form: POST /auth/signup or /auth/login, then the code screen (CIA-32).
+// Phone form, the same for sign-up and login: POST /auth/login, then the code screen. A new phone gives
+// its name after the code (code/page.tsx).
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { isPossiblePhoneNumber } from "react-phone-number-input";
 import { AlertCircleIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Spinner } from "@/components/ui/spinner";
 import { authErrorMessage, requestCode, safeNext, savePending } from "@/lib/auth";
 
-export function LoginForm({ mode, next }: { mode: "signup" | "login"; next?: string }) {
+export function LoginForm({ next }: { next?: string }) {
   const router = useRouter();
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const isLogin = mode === "login";
+  const [phone, setPhone] = useState<string | undefined>();
+  const [country, setCountry] = useState<string | undefined>("UY");
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    const phone = String(form.get("phone") ?? "").trim();
-    const name = String(form.get("name") ?? "").trim();
-    const email = String(form.get("email") ?? "").trim();
-    if (!isLogin && !name) return setError("Escribí tu nombre.");
-    if (!phone) return setError("Escribí tu celular con el código de país, por ejemplo +598 99 123 456.");
+    if (sending) return; // Enter in the field while a code is on its way must not send a second SMS
+    if (!phone) return setError("Escribí tu celular.");
+    if (!isPossiblePhoneNumber(phone)) return setError("Revisá el número: le faltan o le sobran números para ese país.");
 
     setSending(true);
     setError(null);
     try {
-      const sent = await requestCode({ mode, phone, name, email });
-      savePending({ mode, phone, name, email, next: safeNext(next), sent, sentAt: Date.now() });
+      const sent = await requestCode(phone);
+      savePending({ phone, next: safeNext(next), sent, sentAt: Date.now() });
       router.push("/login/code");
     } catch (err) {
       setError(authErrorMessage(err));
@@ -40,21 +40,20 @@ export function LoginForm({ mode, next }: { mode: "signup" | "login"; next?: str
   return (
     <form onSubmit={onSubmit} className="flex flex-1 flex-col gap-7" noValidate>
       <FieldGroup>
-        {!isLogin && (
-          <Field>
-            <FieldLabel htmlFor="name">Nombre</FieldLabel>
-            <Input id="name" name="name" autoComplete="name" placeholder="Ana Pérez" required className="h-12 bg-card text-base" />
-          </Field>
-        )}
-        {!isLogin && (
-          <Field>
-            <FieldLabel htmlFor="email">Email</FieldLabel>
-            <Input id="email" name="email" type="email" autoComplete="email" placeholder="ana@ejemplo.com" className="h-12 bg-card text-base" />
-          </Field>
-        )}
         <Field>
           <FieldLabel htmlFor="phone">Celular</FieldLabel>
-          <Input id="phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" placeholder="+598 9X XXX XXX" required className="h-12 bg-card text-base" />
+          <PhoneInput
+            id="phone"
+            value={phone}
+            onChange={setPhone}
+            onCountryChange={setCountry}
+            autoComplete="tel"
+            autoFocus
+            placeholder={country === "UY" ? "099 123 456" : "Número de celular"}
+            required
+            aria-invalid={!!error}
+            numberInputProps={{ className: "h-12 bg-card text-base" }}
+          />
           <FieldDescription>Ahí te llega el código por SMS. Con este mismo número te pueden invitar a un paciente.</FieldDescription>
         </Field>
       </FieldGroup>

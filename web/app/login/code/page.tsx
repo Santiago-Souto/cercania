@@ -1,7 +1,8 @@
 "use client";
 
 // 6-digit SMS code (artboards "Code" and "Link" as the expired state). Ticket: CIA-32.
-// POST /auth/verify sets the session cookie; resend counts down from resend_after_sec.
+// POST /auth/verify sets the session cookie; resend counts down from resend_after_sec. A new phone gets
+// `profile_required` and fills ProfileForm, which sends the same code again with the name.
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
@@ -25,6 +26,7 @@ import {
   verifyCode,
   type PendingLogin,
 } from "@/lib/auth";
+import { ProfileForm, type ProfileDraft } from "./profile-form";
 
 function secondsLeft(p: PendingLogin, now: number): number {
   return Math.max(0, Math.ceil(p.sent.resend_after_sec - (now - p.sentAt) / 1000));
@@ -42,6 +44,8 @@ export default function CodePage() {
   const [busy, setBusy] = useState<"verify" | "resend" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dead, setDead] = useState<string | null>(null); // "código vencido" state
+  const [profile, setProfile] = useState(false); // new phone: name step
+  const [draft, setDraft] = useState<ProfileDraft>({ firstName: "", lastName: "", email: "" });
 
   useEffect(() => {
     // sessionStorage is browser-only: read after mount. No pending login -> start over.
@@ -56,19 +60,34 @@ export default function CodePage() {
     return () => clearInterval(timer);
   }, [router]);
 
-  async function verify(value: string) {
+  async function verify(value: string, withProfile?: ProfileDraft) {
     if (!pending || busy) return;
     setBusy("verify");
     setError(null);
+    if (withProfile) setDraft(withProfile); // kept if the code dies and a new one is needed
     try {
-      const res = await verifyCode(pending.phone, value);
+      const res = await verifyCode(
+        pending.phone,
+        value,
+        withProfile && { name: `${withProfile.firstName} ${withProfile.lastName}`, email: withProfile.email },
+      );
+      if (res.status === "profile_required") {
+        setProfile(true);
+        setBusy(null);
+        return;
+      }
       clearPending();
       // Full load: server components and the notification poller start fresh with the new cookie.
       window.location.assign(landingFor(res.memberships, pending.next, res.is_admin));
     } catch (err) {
-      setCode("");
-      if (isDeadCode(err)) setDead(authErrorMessage(err));
-      else setError(authErrorMessage(err));
+      if (isDeadCode(err)) {
+        setProfile(false);
+        setCode("");
+        setDead(authErrorMessage(err));
+      } else {
+        if (!withProfile) setCode(""); // on the name step the code was right: keep it
+        setError(authErrorMessage(err));
+      }
       setBusy(null);
     }
   }
@@ -78,7 +97,7 @@ export default function CodePage() {
     setBusy("resend");
     setError(null);
     try {
-      const sent = await requestCode(pending);
+      const sent = await requestCode(pending.phone);
       const next = { ...pending, sent, sentAt: Date.now() };
       savePending(next);
       setPending(next);
@@ -102,7 +121,7 @@ export default function CodePage() {
 
   const wait = secondsLeft(pending, now);
   const minutes = Math.round(pending.sent.expires_in_sec / 60);
-  const back = pending.mode === "login" ? "/login?mode=login" : "/login";
+  const back = "/login";
   const resendButton = (
     <Button type="button" variant="link" size="touch" className="px-0 font-bold" disabled={wait > 0 || busy !== null} onClick={resend}>
       {busy === "resend" && <Spinner />}
@@ -136,6 +155,15 @@ export default function CodePage() {
             </EmptyContent>
           </Empty>
         </main>
+      </AppShell>
+    );
+  }
+
+  if (profile) {
+    return (
+      <AppShell publicPage>
+        <TopBar back={back} title="Creá tu cuenta" />
+        <ProfileForm draft={draft} busy={busy === "verify"} error={error} onSubmit={(d) => verify(code, d)} />
       </AppShell>
     );
   }

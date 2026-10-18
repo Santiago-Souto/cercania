@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app import sms
-from app.api import auth
 from app.deps import SESSION_COOKIE, get_db
 from app.main import app
 from app.models import (
@@ -92,11 +91,13 @@ def test_login_known_phone_texts_a_code(db, texts, client):
     assert code_in(texts[0][1]) not in row.code_hash  # only the hash is stored
 
 
-def test_login_unknown_phone_same_answer_and_nothing_sent(db, texts, client):
+def test_login_unknown_phone_gets_the_same_sms_and_answer(db, texts, client):
+    known = client.post("/auth/login", json={"phone": KNOWN}).json()
     r = client.post("/auth/login", json={"phone": NEW})
-    assert r.status_code == 200 and r.json()["status"] == "code_sent"
-    assert texts == []
-    # The rate limit answers the same as for a registered phone.
+    assert r.status_code == 200
+    assert {**r.json(), "phone_last4": None} == {**known, "phone_last4": None}
+    assert [to for to, _ in texts] == [KNOWN, NEW]
+    assert db.scalar(select(Person).where(Person.phone == NEW)) is None  # nothing before the code
     assert client.post("/auth/login", json={"phone": NEW}).status_code == 429
 
 
@@ -133,11 +134,13 @@ def test_signup_sms_failure_is_reported(db, monkeypatch, client):
     assert r.status_code == 502 and r.json()["error"]["code"] == "sms_unreachable"
 
 
-def test_login_sms_failure_still_code_sent(db, monkeypatch, client):
+def test_login_sms_failure_is_reported(db, monkeypatch, client):
+    # Every phone is texted, so the failure says nothing about whether it has an account.
     monkeypatch.delenv("TWILIO_TRIAL_TEMPLATE", raising=False)
     monkeypatch.setattr(sms, "send_sms", lambda to, body, client=None: sms.SmsResult(False, None, "down"))
-    r = client.post("/auth/login", json={"phone": KNOWN})
-    assert r.status_code == 200 and r.json()["status"] == "code_sent"
+    for phone in (KNOWN, NEW):
+        r = client.post("/auth/login", json={"phone": phone})
+        assert r.status_code == 502 and r.json()["error"]["code"] == "sms_unreachable"
 
 
 # --- Verifying --------------------------------------------------------------------
@@ -221,13 +224,52 @@ def test_locks_after_five_wrong_codes(db, texts, client):
     assert r.status_code == 429 and r.json()["error"]["code"] == "too_many_attempts"
 
 
-def test_unknown_phone_cannot_verify(db, texts, client, monkeypatch):
-    # Even with the right code (never sent), a login code does not create an account.
-    monkeypatch.setattr(auth.secrets, "randbelow", lambda n: 123456)
+def test_login_new_phone_asks_for_profile_after_the_code(db, texts, client):
     client.post("/auth/login", json={"phone": NEW})
-    r = client.post("/auth/verify", json={"phone": NEW, "code": "123456"})
+    code = code_in(texts[0][1])
+
+    # A wrong code says nothing about the phone.
+    wrong = "000000" if code != "000000" else "111111"
+    r = client.post("/auth/verify", json={"phone": NEW, "code": wrong})
     assert r.status_code == 400 and r.json()["error"]["code"] == "code_invalid"
+
+    r = client.post("/auth/verify", json={"phone": NEW, "code": code})
+    assert r.status_code == 200 and r.json() == {"status": "profile_required"}
+    assert SESSION_COOKIE not in r.headers.get("set-cookie", "")
     assert db.scalar(select(Person).where(Person.phone == NEW)) is None
+
+    r = client.post("/auth/verify", json={"phone": NEW, "code": code, "name": " Nueva Pérez (ficticia) ",
+                                          "email": "n@example.com"})
+    assert r.status_code == 200 and r.json()["status"] == "signed_in"
+    person = db.scalar(select(Person).where(Person.phone == NEW))
+    assert person.display_name == "Nueva Pérez (ficticia)" and person.email == "n@example.com"
+    # Self sign-up is a patient (CIA-48), same as /auth/signup.
+    assert [m["role"] for m in r.json()["memberships"]] == ["patient"]
+    assert client.get("/me").json()["display_name"] == "Nueva Pérez (ficticia)"
+    # The code was used once the account existed.
+    assert client.post("/auth/verify", json={"phone": NEW, "code": code, "name": "Otra"}).status_code == 400
+
+
+def test_profile_step_counts_against_the_code(db, texts, client):
+    client.post("/auth/login", json={"phone": NEW})
+    code = code_in(texts[0][1])
+    assert client.post("/auth/verify", json={"phone": NEW, "code": code}).json()["status"] == "profile_required"
+    age_codes(db, NEW, 11 * 60)
+    r = client.post("/auth/verify", json={"phone": NEW, "code": code, "name": "Nueva"})
+    assert r.status_code == 400 and r.json()["error"]["code"] == "code_expired"
+    assert db.scalar(select(Person).where(Person.phone == NEW)) is None
+
+
+def test_name_on_verify_is_ignored_for_a_known_phone(db, texts, client):
+    client.post("/auth/login", json={"phone": KNOWN})
+    r = client.post("/auth/verify", json={"phone": KNOWN, "code": code_in(texts[0][1]), "name": "Otra"})
+    assert r.status_code == 200 and r.json()["user"]["name"] == "Ana (ficticia)"
+
+
+def test_profile_name_cannot_be_blank(db, texts, client):
+    client.post("/auth/login", json={"phone": NEW})
+    r = client.post("/auth/verify", json={"phone": NEW, "code": code_in(texts[0][1]), "name": "  "})
+    assert r.status_code == 422
 
 
 def test_malformed_code_rejected(db, texts, client):
@@ -345,11 +387,11 @@ def test_trial_template_sends_template_name_and_accepts_its_code(trial, client):
     assert r.status_code == 200 and r.json()["user"]["id"] == "cg"
 
 
-def test_trial_template_unknown_phone_gets_no_usable_code(trial, client):
+def test_trial_template_new_phone_gets_the_template_too(trial, client):
     client.post("/auth/login", json={"phone": NEW})
-    assert trial == []
+    assert trial == [(NEW, "sms_2fa")]
     r = client.post("/auth/verify", json={"phone": NEW, "code": "482913"})
-    assert r.status_code == 400
+    assert r.json() == {"status": "profile_required"}
 
 
 def test_trial_template_without_code_is_a_failed_send(db, monkeypatch, client):
