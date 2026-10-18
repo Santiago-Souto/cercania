@@ -9,7 +9,7 @@ export const AMBER = "#e39b35";
 export const BACKGROUND = "linear-gradient(160deg, #13685f 0%, #0e5a55 50%, #0a4c47 100%)";
 
 // White circle (44,52 r26) minus the ring circle (62,52 r17); the arcs meet at x=63.75, y=52±16.91.
-const CRESCENT = "M63.75 35.09 A26 26 0 1 0 63.75 68.91 A17 17 0 0 1 63.75 35.09 Z";
+const CRESCENT = "M63.75 35.09 A26 26 0 1 0 63.75 68.91 A17 17 0 1 1 63.75 35.09 Z";
 
 export function Mark({ size }: { size: number }) {
   return (
