@@ -95,8 +95,8 @@ def serialize_report(session: Session, report: Report, version: ReportVersion | 
         "sender": sender,
         "caregiver": dict(sender),
         "transcript": report.transcript,
-        # SIMULATED until object storage lands: placeholder path, not a playable URL yet.
-        "audio_url": f"/media/{report.id}" if audio else None,
+        # API path that returns a short-lived signed URL (GET /reports/{id}/audio, CIA-44).
+        "audio_url": f"/reports/{report.id}/audio" if audio else None,
         "audio_duration_sec": audio.duration_sec if audio else None,
         "items": [serialize_item(i) for i in version.items] if version else [],
         "missing_items": [] if emergency_kind or not version else version.missing_items,

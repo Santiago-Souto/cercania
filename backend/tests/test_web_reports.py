@@ -58,13 +58,21 @@ def brain(monkeypatch):
     return calls
 
 
+@pytest.fixture(autouse=True)
+def stored_audio(monkeypatch):
+    """Records store_audio calls (run as a background task after the response)."""
+    calls = []
+    monkeypatch.setattr(ingest, "store_audio", lambda result, audio: calls.append((result, audio)))
+    return calls
+
+
 @pytest.fixture
 def groq(monkeypatch):
     calls = []
 
     def fake(audio, filename, mime_type, vocabulary):
         calls.append({"audio": audio, "filename": filename, "mime_type": mime_type, "vocabulary": vocabulary})
-        return Transcript(text="comió poco en la cena", segments=[Segment(0.0, 1.8, "comió poco en la cena")])
+        return Transcript(text="comió poco en la cena", duration=1.8, segments=[Segment(0.0, 1.8, "comió poco en la cena")])
 
     monkeypatch.setattr(web_reports, "transcribe", fake)
     return calls
@@ -74,7 +82,7 @@ client = TestClient(app)
 AS_CAREGIVER = {"X-Person-Id": "cg"}
 
 
-def test_text_report_goes_to_process_report(db, brain):
+def test_text_report_goes_to_process_report(db, brain, stored_audio):
     r = client.post(URL, json={"client_id": "web_1", "text": "  durmió bien  "}, headers=AS_CAREGIVER)
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
@@ -82,9 +90,10 @@ def test_text_report_goes_to_process_report(db, brain):
         "patient_id": "pat_x", "sender_id": "cg", "transcript": "durmió bien",
         "audio_ref": None, "message_id": "web:cg:web_1", "segments": [],
     }]
+    assert stored_audio == []  # typed: nothing to store
 
 
-def test_audio_report_is_transcribed_with_patient_vocabulary(db, brain, groq):
+def test_audio_report_is_transcribed_with_patient_vocabulary(db, brain, groq, stored_audio):
     r = client.post(
         URL,
         data={"client_id": "web_2"},
@@ -98,9 +107,12 @@ def test_audio_report_is_transcribed_with_patient_vocabulary(db, brain, groq):
     assert brain[0]["transcript"] == "comió poco en la cena"
     assert brain[0]["message_id"] == "web:cg:web_2"
     assert brain[0]["segments"] == [{"start": 0.0, "end": 1.8, "text": "comió poco en la cena"}]
+    # The original voice note is kept for the stored report, after the response.
+    assert stored_audio == [({"status": "ok", "report": {"id": "rep_1", "version": 1}},
+                             ingest.Audio(b"\x1aE\xdf\xa3", "audio/webm", 1.8))]
 
 
-def test_repeated_client_id_reuses_stored_transcript_without_transcribing(db, brain, groq):
+def test_repeated_client_id_reuses_stored_transcript_without_transcribing(db, brain, groq, stored_audio):
     db.add(Report(id="rep_1", patient_id="pat_x", sender_id="cg", message_id="web:cg:web_3", transcript="ya guardado"))
     db.commit()
     r = client.post(
@@ -110,6 +122,7 @@ def test_repeated_client_id_reuses_stored_transcript_without_transcribing(db, br
     assert groq == []
     assert brain[0]["transcript"] == "ya guardado"
     assert brain[0]["message_id"] == "web:cg:web_3"
+    assert stored_audio == []  # the audio was not read again
 
 
 @pytest.mark.parametrize("person", ["fam", "doc"])

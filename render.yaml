@@ -35,6 +35,13 @@ services:
         sync: false
       - key: QUERY_MODEL
         sync: false
+      # Supabase Storage for voice notes (private bucket, signed URLs). Service key: backend only.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_BUCKET
+        value: media
       - key: WHATSAPP_TOKEN
         sync: false
       - key: WHATSAPP_PHONE_NUMBER_ID
