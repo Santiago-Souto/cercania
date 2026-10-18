@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app import notify, schemas, whatsapp
@@ -162,6 +163,11 @@ def list_members(
     return {"members": members, "invites": invites}
 
 
+def _pending_invite(db: Session, patient_id: str, phone: str) -> Invite | None:
+    return db.scalar(select(Invite).where(Invite.patient_id == patient_id, Invite.phone == phone,
+                                          Invite.status == InviteStatus.pending))
+
+
 def invite_text(inviter: str, patient: str, role: Role) -> str:
     return (f"{inviter} te invitó a CercanIA para acompañar a {patient} ({ROLE_ES[role]}). "
             "Entrá a la web de CercanIA e ingresá con este número de WhatsApp para ver su información.")
@@ -205,15 +211,24 @@ def create_invite(
     )
     if already is not None:
         raise api_error(409, "already_member", "Esa persona ya tiene acceso a este paciente.")
-    invite = db.scalar(select(Invite).where(Invite.patient_id == ctx.patient.id, Invite.phone == phone,
-                                            Invite.status == InviteStatus.pending))
-    if invite is None:
+    invite = _pending_invite(db, ctx.patient.id, phone)
+    created = invite is None
+    if created:
         invite = Invite(patient_id=ctx.patient.id, phone=phone, role=role, invited_by=ctx.person_id)
         db.add(invite)
-    else:
+        try:
+            db.commit()
+        except IntegrityError:
+            # A concurrent request inserted the pending invite first (uq_invite_pending): update that one.
+            db.rollback()
+            invite = _pending_invite(db, ctx.patient.id, phone)
+            if invite is None:
+                raise
+            created = False
+    if not created:
         invite.role = role
+        db.commit()
         response.status_code = 200
-    db.commit()
     inviter = db.get(Person, ctx.person_id)
     background.add_task(send_invite_whatsapp, phone,
                         invite_text(inviter.display_name if inviter else "Alguien", ctx.patient.display_name, role))

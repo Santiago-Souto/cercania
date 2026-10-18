@@ -27,6 +27,7 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -295,6 +296,11 @@ class Invite(TimestampMixin, Base):
     that phone verifies a login code (matched on the phone only, never on email)."""
 
     __tablename__ = "invite"
+    # At most one pending invite per patient and phone, even under concurrent requests.
+    __table_args__ = (
+        Index("uq_invite_pending", "patient_id", "phone", unique=True,
+              sqlite_where=text("status = 'pending'"), postgresql_where=text("status = 'pending'")),
+    )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("inv"))
     patient_id: Mapped[str] = mapped_column(ForeignKey("patient.id"), nullable=False)
@@ -640,6 +646,11 @@ def init_db() -> None:
     """Create missing tables and nullable columns, and relax NOT NULL where the model became
     nullable (Postgres). Safe to call repeatedly; never drops anything."""
     Base.metadata.create_all(engine)
+    # create_all adds indexes only with new tables; add ones introduced later (e.g. uq_invite_pending).
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            for index in table.indexes:
+                index.create(conn, checkfirst=True)
     # No migration tool: add nullable columns that were introduced after a table existed.
     existing = inspect(engine)
     with engine.begin() as conn:

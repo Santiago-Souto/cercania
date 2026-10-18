@@ -77,11 +77,16 @@ export async function getMembers(patientId: string): Promise<{ members: Member[]
   return request(`/patients/${patientId}/members`);
 }
 
+// Fake-data mode only reads fixtures; writing to the real API from it would mix real rows with fake screens.
+const FAKE_WRITE = () => new ApiError("fake_mode", "Con datos de prueba ficticios no se puede guardar. Usá la app con el servidor real.", 409);
+
 export async function createPatient(body: NewPatient): Promise<Patient> {
+  if (USE_FAKE) throw FAKE_WRITE();
   return request<Patient>(`/patients`, { method: "POST", body: JSON.stringify(body) });
 }
 
 export async function createInvite(patientId: string, contact: string, role: Role): Promise<Invite> {
+  if (USE_FAKE) throw FAKE_WRITE();
   return request<Invite>(`/patients/${patientId}/invites`, {
     method: "POST",
     body: JSON.stringify({ contact, role }),

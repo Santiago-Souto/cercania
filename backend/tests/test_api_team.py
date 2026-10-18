@@ -190,3 +190,38 @@ def test_invite_whatsapp_only_when_enabled(db, monkeypatch):
     client.post("/patients/pat_a/invites", json={"contact": "+59899222222", "role": "family"}, headers=h("cg"))
     assert sent[0][0] == "59899222222"
     assert "Rosa (ficticia)" in sent[0][1] and "familia" in sent[0][1]
+
+
+def test_db_allows_one_pending_invite_per_patient_and_phone(db):
+    from sqlalchemy.exc import IntegrityError
+
+    db.add(Invite(patient_id="pat_a", phone="+59899111111", role=Role.family))
+    db.commit()
+    db.add(Invite(patient_id="pat_a", phone="+59899111111", role=Role.nurse))
+    with pytest.raises(IntegrityError):
+        db.commit()
+    db.rollback()
+    # Accepted invites do not count: the same phone can be invited again later.
+    db.scalar(select(Invite)).status = InviteStatus.accepted
+    db.add(Invite(patient_id="pat_a", phone="+59899111111", role=Role.nurse))
+    db.commit()
+
+
+def test_invite_insert_race_updates_the_winner(db, monkeypatch):
+    """The pending lookup misses (another request is mid-insert), the insert hits the unique index,
+    and the endpoint updates the row that won instead of failing."""
+    winner = Invite(patient_id="pat_a", phone="+59899111111", role=Role.family)
+    db.add(winner)
+    db.commit()
+    real = patients_api._pending_invite
+    calls = []
+
+    def first_misses(*args):
+        calls.append(1)
+        return None if len(calls) == 1 else real(*args)
+
+    monkeypatch.setattr(patients_api, "_pending_invite", first_misses)
+    r = client.post("/patients/pat_a/invites", json={"contact": "+59899111111", "role": "nurse"}, headers=h("cg"))
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == winner.id and r.json()["role"] == "nurse"
+    assert len(db.scalars(select(Invite)).all()) == 1

@@ -25,6 +25,7 @@ export function InviteForm({ onInvite, submitLabel }: { onInvite: OnInvite; subm
   const [pending, setPending] = useState(false);
 
   async function submit() {
+    if (pending) return; // Enter on the number field must not send a second invite while one is in flight
     const checked = checkPhone(contact);
     if ("error" in checked) {
       setError(checked.error);
