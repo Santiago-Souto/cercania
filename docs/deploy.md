@@ -12,7 +12,7 @@ Both services deploy from `main` through the Render Blueprint in `render.yaml`. 
 ## Current state
 
 - **The web reads the real API** with a real login (6-digit SMS code, CIA-32 / CIA-14). There is no fake data anymore. The browser calls `/api/*` on the web, which Next.js rewrites to `NEXT_PUBLIC_API_URL`, so the session cookie is first-party on the web origin. `NEXT_PUBLIC_*` values and the rewrite are fixed at build time: change them, then redeploy the web.
-- `NEXT_PUBLIC_USE_FAKE_DATA` and `NEXT_PUBLIC_DEV_PERSON_ID` are no longer read: delete them from the web service. Unset `ALLOW_DEV_IDENTITY_HEADER` on the API (the web never sends `X-Person-Id` now).
+- Keep `ALLOW_DEV_IDENTITY_HEADER` unset on the API (the web never sends `X-Person-Id`).
 - **Free plan: both services sleep** after ~15 minutes idle, and the first request then takes about a minute. Open both URLs a minute before a demo.
 
 ## Environment variables

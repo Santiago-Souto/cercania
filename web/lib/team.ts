@@ -4,17 +4,24 @@
 
 import type { Role } from "./types";
 
-/** Roles offered in the invite form. The health-team roles are left out of the form. */
-export type InviteRole = Extract<Role, "caregiver" | "family" | "patient">;
-
 /** What each role can do (AGENTS.md section 6), shown under the role select. */
-export const ROLE_HELP: Record<InviteRole, string> = {
+export const ROLE_HELP: Record<Role, string> = {
   caregiver: "Manda reportes, corrige, pregunta e invita a otras personas.",
   family: "Solo lectura: ve el resumen y las alertas.",
   patient: "Solo cuenta cómo se siente o pide ayuda. No ve reportes ni alertas.",
+  doctor: "Equipo de salud: ve reportes y alertas, y es quien edita el plan de cuidado.",
+  nurse: "Equipo de salud: ve reportes y alertas.",
+  institution: "Equipo de salud: ve reportes y alertas.",
 };
 
-export const ROLES: InviteRole[] = ["caregiver", "family", "patient"];
+export const ROLES: Role[] = ["caregiver", "family", "patient", "doctor", "nurse", "institution"];
+
+/** Caregivers invite family or the patient themself (CIA-48); every other role comes from an admin. */
+export const INVITE_ROLES: Role[] = ["family", "patient"];
+export const INVITE_ROLE_HELP: Partial<Record<Role, string>> = {
+  family: "Familiar de este paciente: solo lectura, ve el resumen y las alertas.",
+  patient: "El propio paciente: solo cuenta cómo se siente o pide ayuda. No ve reportes ni alertas.",
+};
 
 const PHONE_RE = /^\+[1-9]\d{7,14}$/;
 

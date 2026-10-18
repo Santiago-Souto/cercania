@@ -180,7 +180,9 @@ def test_invite_after_login_is_seen_and_accepted_in_the_same_session(db, texts, 
     assert invite["patient_id"] == "pat_a" and invite["role"] == "family"
     r = client.post(f"/me/invites/{invite['id']}/accept")
     assert r.status_code == 200 and r.json()["role"] == "family"
-    assert [p["id"] for p in client.get("/me/patients").json()["patients"]] == ["pat_a"]
+    # She signed up alone first, so she also has her own patient profile (CIA-48).
+    mine = {p["id"]: p["role"] for p in client.get("/me/patients").json()["patients"]}
+    assert mine.pop("pat_a") == "family" and list(mine.values()) == ["patient"]
 
 
 def test_code_is_single_use(db, texts, client):

@@ -110,6 +110,18 @@ export type Report = {
   confirmation_text?: string;
 };
 
+/** One entry of GET /reports/{id}/versions (oldest first). Previous versions are immutable. */
+export type ReportVersion = {
+  version: number;
+  source: "original" | "correction";
+  created_at: string;
+  created_by: Person;
+  items: ReportItem[];
+  missing_items: ChecklistItem[];
+  alerts: Alert[];
+  confirmation_text?: string;
+};
+
 /** Web inbox row from GET /me/notifications. */
 export type AppNotification = {
   id: string;
@@ -216,18 +228,65 @@ export type Membership = { patient_id: string; display_name: string; role: Role 
 /** GET /me/invites: invites addressed to the caller's own phone, accepted or declined in the app. */
 export type MyInvite = {
   id: string;
-  patient_id: string;
-  patient_display_name: string;
+  /** null for a `patient` invite without a profile yet: accepting creates it (CIA-48). */
+  patient_id: string | null;
+  patient_display_name: string | null;
   role: Role;
   invited_by: string | null;
   created_at: string;
 };
 
 /** GET /me */
-export type Me = { id: string; display_name: string; phone_last4: string; memberships: Membership[] };
+export type Me = {
+  id: string;
+  display_name: string;
+  phone_last4: string;
+  memberships: Membership[];
+  /** Global admin: lists people and assigns roles only (CIA-48). */
+  is_admin: boolean;
+  /** Caregivers only create patients (CIA-48). */
+  can_add_patients: boolean;
+};
 
 /** POST /auth/signup and /auth/login */
 export type CodeSent = { status: "code_sent"; phone_last4: string; expires_in_sec: number; resend_after_sec: number };
 
 /** POST /auth/verify */
-export type Verified = { user: { id: string; name: string }; memberships: Membership[] };
+export type Verified = { user: { id: string; name: string }; is_admin: boolean; memberships: Membership[] };
+
+// --- Admin (CIA-48): people and roles only, never clinical data. ---
+
+export type AdminRole = Role | "admin";
+
+export type AdminMembership = { patient_id: string; patient_name: string; role: Role };
+
+export type AdminPerson = {
+  id: string;
+  name: string;
+  phone: string;
+  is_admin: boolean;
+  /** Caregiver an admin registered before assigning any patient. */
+  is_caregiver: boolean;
+  memberships: AdminMembership[];
+};
+
+export type AdminPreRegistration = {
+  id: string;
+  phone: string;
+  role: AdminRole;
+  patient_id: string | null;
+  patient_name: string | null;
+  created_at: string;
+};
+
+export type AdminPeople = {
+  people: AdminPerson[];
+  pre_registrations: AdminPreRegistration[];
+  patients: { id: string; display_name: string }[];
+};
+
+/** `error.current` of an admin 409 `overwrite_required`. */
+export type OverwriteCurrent =
+  | AdminPerson
+  | { person: AdminPerson }
+  | { pre_registration: AdminPreRegistration };

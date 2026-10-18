@@ -7,6 +7,9 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { API_URL, ApiError, errorFrom, SESSION_COOKIE } from "./api-shared";
 import type {
+  AdminPeople,
+  AdminPerson,
+  AdminRole,
   Invite,
   Me,
   Member,
@@ -19,6 +22,7 @@ import type {
   PatientMessage,
   QueryResponse,
   Report,
+  ReportVersion,
   Role,
 } from "./types";
 
@@ -66,6 +70,12 @@ export async function getReport(patientId: string, reportId: string): Promise<Re
   return reports.find((r) => r.id === reportId);
 }
 
+export async function getReportVersions(reportId: string): Promise<ReportVersion[]> {
+  await connection(); // patient data is always live: render at request time
+  const data = await request<{ versions: ReportVersion[] }>(`/reports/${reportId}/versions`);
+  return data.versions;
+}
+
 export async function queryPatient(patientId: string, question: string): Promise<QueryResponse> {
   await connection(); // patient data is always live: render at request time
   return request<QueryResponse>(`/patients/${patientId}/query`, {
@@ -87,6 +97,11 @@ export async function getMembers(patientId: string): Promise<{ members: Member[]
 
 export async function createPatient(body: NewPatient): Promise<Patient> {
   return request<Patient>(`/patients`, { method: "POST", body: JSON.stringify(body) });
+}
+
+/** POST /invites (CIA-48): a caregiver invites a patient who has no profile yet. */
+export async function invitePatientWithoutProfile(contact: string): Promise<Invite> {
+  return request<Invite>(`/invites`, { method: "POST", body: JSON.stringify({ contact, role: "patient" }) });
 }
 
 export async function createInvite(patientId: string, contact: string, role: Role): Promise<Invite> {
@@ -123,11 +138,6 @@ export async function getMessages(patientId: string): Promise<Message[]> {
   return data.messages;
 }
 
-export async function getMe(): Promise<Me> {
-  await connection(); // the logged-in person is per request
-  return request<Me>(`/me`);
-}
-
 /** The logged-in person, or null when this device has no valid session. Never redirects, so the login
  *  page can use it to skip the form; a backend that cannot be reached also counts as "no session". */
 export async function getSession(): Promise<Me | null> {
@@ -140,4 +150,40 @@ export async function getSession(): Promise<Me | null> {
   } catch {
     return null;
   }
+}
+
+// --- Admin (CIA-48) ---
+
+export async function getAdminPeople(): Promise<AdminPeople> {
+  await connection();
+  return request<AdminPeople>(`/admin/people`);
+}
+
+export async function adminSetMembership(personId: string, patientId: string, role: Role, confirm: boolean): Promise<AdminPerson> {
+  return request<AdminPerson>(`/admin/people/${personId}/memberships/${patientId}`, {
+    method: "PUT",
+    body: JSON.stringify({ role, confirm_overwrite: confirm }),
+  });
+}
+
+export async function adminMakeAdmin(personId: string, confirm: boolean): Promise<AdminPerson> {
+  return request<AdminPerson>(`/admin/people/${personId}/admin`, {
+    method: "PUT",
+    body: JSON.stringify({ confirm_overwrite: confirm }),
+  });
+}
+
+export async function adminRemoveMembership(personId: string, patientId: string): Promise<AdminPerson> {
+  return request<AdminPerson>(`/admin/people/${personId}/memberships/${patientId}`, { method: "DELETE" });
+}
+
+export async function adminPreRegister(phone: string, role: AdminRole, patientId: string | null, confirm: boolean): Promise<unknown> {
+  return request(`/admin/pre-registrations`, {
+    method: "POST",
+    body: JSON.stringify({ phone, role, patient_id: patientId, confirm_overwrite: confirm }),
+  });
+}
+
+export async function adminDeletePreRegistration(id: string): Promise<unknown> {
+  return request(`/admin/pre-registrations/${id}`, { method: "DELETE" });
 }

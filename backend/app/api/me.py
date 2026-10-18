@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import schemas
+from app import roles, schemas
 from app.deps import current_person_id, get_db
 from app.errors import api_error
 from app.models import (
@@ -47,6 +47,8 @@ def get_me(person_id: str = Depends(current_person_id), db: Session = Depends(ge
         "id": person.id,
         "display_name": person.display_name,
         "phone_last4": person.phone[-4:],
+        "is_admin": roles.is_admin(person),
+        "can_add_patients": roles.is_caregiver(db, person),
         "memberships": [
             {"patient_id": p.id, "display_name": p.display_name, "role": a.role.value}
             for a, p in _memberships(db, person.id)
@@ -117,13 +119,14 @@ def list_my_invites(person_id: str = Depends(current_person_id), db: Session = D
     person = _me(db, person_id)
     rows = db.execute(
         select(Invite, Patient, Person)
-        .join(Patient, Invite.patient_id == Patient.id)
+        .outerjoin(Patient, Invite.patient_id == Patient.id)  # NULL for a new-patient invite
         .outerjoin(Person, Invite.invited_by == Person.id)
         .where(Invite.phone == person.phone, Invite.status == InviteStatus.pending)
         .order_by(Invite.created_at.desc(), Invite.id)
     )
     return {"invites": [
-        {"id": i.id, "patient_id": p.id, "patient_display_name": p.display_name, "role": i.role.value,
+        {"id": i.id, "patient_id": p.id if p else None, "patient_display_name": p.display_name if p else None,
+         "role": i.role.value,
          "invited_by": inviter.display_name if inviter else None, "created_at": i.created_at}
         for i, p, inviter in rows
     ]}
@@ -131,14 +134,26 @@ def list_my_invites(person_id: str = Depends(current_person_id), db: Session = D
 
 @router.post("/me/invites/{invite_id}/accept", response_model=schemas.Membership)
 def accept_invite(invite_id: str, person_id: str = Depends(current_person_id), db: Session = Depends(get_db)) -> dict:
-    """Creates the membership with the invite's role. If the caller is already a member
+    """Creates the membership: family, or the patient's own login (CIA-48). If the caller is already a member
     (e.g. added another way), their current role is kept."""
     person = _me(db, person_id)
     invite = _my_pending_invite(db, person, invite_id)
+    if invite.patient_id is None:
+        # Patient invite with no profile yet (CIA-48): their own profile, the inviter as its caregiver.
+        # Someone who already has a profile can only decline it: it never opens their existing profile.
+        if roles.has_own_profile(db, person):
+            raise api_error(409, "profile_exists", "Ya tenés tu perfil de paciente. Podés rechazar esta invitación.")
+        patient = roles.own_patient_profile(db, person)
+        if invite.invited_by and invite.invited_by != person.id:
+            roles.set_membership(db, db.get(Person, invite.invited_by), patient.id, Role.caregiver)
+        invite.patient_id = patient.id
+        db.flush()
     access = db.scalar(select(PatientAccess).where(PatientAccess.person_id == person.id,
                                                    PatientAccess.patient_id == invite.patient_id))
     if access is None:
-        access = PatientAccess(person_id=person.id, patient_id=invite.patient_id, role=invite.role)
+        # Family or the patient's own login (CIA-48); older rows with another role join as family.
+        role = invite.role if invite.role in (Role.family, Role.patient) else Role.family
+        access = PatientAccess(person_id=person.id, patient_id=invite.patient_id, role=role)
         db.add(access)
     invite.status = InviteStatus.accepted
     invite.accepted_at = utcnow()

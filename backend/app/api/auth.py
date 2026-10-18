@@ -25,7 +25,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 from typing_extensions import Annotated
 
-from app import sms
+from app import roles, sms
 from app.deps import SESSION_COOKIE, get_db, hash_token
 from app.errors import api_error
 from app.models import (
@@ -229,6 +229,8 @@ def verify(body: VerifyIn, response: Response, db: Session = Depends(get_db)) ->
         person = Person(phone=phone, display_name=row.signup_name, email=row.signup_email)
         db.add(person)
         db.flush()
+        # Starting role (CIA-48): admin pre-registration, else a pending invite, else patient.
+        roles.on_signup(db, person)
     row.used_at = utcnow()
     token = secrets.token_urlsafe(32)
     db.add(AuthSession(token_hash=hash_token(token), person_id=person.id,
@@ -242,6 +244,7 @@ def verify(body: VerifyIn, response: Response, db: Session = Depends(get_db)) ->
     )
     return {
         "user": {"id": person.id, "name": person.display_name},
+        "is_admin": roles.is_admin(person),
         "memberships": [{"patient_id": p.id, "display_name": p.display_name, "role": a.role.value}
                         for a, p in memberships],
     }

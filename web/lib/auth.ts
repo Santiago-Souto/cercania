@@ -8,8 +8,6 @@ import type { CodeSent, Verified } from "./types";
 
 export { landingFor, safeNext } from "./landing";
 
-export type SignupData = { name: string; email: string; phone: string };
-
 /** What the code screen needs, kept in sessionStorage (never in the URL: the phone is personal data). */
 export type PendingLogin = {
   mode: "signup" | "login";

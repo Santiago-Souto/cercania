@@ -8,8 +8,8 @@ import { useEffect, useRef, useState } from "react";
 const MAX_RECORDING_SEC = 5 * 60;
 const AUDIO_BITS_PER_SEC = 32_000;
 
-export type RecorderState = "idle" | "starting" | "recording";
-export type RecorderError = "unsupported" | "denied" | "no_mic" | "failed" | "empty";
+type RecorderState = "idle" | "starting" | "recording";
+type RecorderError = "unsupported" | "denied" | "no_mic" | "failed" | "empty";
 
 /** First MIME type this browser can record that the backend accepts (Safari only records mp4). */
 function recordingType(): string | undefined {

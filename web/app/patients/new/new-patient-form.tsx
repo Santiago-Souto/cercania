@@ -273,7 +273,7 @@ export function NewPatientForm() {
             />
           )}
           <FieldDescription>
-            Familia: solo lectura. Paciente: solo cuenta cómo se siente o pide ayuda. Equipo de salud: ve reportes y alertas. La persona entra con su número de celular y recibe el rol al ingresar.
+            Familia: solo lectura. Paciente: solo cuenta cómo se siente o pide ayuda. El equipo de salud lo asigna una persona administradora. La persona entra con su número de celular y acepta la invitación en la app.
           </FieldDescription>
         </CardContent>
       </Card>
