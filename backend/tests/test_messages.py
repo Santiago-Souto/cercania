@@ -60,10 +60,12 @@ def test_family_sends_doctor_replies_both_see_thread(db):
     assert sent["text"] == "Hola doctora, ¿cómo durmió?"
     assert sent["from"] == {"user_id": "fam", "name": "FAM", "role": "family"}
     assert sent["read"] is False
+    assert sent["mine"] is True
 
     thread = client.get(URL, headers=as_("doc")).json()["messages"]
     assert [m["text"] for m in thread] == ["Hola doctora, ¿cómo durmió?"]
     assert thread[0]["read"] is False  # new for the doctor on this first listing
+    assert thread[0]["mine"] is False
 
     client.post(URL, json={"text": "Durmió bien."}, headers=as_("doc"))
     thread = client.get(URL, headers=as_("fam")).json()["messages"]

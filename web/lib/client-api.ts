@@ -3,7 +3,7 @@
 // SIMULATED auth: sends X-Person-Id from the persona cookie (lib/persona.ts).
 
 import { DEFAULT_PERSONA_ID, PERSONA_COOKIE } from "./persona";
-import type { AppNotification } from "./types";
+import type { AppNotification, Message } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
@@ -58,4 +58,12 @@ export function fetchNotifications(opts: { since?: string; unreadOnly?: boolean 
 
 export function markNotificationRead(id: string) {
   return call<AppNotification>(`/me/notifications/${id}/read`, { method: "POST" });
+}
+
+export function fetchMessages(patientId: string) {
+  return call<{ messages: Message[] }>(`/patients/${patientId}/messages`).then((d) => d.messages);
+}
+
+export function sendMessage(patientId: string, text: string) {
+  return call<Message>(`/patients/${patientId}/messages`, { method: "POST", body: JSON.stringify({ text }) });
 }

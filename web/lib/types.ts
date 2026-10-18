@@ -153,7 +153,10 @@ export type Message = {
   from: { user_id: string; name: string; role: Role };
   text: string;
   created_at: string;
+  /** Own message: someone else opened the thread since. Others': the viewer had seen it before this load. */
   read: boolean;
+  /** Sent by the viewer. */
+  mine: boolean;
 };
 
 /** What `POST /patients/{id}/reports` returns (`ProcessResult` in docs/contract.md). */

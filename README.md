@@ -35,6 +35,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Family read-only view | Pending | Web owner |
 | Doctor edits care plan (new version) | Pending | Role and permission in schema; no endpoint/view yet |
 | Patient view (how I feel + I need help; no reports or alerts) | In progress | Backend done (CIA-29, `backend/app/patient_messages.py`): "Necesito ayuda" notifies every caregiver and health-team member in the web inbox with no model call; "Cómo me siento" (text or audio) goes through triage and notifies the team only on a red flag. Replies to the patient are fixed text. WhatsApp copies are best effort (`NOTIFY_WHATSAPP`). Screen pending (CIA-35) |
+| Family <-> health team messages | Functional | `GET`/`POST /patients/{id}/messages` (`backend/app/api/messages.py`, CIA-36): one thread per patient, family and health team only (caregiver and patient get 403). Human to human, no model call. Screen `/patients/{id}/messages`: sends optimistically (sending / failed with retry), polls every 5 s, shows read state on your own messages; always shows "No es para urgencias". No notification is sent for a new message: the other side sees it when they open the thread |
 | Login with 6-digit SMS code | Functional (backend) | `POST /auth/signup`, `/auth/login`, `/auth/verify`, `/auth/logout` (`backend/app/api/auth.py`), code sent by Twilio SMS, session cookie. Web screens not wired yet (CIA-32). A Twilio trial only texts numbers verified in its console |
 | Eval script and 20 cases | In progress | `eval/run_eval.py` built and tested; 4 cases in `eval/cases.csv` (c003 is an emergency), all `dev`, 0 unseen. Scores emergency recall and emergency false alarms on their own lines. Groq's free tier (8,000 tokens/minute) allows only a few reports per minute: run it with `--delay 30` |
 
@@ -53,7 +54,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 - WhatsApp emergency notifications, pending Meta approval. `NOTIFY_WHATSAPP=0` by default, so they are recorded as `skipped`; the web inbox is the channel in use.
 - Audio playback of citations in the web (CIA-13). The backend side is ready: voice notes are stored in a private Supabase Storage bucket (CIA-44), `GET /reports/{id}/audio` returns a 5-minute signed URL, and items and citations carry `audio_start_sec` / `audio_end_sec` (CIA-18). Whisper segments can be long (a 13 s note came back as one segment), so a fragment may cover more than the quote.
 - Audio retention: stored voice notes are never deleted yet.
-- Members, invites and messages endpoints.
+- Members and invites endpoints.
 - Eval not yet run against the real model for `process_report` and the cited query.
 
 ### Out of scope (declared)

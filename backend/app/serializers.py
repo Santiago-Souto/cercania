@@ -155,6 +155,7 @@ def serialize_message(message: Message, viewer_id: str, read_before: set[str]) -
         "text": message.text,
         "created_at": message.created_at,
         "read": read,
+        "mine": message.sender_id == viewer_id,
     }
 
 

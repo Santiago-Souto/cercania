@@ -1,7 +1,7 @@
 // Patient home (artboard "Main"). Ticket: CIA-11.
 import Link from "next/link";
 import type { Route } from "next";
-import { ChevronLeftIcon, MicIcon } from "lucide-react";
+import { ChevronLeftIcon, MessageCircleIcon, MicIcon } from "lucide-react";
 import { AppShell, Brand, BottomNav } from "@/components/app/shell";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -9,12 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemSeparator, ItemTitle } from "@/components/ui/item";
 import { Progress } from "@/components/ui/progress";
-import { getPatient, getReports } from "@/lib/api";
+import { getMyPatients, getPatient, getReports } from "@/lib/api";
 import { CHECKLIST_LABEL, dayTime, duration, firstName } from "@/lib/format";
 
 export default async function PatientHome(props: PageProps<"/patients/[id]">) {
   const { id } = await props.params;
-  const [patient, reports] = await Promise.all([getPatient(id), getReports(id)]);
+  const [patient, reports, mine] = await Promise.all([getPatient(id), getReports(id), getMyPatients()]);
+  const role = mine.find((p) => p.id === id)?.role;
+  const healthTeam = role === "doctor" || role === "nurse" || role === "institution";
   const last = reports[0];
   const plan = patient.care_plan;
   const covered = last ? last.items.filter((i) => i.value !== null).length : 0;
@@ -46,6 +48,15 @@ export default async function PatientHome(props: PageProps<"/patients/[id]">) {
             Nuevo reporte
           </Link>
         </Button>
+
+        {healthTeam && (
+          <Button asChild size="xl" variant="outline-primary">
+            <Link href={`/patients/${id}/messages` as Route}>
+              <MessageCircleIcon />
+              Mensajes de la familia
+            </Link>
+          </Button>
+        )}
 
         <Card className="text-base">
           <CardHeader className="flex items-center gap-3">

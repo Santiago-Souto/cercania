@@ -230,6 +230,7 @@ class Message(BaseModel):
     text: str
     created_at: datetime
     read: bool
+    mine: bool  # sent by the caller
 
     model_config = {"populate_by_name": True, "serialize_by_alias": True}
 

@@ -192,6 +192,7 @@ export const fakeMessages: Message[] = [
     text: "Hola doctora, vi que mamá viene comiendo poco. ¿Hay que preocuparse?",
     created_at: "2026-10-17T15:02:00-03:00",
     read: true,
+    mine: true,
   },
   {
     id: "msg_002",
@@ -199,5 +200,6 @@ export const fakeMessages: Message[] = [
     text: "Hola Marta, lo vi en los reportes. Mañana paso a verla en la ronda de la mañana.",
     created_at: "2026-10-17T16:40:00-03:00",
     read: true,
+    mine: false,
   },
 ];

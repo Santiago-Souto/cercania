@@ -608,10 +608,10 @@ A caregiver or health-team member listing the messages marks the listed ones as 
 ### `GET /patients/{patient_id}/messages`
 
 ```json
-{ "messages": [ { "id": "msg_001", "from": { "user_id": "usr_005", "name": "Marta (fictional)", "role": "family" }, "text": "…", "created_at": "2026-10-17T15:02:00-03:00", "read": true } ] }
+{ "messages": [ { "id": "msg_001", "from": { "user_id": "usr_005", "name": "Marta (fictional)", "role": "family" }, "text": "…", "created_at": "2026-10-17T15:02:00-03:00", "read": true, "mine": false } ] }
 ```
 
-The latest `limit` messages (default 100, max 200), **oldest first**. Listing marks the other people's messages as read by the caller. `read`: on the caller's own message, someone else has opened the thread since it was sent; on anyone else's, the caller had already seen it before this request (so the UI can mark new ones). The web polls this every few seconds.
+The latest `limit` messages (default 100, max 200), **oldest first**. Listing marks the other people's messages as read by the caller. `read`: on the caller's own message, someone else has opened the thread since it was sent; on anyone else's, the caller had already seen it before this request (so the UI can mark new ones). `mine`: the caller sent it. The web polls this every few seconds.
 
 ### `POST /patients/{patient_id}/messages`
 
