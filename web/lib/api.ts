@@ -89,3 +89,17 @@ export async function getMe(): Promise<Me> {
   await connection(); // the logged-in person is per request
   return request<Me>(`/me`);
 }
+
+/** The logged-in person, or null when this device has no valid session. Never redirects, so the login
+ *  page can use it to skip the form; a backend that cannot be reached also counts as "no session". */
+export async function getSession(): Promise<Me | null> {
+  await connection();
+  const session = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (!session) return null;
+  try {
+    const res = await fetch(`${API_URL}/me`, { cache: "no-store", headers: { Cookie: `${SESSION_COOKIE}=${session}` } });
+    return res.ok ? ((await res.json()) as Me) : null;
+  } catch {
+    return null;
+  }
+}

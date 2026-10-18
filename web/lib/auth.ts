@@ -3,9 +3,10 @@
 // session cookie set by /auth/verify lands on the web origin. Nothing here says whether a phone has an
 // account (AGENTS.md section 6): the backend answers the same way, and so do these messages.
 
-import type { Route } from "next";
 import { ApiError, BROWSER_API, errorFrom, NETWORK_ERROR_MESSAGE } from "./api-shared";
-import type { CodeSent, Membership, Verified } from "./types";
+import type { CodeSent, Verified } from "./types";
+
+export { landingFor, safeNext } from "./landing";
 
 export type SignupData = { name: string; email: string; phone: string };
 
@@ -100,17 +101,4 @@ export function authErrorMessage(err: unknown): string {
 /** Errors after which this code can no longer work: show the "código vencido" state. */
 export function isDeadCode(err: unknown): boolean {
   return err instanceof ApiError && (err.code === "code_expired" || err.code === "too_many_attempts");
-}
-
-/** Only same-site paths, never "//host" or a full URL (no open redirect through ?next=). */
-export function safeNext(next: string | null | undefined): string | undefined {
-  return next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/login") ? next : undefined;
-}
-
-/** Where to go after login: a lone patient-role membership opens the patient view, everyone else My patients. */
-export function landingFor(memberships: Membership[], next?: string): Route {
-  if (memberships.length === 1 && memberships[0].role === "patient") {
-    return `/patients/${memberships[0].patient_id}/me` as Route;
-  }
-  return (next ?? "/patients") as Route;
 }
