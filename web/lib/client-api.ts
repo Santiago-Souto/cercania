@@ -14,19 +14,22 @@ export class ClientApiError extends Error {
   }
 }
 
-async function call<T>(path: string, init?: RequestInit): Promise<T> {
+/** `quiet`: a 401 is just an error, no redirect to /login. For chrome around the page (the account
+ * bar), which also renders during logged-out screens and transitions (CIA-61). */
+async function call<T>(path: string, init?: RequestInit & { quiet?: boolean }): Promise<T> {
+  const { quiet = false, ...rest } = init ?? {};
   let res: Response;
   try {
     res = await fetch(`${BROWSER_API}${path}`, {
-      ...init,
+      ...rest,
       cache: "no-store",
-      headers: { "Content-Type": "application/json", ...init?.headers },
+      headers: { "Content-Type": "application/json", ...rest.headers },
     });
   } catch {
     throw new ClientApiError("network", "No pudimos conectar con el servidor. Probá de nuevo.");
   }
   if (res.status === 401) {
-    onUnauthorized();
+    if (!quiet) onUnauthorized();
     throw new ClientApiError("unauthenticated", "Iniciá sesión para continuar.");
   }
   if (!res.ok) {
@@ -39,9 +42,9 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-/** GET /me: who is logged in and their roles (memberships). */
+/** GET /me: who is logged in and their roles (memberships). Never redirects: logged out, it just fails. */
 export function fetchMe() {
-  return call<Me>(`/me`);
+  return call<Me>(`/me`, { quiet: true });
 }
 
 export function fetchNotifications(opts: { since?: string; unreadOnly?: boolean }) {
