@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
 import { getAdminPeople, getMe } from "@/lib/api";
-import { AssignRole, DeletePreRegistration, PreRegisterForm, RemoveRole } from "./admin-forms";
+import { AssignRole, DeletePreRegistration, MakeAdmin, PreRegisterForm, RemoveRole } from "./admin-forms";
 import { ADMIN_ROLE_LABEL } from "./labels";
 
 export default async function AdminPage() {
@@ -119,6 +119,7 @@ export default async function AdminPage() {
                   </ItemGroup>
                 )}
                 <AssignRole person={person} patients={patients} />
+                {!person.is_admin && <MakeAdmin person={person} />}
               </CardContent>
             </Card>
           ))}

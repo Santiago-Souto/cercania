@@ -4,7 +4,7 @@
 // as `conflict` with the current state, and is sent again with `confirm` only after the admin agrees.
 
 import { revalidatePath } from "next/cache";
-import { adminDeletePreRegistration, adminPreRegister, adminRemoveMembership, adminSetMembership, ApiError } from "@/lib/api";
+import { adminDeletePreRegistration, adminMakeAdmin, adminPreRegister, adminRemoveMembership, adminSetMembership, ApiError } from "@/lib/api";
 import { checkPhone } from "@/lib/team";
 import type { AdminRole, OverwriteCurrent, Role } from "@/lib/types";
 
@@ -25,6 +25,16 @@ function asResult(e: unknown): AdminResult {
 export async function setMembershipAction(personId: string, patientId: string, role: Role, confirm = false): Promise<AdminResult> {
   try {
     await adminSetMembership(personId, patientId, role, confirm);
+  } catch (e) {
+    return asResult(e);
+  }
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+export async function makeAdminAction(personId: string, confirm = false): Promise<AdminResult> {
+  try {
+    await adminMakeAdmin(personId, confirm);
   } catch (e) {
     return asResult(e);
   }

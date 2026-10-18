@@ -112,7 +112,7 @@ def set_membership(session: Session, person: Person, patient_id: str, role: Role
 def apply_role(session: Session, person: Person, role: str, patient_id: str | None) -> None:
     """Give an existing person a role from a pre-registration (or an admin's confirmed change).
 
-    Callers validate first; `admin` is only ever applied to a person being created at sign-up.
+    Callers validate and confirm first (an admin role on an existing person needs confirmation).
     """
     if role == ADMIN:
         person.is_admin = True

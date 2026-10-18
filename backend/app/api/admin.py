@@ -1,7 +1,7 @@
 """Admin routes (CIA-48): list people and assign roles. Nothing else.
 
-Admins are a global flag on the person (`person.is_admin`), set by hand in the database or
-from an admin pre-registration at sign-up; no endpoint turns an existing person into an admin.
+Admins are a global flag on the person (`person.is_admin`): set by hand in the database, from an
+admin pre-registration at sign-up, or by another admin on an existing person (with confirmation).
 Being admin opens no patient, report, alert, care-plan or message route: those still need a
 membership. A change that would replace something that exists answers 409 with the current
 state and is applied only when repeated with `confirm_overwrite: true`. Every change is logged
@@ -81,6 +81,25 @@ def set_membership(person_id: str, patient_id: str, body: schemas.AdminMembershi
     return roles.person_state(db, person)
 
 
+@router.put("/admin/people/{person_id}/admin")
+def make_admin(person_id: str, body: schemas.MakeAdminIn, admin_id: str = Depends(require_admin),
+               db: Session = Depends(get_db)) -> dict:
+    """Another admin makes an existing person an admin. Always confirmed first: the 409 shows who
+    they are and their current roles. Their memberships stay as they are."""
+    person = db.get(Person, person_id)
+    if person is None:
+        raise api_error(404, "not_found", "No encontramos a esa persona.")
+    if person.is_admin:
+        return roles.person_state(db, person)
+    if not body.confirm_overwrite:
+        raise _overwrite("Vas a hacer administradora a una persona que ya está registrada.", roles.person_state(db, person))
+    before = roles.person_state(db, person)
+    person.is_admin = True
+    roles.log(db, "admin_granted", actor_id=admin_id, person_id=person.id, before=before, after={"is_admin": True})
+    db.commit()
+    return roles.person_state(db, person)
+
+
 @router.delete("/admin/people/{person_id}/memberships/{patient_id}")
 def remove_membership(person_id: str, patient_id: str, admin_id: str = Depends(require_admin),
                       db: Session = Depends(get_db)) -> dict:
@@ -101,8 +120,8 @@ def pre_register(body: schemas.PreRegistrationIn, response: Response,
                  admin_id: str = Depends(require_admin), db: Session = Depends(get_db)) -> dict:
     """Phone + role (+ patient) for someone who has not signed up. Nothing is sent.
 
-    - The phone already belongs to a person: 409 with that person (never for `admin`, which
-      cannot be given to an existing person); confirmed, the role is applied to them now.
+    - The phone already belongs to a person: 409 with that person; confirmed, the role is applied
+      to them now (`admin` makes them an admin).
     - The phone already has a pre-registration: 409 with it; confirmed, it is replaced.
     """
     phone = normalize_phone(body.phone)
@@ -110,8 +129,6 @@ def pre_register(body: schemas.PreRegistrationIn, response: Response,
 
     person = db.scalar(select(Person).where(Person.phone == phone))
     if person is not None:
-        if body.role == roles.ADMIN:
-            raise api_error(422, "cannot_promote", "Una persona que ya está registrada no se puede hacer administradora desde la app.")
         if not body.confirm_overwrite:
             raise _overwrite("Este número ya es de una persona registrada.", {"person": roles.person_state(db, person)})
         before = roles.person_state(db, person)

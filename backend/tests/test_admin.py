@@ -148,7 +148,7 @@ def test_pre_registration_patient_rules(db, body, code):
     assert r.status_code == 422 and r.json()["error"]["code"] == code
 
 
-def test_existing_phone_needs_confirmation_and_never_becomes_admin(db):
+def test_existing_phone_needs_confirmation_including_to_become_admin(db):
     r = client.post("/admin/pre-registrations", json={"phone": FAM, "role": "caregiver", "patient_id": "pat_b"},
                     headers=h("adm"))
     assert r.status_code == 409
@@ -163,11 +163,13 @@ def test_existing_phone_needs_confirmation_and_never_becomes_admin(db):
     assert r.status_code == 200
     assert ("pat_b", "caregiver") in [(m["patient_id"], m["role"]) for m in r.json()["applied_to"]["memberships"]]
 
-    for confirm in (False, True):
-        r = client.post("/admin/pre-registrations", json={"phone": FAM, "role": "admin", "confirm_overwrite": confirm},
-                        headers=h("adm"))
-        assert r.status_code == 422 and r.json()["error"]["code"] == "cannot_promote"
+    # Another admin can make an existing person admin, after the same confirmation.
+    r = client.post("/admin/pre-registrations", json={"phone": FAM, "role": "admin"}, headers=h("adm"))
+    assert r.status_code == 409
     assert not person(db, FAM).is_admin
+    r = client.post("/admin/pre-registrations", json={"phone": FAM, "role": "admin", "confirm_overwrite": True}, headers=h("adm"))
+    assert r.status_code == 200 and r.json()["applied_to"]["is_admin"] is True
+    assert len(r.json()["applied_to"]["memberships"]) == 2  # their roles stay
 
 
 def test_pending_pre_registration_needs_confirmation_to_replace(db):
@@ -266,3 +268,16 @@ def test_signup_with_a_new_patient_invite_waits_for_the_accept(db, signup):
     assert r.json()["role"] == "patient"
     members = {m["user_id"]: m["role"] for m in client.get(f"/patients/{r.json()['patient_id']}/members", headers=h("cg")).json()["members"]}
     assert members[person(db, NEW).id] == "patient" and members["cg"] == "caregiver"
+
+
+def test_admin_makes_an_existing_person_admin_after_confirming(db):
+    r = client.put("/admin/people/cg/admin", json={}, headers=h("adm"))
+    assert r.status_code == 409
+    current = r.json()["error"]["current"]
+    assert current["name"] == "Ana (ficticia)" and current["memberships"][0]["role"] == "caregiver"
+    assert not person(db, CG).is_admin
+    r = client.put("/admin/people/cg/admin", json={"confirm_overwrite": True}, headers=h("adm"))
+    assert r.status_code == 200 and r.json()["is_admin"] is True and r.json()["memberships"][0]["role"] == "caregiver"
+    assert client.get("/admin/people", headers=h("cg")).status_code == 200  # Ana can now admin
+    assert db.scalar(select(RoleChange).where(RoleChange.action == "admin_granted")).actor_id == "adm"
+    assert client.put("/admin/people/fam/admin", json={"confirm_overwrite": True}, headers=h("fam")).status_code == 403

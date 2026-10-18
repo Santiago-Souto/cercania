@@ -212,8 +212,8 @@ class Person(TimestampMixin, Base):
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
     email: Mapped[str | None] = mapped_column(String(254))  # not unique, never grants access
     # Global admin (CIA-48): lists people and assigns roles, nothing else. Set by hand in the
-    # database or from an admin pre-registration at sign-up; never by an endpoint on an
-    # existing person. Nullable so init_db can add it to an existing table; NULL = false.
+    # database, from an admin pre-registration at sign-up, or by another admin (confirmed).
+    # Nullable so init_db can add it to an existing table; NULL = false.
     is_admin: Mapped[bool | None] = mapped_column(default=False)
     # Caregiver granted by an admin before any patient is assigned (pre-registered without a
     # patient). Lets them create patients and keeps sign-up from making them a patient.

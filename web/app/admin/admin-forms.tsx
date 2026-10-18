@@ -24,6 +24,7 @@ import type { AdminPerson, AdminPreRegistration, AdminRole, OverwriteCurrent, Ro
 import {
   type AdminResult,
   deletePreRegistrationAction,
+  makeAdminAction,
   preRegisterAction,
   removeMembershipAction,
   setMembershipAction,
@@ -56,8 +57,10 @@ export function describeCurrent(current: OverwriteCurrent): string {
   return `Este usuario ya existe: ${person.name}, ${roleList(person)}.`;
 }
 
+const REPLACE = { title: "¿Reemplazar?", note: "Si confirmás, el rol nuevo reemplaza al actual.", action: "Sí, reemplazar", done: "Rol reemplazado." };
+
 /** Runs an action; on a 409 asks for confirmation and re-runs it with confirm=true. */
-function useConfirmed() {
+function useConfirmed(copy = REPLACE) {
   const [pending, setPending] = useState(false);
   const [ask, setAsk] = useState<{ text: string; retry: () => Promise<AdminResult> } | null>(null);
 
@@ -83,8 +86,10 @@ function useConfirmed() {
     <AlertDialog open={!!ask} onOpenChange={(open) => !open && setAsk(null)}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>¿Reemplazar?</AlertDialogTitle>
-          <AlertDialogDescription>{ask?.text} Si confirmás, el rol nuevo reemplaza al actual.</AlertDialogDescription>
+          <AlertDialogTitle>{copy.title}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {ask?.text} {copy.note}
+          </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>No, dejarlo como está</AlertDialogCancel>
@@ -95,10 +100,10 @@ function useConfirmed() {
               if (!retry) return;
               const res = await retry();
               if ("error" in res) toast.error(res.error);
-              else toast.success("Rol reemplazado.");
+              else toast.success(copy.done);
             }}
           >
-            Sí, reemplazar
+            {copy.action}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -131,13 +136,21 @@ function PatientSelect({ id, value, onChange, patients, optional }: {
   );
 }
 
+const MAKE_ADMIN = {
+  title: "¿Hacer administrador/a?",
+  note: "Va a poder ver la lista de usuarios y asignar roles. Sus roles con pacientes no cambian.",
+  action: "Sí, hacer administrador/a",
+  done: "Ahora es administrador/a.",
+};
+
 export function PreRegisterForm({ patients }: { patients: PatientOption[] }) {
   const id = useId();
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState<AdminRole>("caregiver");
   const [patientId, setPatientId] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const { pending, run, dialog } = useConfirmed();
+  // Making a registered person admin keeps their roles: say so instead of "reemplaza".
+  const { pending, run, dialog } = useConfirmed(role === "admin" ? MAKE_ADMIN : REPLACE);
   const showPatient = !NO_PATIENT.has(role);
 
   async function submit() {
@@ -243,6 +256,30 @@ export function AssignRole({ person, patients }: { person: AdminPerson; patients
       </Button>
       {dialog}
     </div>
+  );
+}
+
+
+/** Another admin makes an existing person admin (CIA-48); the backend asks for confirmation first. */
+export function MakeAdmin({ person }: { person: AdminPerson }) {
+  const { pending, run, dialog } = useConfirmed(MAKE_ADMIN);
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="touch"
+        disabled={pending}
+        onClick={async () => {
+          const err = await run(() => makeAdminAction(person.id), () => makeAdminAction(person.id, true), MAKE_ADMIN.done);
+          if (err) toast.error(err);
+        }}
+      >
+        {pending && <Spinner />}
+        Hacer administrador/a
+      </Button>
+      {dialog}
+    </>
   );
 }
 

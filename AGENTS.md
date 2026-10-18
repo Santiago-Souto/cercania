@@ -110,7 +110,7 @@ One web app, same data, a view per role. Roles are per patient (`patient_access`
 | Health team (doctor, nurse, hospital/institution) | See assigned patients, reports, alerts and query; reply to family messages. The **doctor** is the only role that edits the care plan after creation (each edit = new plan version) |
 | Family | Read-only summary and alerts; message the health team |
 | Patient | Only two actions: tell how they feel (audio or text) and press "I need help". **No access to reports or alerts about them.** |
-| Admin (global, not per patient) | Only lists people and assigns roles (including pre-registering a phone that has not signed up). **No access to reports, alerts, care plans or messages.** Set by hand in the database or from an `admin` pre-registration; an existing person is never made admin from the app (decided Oct 18, CIA-48) |
+| Admin (global, not per patient) | Only lists people and assigns roles (including pre-registering a phone that has not signed up). **No access to reports, alerts, care plans or messages.** Set by hand in the database, from an `admin` pre-registration, or by another admin on an existing person, always after a confirmation (decided Oct 18, CIA-48) |
 
 **Who gets which role (decided Oct 18, CIA-48), in code in `backend/app/roles.py`:**
 - **Self sign-up is always patient:** a new person with no admin pre-registration and no pending invite gets their own patient profile and the `patient` role.

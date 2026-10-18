@@ -546,7 +546,7 @@ Deletes the invite, so the caregiver can invite the number again. Returns `{ "st
 
 ## Admin
 
-A global admin (`person.is_admin`) lists people and assigns roles, **nothing else**: being admin opens no patient, report, alert, care-plan or message route (those still need a membership). Admins are set by hand in the database, or from an `admin` pre-registration at sign-up; **no endpoint turns an existing person into an admin**. Every admin route answers `403 forbidden` to non-admins, and every change is written to `role_change` (who, when, before, after). Implemented in `backend/app/api/admin.py` and `backend/app/roles.py`.
+A global admin (`person.is_admin`) lists people and assigns roles, **nothing else**: being admin opens no patient, report, alert, care-plan or message route (those still need a membership). Admins are set by hand in the database, from an `admin` pre-registration at sign-up, or by **another admin on an existing person** (`PUT /admin/people/{id}/admin`, or a confirmed `admin` pre-registration of a registered phone). Every admin route answers `403 forbidden` to non-admins, and every change is written to `role_change` (who, when, before, after). Implemented in `backend/app/api/admin.py` and `backend/app/roles.py`.
 
 **Overwrite warning:** a change that would replace something that exists answers `409 overwrite_required` with the current state in `error.current`, and is applied only when the same request is sent again with `"confirm_overwrite": true`.
 
@@ -571,6 +571,10 @@ A global admin (`person.is_admin`) lists people and assigns roles, **nothing els
 
 `{ "role": "nurse", "confirm_overwrite": false }`. Adds the membership, or changes it. Replacing a **different** role the person already has on that patient is a `409` whose `error.current` is the person (as in `people`). Returns the person. Errors: `404` (unknown person or patient), `409`, `422` (`admin` is not a membership role).
 
+### `PUT /admin/people/{person_id}/admin`
+
+`{ "confirm_overwrite": false }`. Another admin makes an existing person an admin. Always a `409` first, with the person in `error.current` (name and current roles); applied with `confirm_overwrite: true`. Their memberships do not change. Already admin: `200`, nothing changes. Returns the person. Errors: `404`, `409`. Removing admin is done by hand in the database.
+
 ### `DELETE /admin/people/{person_id}/memberships/{patient_id}`
 
 Removes it. Returns the person. Errors: `404`.
@@ -579,7 +583,7 @@ Removes it. Returns the person. Errors: `404`.
 
 `{ "phone": "+15550100099", "role": "caregiver", "patient_id": null, "confirm_overwrite": false }`. A role for a phone that has not signed up. **Nothing is sent**: the person signs up on their own and starts with this role (see `POST /auth/verify`). `role` is a membership role or `admin`. `patient_id` is **required** for family, doctor, nurse and institution (`422 patient_required`), **optional** for caregiver, and **not used** for `admin` and `patient` (`422 patient_not_used`).
 
-- Phone of a **registered person**: `409` with `error.current.person`. Confirmed, the role is applied to that person now and the answer is `200 { "applied_to": <person> }`. `admin` is always `422 cannot_promote` for a registered person, confirmed or not.
+- Phone of a **registered person**: `409` with `error.current.person`. Confirmed, the role is applied to that person now and the answer is `200 { "applied_to": <person> }` (`admin` makes them an admin; their memberships stay).
 - Phone with a **pending pre-registration**: `409` with `error.current.pre_registration`. Confirmed, it is replaced (`200`).
 - Otherwise: `201 { "pre_registration": {...} }`.
 

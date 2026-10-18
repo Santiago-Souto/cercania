@@ -336,6 +336,10 @@ class PreRegistrationIn(BaseModel):
     confirm_overwrite: bool = False
 
 
+class MakeAdminIn(BaseModel):
+    confirm_overwrite: bool = False
+
+
 class PreRegistrationPatch(BaseModel):
     role: PreRegistrationRole
     patient_id: str | None = None

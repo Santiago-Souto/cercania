@@ -164,6 +164,13 @@ export async function adminSetMembership(personId: string, patientId: string, ro
   });
 }
 
+export async function adminMakeAdmin(personId: string, confirm: boolean): Promise<AdminPerson> {
+  return request<AdminPerson>(`/admin/people/${personId}/admin`, {
+    method: "PUT",
+    body: JSON.stringify({ confirm_overwrite: confirm }),
+  });
+}
+
 export async function adminRemoveMembership(personId: string, patientId: string): Promise<AdminPerson> {
   return request<AdminPerson>(`/admin/people/${personId}/memberships/${patientId}`, { method: "DELETE" });
 }
