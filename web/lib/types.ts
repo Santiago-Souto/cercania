@@ -44,6 +44,8 @@ export type ReportItem = {
   details?: { doses?: MedicationDose[] } | null;
   quote: string | null;
   quote_verified: boolean | null;
+  /** `transcript` (extracted, quote checked by code) or `correction` (typed by a caregiver, no quote). */
+  source?: "transcript" | "correction" | null;
   /** Where the quote is in the voice note (docs/contract.md, "Transcript segments"); null without audio times. */
   audio_start_sec?: number | null;
   audio_end_sec?: number | null;

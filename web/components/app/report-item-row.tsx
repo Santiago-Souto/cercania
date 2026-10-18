@@ -22,7 +22,9 @@ export function ReportItemRow({
 }) {
   const label = CHECKLIST_LABEL[it.item];
   const mentioned = it.value !== null;
-  const unverified = mentioned && !it.quote_verified;
+  // A correction is typed by a caregiver and has no quote (quote_verified null): not "unverified".
+  const corrected = mentioned && it.source === "correction";
+  const unverified = mentioned && !corrected && it.quote_verified !== true;
   const doses = it.details?.doses ?? [];
   return (
     <div>
@@ -35,8 +37,9 @@ export function ReportItemRow({
             <div className="flex flex-wrap items-center gap-1.5">
               {it.level && <Badge variant="neutral">Nivel: {levelLabel(it.level)}</Badge>}
               {doses.map((d) => (
-                <Badge key={`${d.plan_ref}-${d.time}`} variant="outline">
+                <Badge key={`${d.plan_ref}-${d.time}`} variant={d.quote_verified === false ? "warning" : "outline"}>
                   {d.time} · {d.given === true ? "dada" : d.given === false ? "no dada" : "sin aclarar"}
+                  {d.quote_verified === false && " · sin verificar"}
                 </Badge>
               ))}
             </div>
@@ -71,6 +74,8 @@ export function ReportItemRow({
             <Badge variant="missing" size="lg">
               No mencionado
             </Badge>
+          ) : corrected ? (
+            <Badge variant="neutral">Corregido</Badge>
           ) : unverified ? (
             <Badge variant="warning">Sin verificar</Badge>
           ) : (
