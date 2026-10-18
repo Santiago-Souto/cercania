@@ -729,11 +729,6 @@ def init_db() -> None:
     """Create missing tables and nullable columns, and relax NOT NULL where the model became
     nullable (Postgres). Safe to call repeatedly; never drops anything."""
     Base.metadata.create_all(engine)
-    # create_all adds indexes only with new tables; add ones introduced later (e.g. uq_invite_pending).
-    with engine.begin() as conn:
-        for table in Base.metadata.sorted_tables:
-            for index in table.indexes:
-                index.create(conn, checkfirst=True)
     # No migration tool: add nullable columns that were introduced after a table existed.
     existing = inspect(engine)
     with engine.begin() as conn:
@@ -750,6 +745,12 @@ def init_db() -> None:
                 for col in table.columns:
                     if col.nullable and db_nullable.get(col.name) is False:
                         conn.execute(text(f'ALTER TABLE "{table.name}" ALTER COLUMN "{col.name}" DROP NOT NULL'))
+    # create_all adds indexes only with new tables; add ones introduced later (e.g. uq_invite_pending).
+    # After the columns: an index may be on a column just added (e.g. ix_patient_phone).
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            for index in table.indexes:
+                index.create(conn, checkfirst=True)
 
 
 def role_for(session: Session, person_id: str, patient_id: str) -> Role | None:
