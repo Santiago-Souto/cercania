@@ -62,13 +62,6 @@ def db(factory):
     session.close()
 
 
-@pytest.fixture
-def whatsapp_task(monkeypatch):
-    calls = []
-    monkeypatch.setattr(notify, "send_patient_message_whatsapp", lambda message_id: calls.append(message_id))
-    return calls
-
-
 def fake_triage(monkeypatch, *, emergency=False, status=TriageStatus.ok, reason=None, quote=None):
     calls = []
 
@@ -91,13 +84,13 @@ def no_model(monkeypatch):
 
 def web_rows(db, message_id):
     return db.scalars(select(Notification).where(Notification.patient_message_id == message_id,
-                                                 Notification.channel == NotificationChannel.web)).all()
+                                                 Notification.channel == NotificationChannel.web.value)).all()
 
 
 # --- help: fixed rule ------------------------------------------------------------------------
 
 
-def test_help_notifies_every_caregiver_and_health_team_member_without_the_model(db, whatsapp_task, monkeypatch):
+def test_help_notifies_every_caregiver_and_health_team_member_without_the_model(db, monkeypatch):
     no_model(monkeypatch)
     r = client.post(URL, json={"kind": "help"}, headers=as_("ptl"))
     assert r.status_code == 200
@@ -109,16 +102,15 @@ def test_help_notifies_every_caregiver_and_health_team_member_without_the_model(
     assert {n.person_id for n in rows} == TEAM
     assert all(n.alert_id is None and n.report_id is None and n.status is NotificationStatus.sent for n in rows)
     assert rows[0].title == "Pedido de ayuda: Rosa (ficticia)"
-    assert whatsapp_task == [body["id"]]
 
 
-def test_caregiver_testing_the_patient_view_is_not_notified_of_their_own_help(db, whatsapp_task, monkeypatch):
+def test_caregiver_testing_the_patient_view_is_not_notified_of_their_own_help(db, monkeypatch):
     no_model(monkeypatch)
     body = client.post(URL, json={"kind": "help"}, headers=as_("cg")).json()
     assert set(body["notified"]) == TEAM - {"cg"}
 
 
-def test_help_reaches_the_team_inbox(db, whatsapp_task, monkeypatch):
+def test_help_reaches_the_team_inbox(db, monkeypatch):
     no_model(monkeypatch)
     pm = client.post(URL, json={"kind": "help"}, headers=as_("ptl")).json()
     inbox = client.get("/me/notifications", headers=as_("doc")).json()
@@ -131,7 +123,7 @@ def test_help_reaches_the_team_inbox(db, whatsapp_task, monkeypatch):
 # --- feeling: triaged ------------------------------------------------------------------------
 
 
-def test_feeling_without_emergency_is_stored_and_nobody_is_notified(db, whatsapp_task, monkeypatch):
+def test_feeling_without_emergency_is_stored_and_nobody_is_notified(db, monkeypatch):
     calls = fake_triage(monkeypatch)
     r = client.post(URL, json={"kind": "feeling", "text": "  me duele un poco la rodilla "}, headers=as_("ptl"))
     body = r.json()
@@ -141,10 +133,10 @@ def test_feeling_without_emergency_is_stored_and_nobody_is_notified(db, whatsapp
     assert calls == [("me duele un poco la rodilla", Role.patient)]
     stored = db.get(PatientMessage, body["id"])
     assert stored.text == "me duele un poco la rodilla" and stored.triage_status is TriageStatus.ok
-    assert web_rows(db, body["id"]) == [] and whatsapp_task == []
+    assert web_rows(db, body["id"]) == []
 
 
-def test_red_flag_feeling_notifies_the_team_with_fixed_text(db, whatsapp_task, monkeypatch):
+def test_red_flag_feeling_notifies_the_team_with_fixed_text(db, monkeypatch):
     fake_triage(monkeypatch, emergency=True, reason="Dolor de pecho", quote="me duele el pecho")
     body = client.post(URL, json={"kind": "feeling", "text": "me duele el pecho y me falta el aire"},
                        headers=as_("ptl")).json()
@@ -156,10 +148,9 @@ def test_red_flag_feeling_notifies_the_team_with_fixed_text(db, whatsapp_task, m
     rows = web_rows(db, body["id"])
     assert rows[0].title == "Posible emergencia: Rosa (ficticia)"
     assert "Motivo: Dolor de pecho." in rows[0].body and "falta el aire" not in rows[0].body  # no patient words
-    assert whatsapp_task == [body["id"]]
 
 
-def test_failed_triage_still_tells_the_patient_to_call_emergencies(db, whatsapp_task, monkeypatch):
+def test_failed_triage_still_tells_the_patient_to_call_emergencies(db, monkeypatch):
     fake_triage(monkeypatch, status=TriageStatus.failed)
     body = client.post(URL, json={"kind": "feeling", "text": "no me siento bien"}, headers=as_("ptl")).json()
     assert body["red_flag"] is False and body["notified"] == []
@@ -167,7 +158,7 @@ def test_failed_triage_still_tells_the_patient_to_call_emergencies(db, whatsapp_
     assert db.get(PatientMessage, body["id"]).triage_status is TriageStatus.failed
 
 
-def test_feeling_audio_is_transcribed_then_triaged(db, whatsapp_task, monkeypatch):
+def test_feeling_audio_is_transcribed_then_triaged(db, monkeypatch):
     calls = fake_triage(monkeypatch)
     transcribed = []
 
@@ -185,7 +176,7 @@ def test_feeling_audio_is_transcribed_then_triaged(db, whatsapp_task, monkeypatc
     assert stored.from_audio is True and stored.text == "hoy me siento cansada"
 
 
-def test_transcription_failure_asks_to_retry_and_mentions_emergencies(db, whatsapp_task, monkeypatch):
+def test_transcription_failure_asks_to_retry_and_mentions_emergencies(db, monkeypatch):
     fake_triage(monkeypatch)
 
     def fail(*a, **k):
@@ -207,7 +198,7 @@ def test_transcription_failure_asks_to_retry_and_mentions_emergencies(db, whatsa
     ({"kind": "feeling", "text": "   "}, "text_missing"),
     ({"kind": "feeling", "text": "a" * 1001}, "text_too_long"),
 ])
-def test_bad_bodies_get_clear_errors(db, whatsapp_task, monkeypatch, body, code):
+def test_bad_bodies_get_clear_errors(db, monkeypatch, body, code):
     fake_triage(monkeypatch)
     r = client.post(URL, json=body, headers=as_("ptl"))
     assert r.status_code == 400 and r.json()["error"]["code"] == code
@@ -217,19 +208,19 @@ def test_bad_bodies_get_clear_errors(db, whatsapp_task, monkeypatch, body, code)
 
 
 @pytest.mark.parametrize("person, status", [("fam", 403), ("doc", 403), ("nur", 403), ("other", 404)])
-def test_only_patient_and_caregivers_can_post(db, whatsapp_task, monkeypatch, person, status):
+def test_only_patient_and_caregivers_can_post(db, monkeypatch, person, status):
     no_model(monkeypatch)
     assert client.post(URL, json={"kind": "help"}, headers=as_(person)).status_code == status
 
 
-def test_unknown_patient_is_404(db, whatsapp_task):
+def test_unknown_patient_is_404(db):
     assert client.post("/patients/nope/patient-messages", json={"kind": "help"}, headers=as_("ptl")).status_code == 404
 
 
 # --- list + seen_by --------------------------------------------------------------------------
 
 
-def test_list_latest_first_and_team_reading_marks_seen(db, whatsapp_task, monkeypatch):
+def test_list_latest_first_and_team_reading_marks_seen(db, monkeypatch):
     fake_triage(monkeypatch)
     first = client.post(URL, json={"kind": "feeling", "text": "dormí bien"}, headers=as_("ptl")).json()["id"]
     second = client.post(URL, json={"kind": "help"}, headers=as_("ptl")).json()["id"]
@@ -249,39 +240,6 @@ def test_list_latest_first_and_team_reading_marks_seen(db, whatsapp_task, monkey
 
 def test_family_cannot_read_patient_messages(db):
     assert client.get(URL, headers=as_("fam")).status_code == 403
-
-
-# --- WhatsApp, best effort -------------------------------------------------------------------
-
-
-def test_whatsapp_is_recorded_as_skipped_when_disabled_and_never_repeated(factory, monkeypatch):
-    monkeypatch.delenv("NOTIFY_WHATSAPP", raising=False)
-    with factory() as s:
-        s.add(PatientMessage(id="pm_1", patient_id="pat_x", sender_id="ptl", kind="help"))
-        s.commit()
-    notify.send_patient_message_whatsapp("pm_1", session_factory=factory)
-    notify.send_patient_message_whatsapp("pm_1", session_factory=factory)
-    with factory() as s:
-        rows = s.scalars(select(Notification).where(Notification.channel == NotificationChannel.whatsapp)).all()
-    assert {n.person_id for n in rows} == TEAM and len(rows) == len(TEAM)
-    assert all(n.status is NotificationStatus.skipped and n.error == notify.WHATSAPP_DISABLED for n in rows)
-
-
-def test_whatsapp_sends_when_enabled(factory, monkeypatch):
-    monkeypatch.setenv("NOTIFY_WHATSAPP", "1")
-    sent = []
-
-    class Sender:
-        def send_text_result(self, to, text):
-            sent.append((to, text))
-            return type("R", (), {"ok": True, "error": None, "error_code": None})()
-
-    with factory() as s:
-        s.add(PatientMessage(id="pm_2", patient_id="pat_x", sender_id="ptl", kind="help"))
-        s.commit()
-    notify.send_patient_message_whatsapp("pm_2", session_factory=factory, whatsapp_sender=Sender())
-    assert len(sent) == len(TEAM)
-    assert all(text.startswith("Pedido de ayuda: Rosa (ficticia)") for _, text in sent)
 
 
 def test_overlapping_polls_never_fail_on_seen(db, factory):

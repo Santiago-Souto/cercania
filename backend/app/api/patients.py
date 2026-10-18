@@ -7,13 +7,13 @@ See docs/contract.md. Permissions via `patient_access`.
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app import notify, schemas, whatsapp
+from app import schemas
 from app.api.auth import normalize_phone
 from app.deps import PatientContext, current_person_id, get_db, patient_access
 from app.errors import api_error
@@ -168,40 +168,19 @@ def _pending_invite(db: Session, patient_id: str, phone: str) -> Invite | None:
                                           Invite.status == InviteStatus.pending))
 
 
-def invite_text(inviter: str, patient: str, role: Role) -> str:
-    return (f"{inviter} te invitó a CercanIA para acompañar a {patient} ({ROLE_ES[role]}). "
-            "Entrá a la web de CercanIA e ingresá con este número de WhatsApp para ver su información.")
-
-
-ROLE_ES = {Role.caregiver: "cuidador/a", Role.family: "familia", Role.patient: "paciente",
-           Role.doctor: "médico/a", Role.nurse: "enfermería", Role.institution: "hospital o institución"}
-
-
-def send_invite_whatsapp(phone: str, text: str) -> None:
-    """Best effort, after the response. Off unless NOTIFY_WHATSAPP=1 (the Meta test number only
-    reaches allowed-list phones); the invite is seen in the app anyway (GET /me/invites)."""
-    if not notify.whatsapp_enabled():
-        log.info("Invite WhatsApp skipped for %s (NOTIFY_WHATSAPP is off)", whatsapp.mask(phone))
-        return
-    res = whatsapp.send_text_result(phone.lstrip("+"), text)
-    if not res.ok:
-        log.warning("Invite WhatsApp to %s failed: [%s] %s", whatsapp.mask(phone), res.error_code, res.error)
-
-
 @router.post("/patients/{patient_id}/invites", response_model=schemas.Invite, status_code=201)
 def create_invite(
     body: schemas.InviteCreate,
-    background: BackgroundTasks,
     response: Response,
     ctx: PatientContext = Depends(patient_access(Permission.invite)),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Pending membership for a WhatsApp number; it becomes `patient_access` only when the
+    """Pending membership for a phone number; it becomes `patient_access` only when the
     person with that phone accepts it in the app (api/me.py `accept_invite`). Re-inviting a pending number updates
     its role instead of adding a second invite."""
     if "@" in body.contact:
         raise api_error(400, "phone_invalid",
-                        "Invitá por número de WhatsApp, no por email: el email no se puede verificar.")
+                        "Invitá por número de celular, no por email: el email no se puede verificar.")
     phone = normalize_phone(body.contact)
     role = Role(body.role)
     already = db.scalar(
@@ -229,7 +208,4 @@ def create_invite(
         invite.role = role
         db.commit()
         response.status_code = 200
-    inviter = db.get(Person, ctx.person_id)
-    background.add_task(send_invite_whatsapp, phone,
-                        invite_text(inviter.display_name if inviter else "Alguien", ctx.patient.display_name, role))
     return serialize_invite(invite)

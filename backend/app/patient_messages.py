@@ -6,8 +6,7 @@ The patient has two actions:
   same triage as every message. If the model says emergency, the team is notified as for help.
 
 What the patient reads back is fixed text written here, never model output. The team is every
-caregiver and health-team member of the patient (models.patient_team): web inbox now, WhatsApp
-best effort after the response (notify.py).
+caregiver and health-team member of the patient (models.patient_team): web inbox (notify.py).
 """
 
 from __future__ import annotations
@@ -15,7 +14,7 @@ from __future__ import annotations
 import json
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.orm import Session
@@ -54,7 +53,6 @@ FEELING_TRIAGE_FAILED_MESSAGE = "Gracias, tu equipo va a ver tu mensaje. " + tri
 async def create_patient_message(
     patient_id: str,
     request: Request,
-    background: BackgroundTasks,
     person_id: str = Depends(current_person_id),
     db: Session = Depends(get_db),
 ):
@@ -135,8 +133,6 @@ async def create_patient_message(
     db.commit()
     log.info("Patient message %s stored kind=%s red_flag=%s notified=%d",
              message.id, kind.value, message.red_flag, len(notified))
-    if notified:
-        background.add_task(notify.send_patient_message_whatsapp, message.id)
     return {"id": message.id, "kind": kind.value, "notified": notified,
             "red_flag": message.red_flag, "message_for_patient": reply}
 

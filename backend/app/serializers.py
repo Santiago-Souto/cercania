@@ -173,7 +173,7 @@ def serialize_notification(n: Notification, patient_display_name: str) -> dict:
         "report_id": n.report_id,
         "patient_message_id": n.patient_message_id,
         "recipient": n.recipient,
-        "channel": n.channel.value,
+        "channel": n.channel,
         "status": n.status.value,
         "title": n.title,
         "body": n.body,

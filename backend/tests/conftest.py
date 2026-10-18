@@ -6,8 +6,6 @@ import pytest
 # (.env never overrides it: models.py loads it with override=False.)
 os.environ["WEB_ORIGINS"] = "http://localhost:3000"
 
-from app import whatsapp  # noqa: E402
-
 
 def pytest_collection_modifyitems(config, items):
     """Live tests spend real quota (Groq's free tier allows ~2 extractions per
@@ -21,19 +19,14 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(autouse=True)
-def whatsapp_env(request, monkeypatch):
-    """Fake credentials so no test can reach Meta or Groq with real ones.
+def fake_env(request, monkeypatch):
+    """Fake credentials so no test can reach Groq with real ones.
 
     Tests marked `live` keep the real GROQ_API_KEY: they decide to run because
     that key exists, so replacing it would make them fail with "Invalid API Key".
     """
-    monkeypatch.setenv("WHATSAPP_TOKEN", "test-token")
-    monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "1111")
-    monkeypatch.setenv("WHATSAPP_VERIFY_TOKEN", "verify-me")
-    monkeypatch.setenv("WHATSAPP_APP_SECRET", "app-secret")
     if request.node.get_closest_marker("live") is None:
         monkeypatch.setenv("GROQ_API_KEY", "groq-test")
     # Never reach the real Supabase bucket from a test; storage tests set fake values.
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
-    monkeypatch.setattr(whatsapp, "seen_messages", whatsapp.SeenMessages())

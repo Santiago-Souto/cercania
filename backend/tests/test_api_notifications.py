@@ -43,7 +43,7 @@ def db():
     for i in range(1, 6):  # one alert per row: (alert, recipient, person, channel) is unique
         s.add(Alert(id=i, report_version_id="rv_1", type=AlertType.emergency, detail="caída"))
 
-    def add(nid, person, minutes, channel=NotificationChannel.web, read=False):
+    def add(nid, person, minutes, channel=NotificationChannel.web.value, read=False):
         s.add(Notification(id=nid, alert_id=int(nid[1]), report_id="rep_1", patient_id="pat_x", person_id=person,
                            recipient="family", channel=channel, status=NotificationStatus.sent,
                            title="Emergencia: Rosa (ficticia)", body="b",
@@ -53,7 +53,7 @@ def db():
     add("n1", "fam", 0)
     add("n2", "fam", 10)
     add("n3", "fam", 20, read=True)
-    add("n4", "fam", 30, channel=NotificationChannel.whatsapp)
+    add("n4", "fam", 30, channel="legacy")  # a row from a retired channel
     add("n5", "other", 5)
     s.commit()
     app.dependency_overrides[get_db] = lambda: s
@@ -104,7 +104,7 @@ def test_mark_read_is_idempotent(client, db):
     assert client.get("/me/notifications", headers=FAM).json()["unread_count"] == 1
 
 
-def test_cannot_read_someone_elses_or_whatsapp_row(client):
+def test_cannot_read_someone_elses_or_legacy_row(client):
     assert client.post("/me/notifications/n5/read", headers=FAM).status_code == 404
     assert client.post("/me/notifications/n4/read", headers=FAM).status_code == 404
     r = client.post("/me/notifications/nope/read", headers=FAM)

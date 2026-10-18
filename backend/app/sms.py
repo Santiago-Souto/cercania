@@ -1,7 +1,7 @@
 """SMS through Twilio Programmable Messaging. Only used for the 6-digit login code.
 
-The bot, invites and emergency notifications stay on WhatsApp (whatsapp.py). The
-code is generated, hashed and checked by us (api/auth.py); Twilio only delivers text.
+Invites are matched on the phone in the app and emergency notifications go to the web
+inbox (notify.py). The code is generated, hashed and checked by us (api/auth.py); Twilio only delivers text.
 """
 
 from __future__ import annotations
@@ -13,9 +13,13 @@ from dataclasses import dataclass
 
 import httpx
 
-from app.whatsapp import mask
 
 log = logging.getLogger(__name__)
+
+def mask(phone: str) -> str:
+    """Phone numbers are personal data: logs only keep the last 4 digits."""
+    return "***" + phone[-4:] if phone else "***"
+
 
 TWILIO_API = "https://api.twilio.com/2010-04-01"
 

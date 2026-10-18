@@ -31,7 +31,6 @@ def h(person_id):
 @pytest.fixture(autouse=True)
 def dev_identity(monkeypatch):
     monkeypatch.setenv("ALLOW_DEV_IDENTITY_HEADER", "1")
-    monkeypatch.delenv("NOTIFY_WHATSAPP", raising=False)
 
 
 @pytest.fixture
@@ -227,18 +226,6 @@ def test_my_invites_need_a_session(db, monkeypatch):
     monkeypatch.delenv("ALLOW_DEV_IDENTITY_HEADER")
     assert client.get("/me/invites").status_code == 401
     assert client.post("/me/invites/inv_x/accept").status_code == 401
-
-
-def test_invite_whatsapp_only_when_enabled(db, monkeypatch):
-    sent = []
-    monkeypatch.setattr(patients_api.whatsapp, "send_text_result",
-                        lambda to, text: sent.append((to, text)) or patients_api.whatsapp.SendResult(True))
-    client.post("/patients/pat_a/invites", json={"contact": "+59899111111", "role": "family"}, headers=h("cg"))
-    assert sent == []
-    monkeypatch.setenv("NOTIFY_WHATSAPP", "1")
-    client.post("/patients/pat_a/invites", json={"contact": "+59899222222", "role": "family"}, headers=h("cg"))
-    assert sent[0][0] == "59899222222"
-    assert "Rosa (ficticia)" in sent[0][1] and "familia" in sent[0][1]
 
 
 def test_db_allows_one_pending_invite_per_patient_and_phone(db):

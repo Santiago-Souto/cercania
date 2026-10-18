@@ -27,7 +27,7 @@ def _aware(dt: datetime) -> datetime:
 
 
 def _mine(person_id: str):
-    return (Notification.person_id == person_id, Notification.channel == NotificationChannel.web)
+    return (Notification.person_id == person_id, Notification.channel == NotificationChannel.web.value)
 
 
 def _serialize(db: Session, n: Notification) -> dict:
@@ -67,7 +67,7 @@ def read_all(person_id: str = Depends(current_person_id), db: Session = Depends(
 @router.post("/me/notifications/{notification_id}/read", response_model=schemas.Notification)
 def mark_read(notification_id: str, person_id: str = Depends(current_person_id), db: Session = Depends(get_db)):
     n = db.get(Notification, notification_id)
-    if n is None or n.person_id != person_id or n.channel != NotificationChannel.web:
+    if n is None or n.person_id != person_id or n.channel != NotificationChannel.web.value:
         raise api_error(404, "not_found", "No encontramos esa notificación.")
     if n.read_at is None:
         n.read_at = utcnow()

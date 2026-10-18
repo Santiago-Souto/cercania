@@ -1,4 +1,4 @@
-"""Hand-off from any input channel (web app, WhatsApp) to the brain.
+"""Hand-off from any input channel (today only the web app) to the brain.
 
 Every channel ends here after it has a transcript, so there is a single path
 into `process_report` (docs/contract.md).
@@ -38,7 +38,7 @@ def vocabulary_for(session: Session, patient_id: str) -> list[str]:
 
 def web_message_id(person_id: str, client_id: str) -> str:
     """Web client ids are chosen by the browser; namespacing by person keeps one
-    user's id from ever matching another user's report or a WhatsApp message id."""
+    user's id from ever matching another user's report."""
     return f"web:{person_id}:{client_id}"
 
 
