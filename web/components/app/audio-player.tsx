@@ -3,6 +3,8 @@
 // The report's `audio_url` is an API path that returns a 5-minute signed URL (GET /reports/{id}/audio,
 // CIA-44). URLs are fetched ahead of time so a tap can start playback right away: iOS Safari only
 // plays audio started directly by the tap, not after waiting on the network.
+// A `blob:` path is a local recording (the note just sent, before the server stored it): played as is;
+// the caller revokes the object URL.
 // Fake data has no audio: the bar says so instead of playing anything invented.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { PauseIcon, PlayIcon } from "lucide-react";
@@ -65,6 +67,7 @@ export function AudioPlayer({ audioPaths, children }: { audioPaths: (string | nu
   }, []);
 
   const load = useCallback(async (path: string) => {
+    if (path.startsWith("blob:")) return path; // local recording: nothing to fetch
     const { url } = await fetchAudioUrl(path);
     urls.current.set(path, { url, at: Date.now() });
     return url;
