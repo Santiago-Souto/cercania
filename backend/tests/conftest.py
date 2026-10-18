@@ -33,4 +33,7 @@ def whatsapp_env(request, monkeypatch):
     monkeypatch.setenv("WHATSAPP_APP_SECRET", "app-secret")
     if request.node.get_closest_marker("live") is None:
         monkeypatch.setenv("GROQ_API_KEY", "groq-test")
+    # Never reach the real Supabase bucket from a test; storage tests set fake values.
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
     monkeypatch.setattr(whatsapp, "seen_messages", whatsapp.SeenMessages())

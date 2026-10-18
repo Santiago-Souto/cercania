@@ -25,6 +25,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Comparison vs care plan / history / checklist (code) | Functional | `backend/app/compare.py`: omissions, changes, missing checklist items. No model. Live on Render: omission and "Apetito: bajo, 3 turnos seguidos" fired on an unplanned report |
 | Confirmation reply to caregiver ("I recorded...") | Functional | Caregiver identified by phone, "which patient?" when several; `confirmation_text` written by code, with the fixed red-flag line on emergencies |
 | Report from the web app (text or audio) | Functional | `POST /patients/{id}/reports` runs the same `process_report`; idempotent on `client_id` (a repeat returned the same report). Verified live on Render for text and audio (CIA-20). Web screen `/patients/{id}/reports/new` (CIA-31): record (MediaRecorder) or type, one `client_id` per attempt, shows `confirmation_text`, missing items and alerts, with clear microphone / upload / `needs_retry` / network errors |
+| Voice note storage | Functional | `backend/app/storage.py`: the original audio of every stored audio report (web or WhatsApp) goes to a private Supabase Storage bucket after the reply; one object and one `file` row per report. `GET /reports/{id}/audio` returns a 5-minute signed URL. A failed upload never loses the report (`audio_url` stays `null`). Needs `SUPABASE_URL` / `SUPABASE_SERVICE_KEY`; without them nothing is stored |
 | Versioned report storage and corrections | Functional | `report_version`; `POST /reports/{id}/corrections` adds a new version, earlier versions stay immutable |
 | Read API (patients, reports, alerts, versions) | Functional | `backend/app/api/`; contract in `docs/contract.md` |
 | Emergency notifications: web inbox | Functional | `backend/app/notify.py` writes one row per recipient; the web polls `GET /me/notifications` about every 5 s and shows a toast and a browser notification while the tab is open |
@@ -44,14 +45,12 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 - Patient, care plan and history data are fictional seed data (`backend/app/seed.py`). Seeded reports are marked `channel="seed"`, `model="seed"`: they are fixtures, not model output.
 - Web app screens show contract-shaped fake data (`web/lib/fake.ts`) until the backend endpoints land; a "Datos de prueba ficticios" banner is shown while it is on. With fake data on, sending a new report returns the contract's example result whatever was sent (`fakeProcessResult`). Buttons that need the backend (help, invite, login) are not wired yet.
 
-- **Audio:** no audio file is stored yet. `audio_url` is a placeholder path (`/media/{id}`) with no route behind it.
-
 ### Pending
 
 - Real auth: login with the 6-digit WhatsApp code (CIA-32) is not built.
 - WhatsApp emergency notifications, pending Meta approval. `NOTIFY_WHATSAPP=0` by default, so they are recorded as `skipped`; the web inbox is the channel in use.
-- Audio storage and `audio_url` (Supabase Storage, signed URLs).
-- Audio playback of citations: transcript segments are stored and items and citations get `audio_start_sec` / `audio_end_sec` (CIA-18), but there is no stored audio to play yet (see above). Whisper segments can be long (a 13 s note came back as one segment), so a fragment may cover more than the quote.
+- Audio playback of citations in the web (CIA-13). The backend side is ready: voice notes are stored in a private Supabase Storage bucket (CIA-44), `GET /reports/{id}/audio` returns a 5-minute signed URL, and items and citations carry `audio_start_sec` / `audio_end_sec` (CIA-18). Whisper segments can be long (a 13 s note came back as one segment), so a fragment may cover more than the quote.
+- Audio retention: stored voice notes are never deleted yet.
 - Members, invites and messages endpoints.
 - Eval not yet run against the real model for `process_report` and the cited query.
 

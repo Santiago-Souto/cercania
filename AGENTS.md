@@ -156,6 +156,7 @@ backend/app/
   transcribe.py    audio -> text with vocabulary hint        [infra/input owner]
   web_reports.py   POST /patients/{id}/reports (text/audio)  [infra/input owner]
   ingest.py        single hand-off from channels to process_report [infra/input owner]
+  storage.py       voice notes in Supabase Storage, signed URLs [infra/input owner]
   deps.py          DB session + current person dependencies  [shared]
   errors.py        {error: {code, message}} shape and handlers [shared]
   schemas.py       Pydantic models for every endpoint (mirror contract) [shared]
