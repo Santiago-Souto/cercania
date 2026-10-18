@@ -15,13 +15,13 @@ export default function AppleIcon() {
           alignItems: "center",
           justifyContent: "center",
           background: "#0e5a55",
-          color: "#ffffff",
-          fontSize: 118,
-          fontWeight: 700,
-          lineHeight: 1,
         }}
       >
-        C
+        <svg width={130} height={116} viewBox="14 20 72 64">
+          <circle cx="44" cy="52" r="26" fill="#ffffff" />
+          <circle cx="62" cy="52" r="17" fill="#0e5a55" />
+          <circle cx="62" cy="52" r="13" fill="#e39b35" />
+        </svg>
       </div>
     ),
     size,

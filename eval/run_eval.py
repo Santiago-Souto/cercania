@@ -15,7 +15,10 @@ What "correct" means (scored by code, not by a model):
 - missing item detected: an item the case says was not mentioned is in missing_items.
 - omission detected: an expected `omission:<plan_ref>` alert came back.
 - change detected: an expected `change:<item>` alert came back (change alerts carry `item`).
-- false alarm: an omission/change alert the case does not expect, an item reported
+- emergency detected: a case expecting `emergency` got an emergency alert (triage).
+  An emergency alert on a case that does not expect one is an emergency false alarm,
+  reported on its own line and also counted in false alarms.
+- false alarm: an omission/change/emergency alert the case does not expect, an item reported
   although the case says it was not mentioned, or an item flagged missing although
   it was mentioned.
 - quote verification pass rate: returned quotes that code verified against the transcript.
@@ -54,12 +57,17 @@ class Case:
     transcript: str
     expected_items: set[str]
     expected_missing: set[str]
-    expected_alerts: set[str]  # "type:key", e.g. "omission:med_002"
+    expected_alerts: set[str]  # "type:key", e.g. "omission:med_002"; "emergency" -> "emergency:"
     split: str
 
 
 def _split_list(raw: str) -> list[str]:
     return [part.strip() for part in (raw or "").split(";") if part.strip()]
+
+
+def _alert_spec(entry: str) -> str:
+    """Alerts without a key (e.g. "emergency") match alert_key's "type:" form."""
+    return entry if ":" in entry else f"{entry}:"
 
 
 def load_cases(path: Path) -> list[Case]:
@@ -71,7 +79,7 @@ def load_cases(path: Path) -> list[Case]:
                 transcript=row["transcript"],
                 expected_items={entry.split("=", 1)[0].strip() for entry in _split_list(row["expected_items"])},
                 expected_missing=set(_split_list(row["expected_missing_items"])),
-                expected_alerts=set(_split_list(row["expected_alerts"])),
+                expected_alerts={_alert_spec(a) for a in _split_list(row["expected_alerts"])},
                 split=(row.get("split") or "dev").strip(),
             )
             for row in csv.DictReader(f)
@@ -96,6 +104,8 @@ class CaseScore:
     omissions_detected: int = 0
     changes_expected: int = 0
     changes_detected: int = 0
+    emergencies_expected: int = 0
+    emergencies_detected: int = 0
     unexpected_alerts: list[str] = field(default_factory=list)
     invented_items: list[str] = field(default_factory=list)  # reported but not mentioned
     wrongly_missing: list[str] = field(default_factory=list)  # flagged missing but mentioned
@@ -103,8 +113,16 @@ class CaseScore:
     quotes_verified: int = 0
 
     @property
+    def emergency_false_alarms(self) -> int:
+        return self.unexpected_alerts.count(EMERGENCY)
+
+    @property
     def false_alarms(self) -> int:
         return len(self.unexpected_alerts) + len(self.invented_items) + len(self.wrongly_missing)
+
+
+SCORED_ALERT_TYPES = ("omission", "change", "emergency")
+EMERGENCY = "emergency:"
 
 
 def alert_key(alert: dict) -> str:
@@ -123,6 +141,7 @@ def failed_score(case: Case, seconds: float, error: str, status: str = "error") 
         missing_expected=len(case.expected_missing),
         omissions_expected=sum(1 for a in case.expected_alerts if a.startswith("omission:")),
         changes_expected=sum(1 for a in case.expected_alerts if a.startswith("change:")),
+        emergencies_expected=int(EMERGENCY in case.expected_alerts),
     )
 
 
@@ -131,7 +150,7 @@ def score_case(case: Case, result: dict, seconds: float = 0.0) -> CaseScore:
     detected = {i["item"] for i in items if i.get("value") is not None and i.get("quote_verified")}
     reported = {i["item"] for i in items if i.get("value") is not None}
     missing = set(result.get("missing_items") or [])
-    alerts = {alert_key(a) for a in result.get("alerts") or [] if a.get("type") in ("omission", "change")}
+    alerts = {alert_key(a) for a in result.get("alerts") or [] if a.get("type") in SCORED_ALERT_TYPES}
     expected_omissions = {a for a in case.expected_alerts if a.startswith("omission:")}
     expected_changes = {a for a in case.expected_alerts if a.startswith("change:")}
     quoted = [i for i in items if i.get("quote")]
@@ -153,6 +172,8 @@ def score_case(case: Case, result: dict, seconds: float = 0.0) -> CaseScore:
         omissions_detected=len(expected_omissions & alerts),
         changes_expected=len(expected_changes),
         changes_detected=len(expected_changes & alerts),
+        emergencies_expected=int(EMERGENCY in case.expected_alerts),
+        emergencies_detected=int(EMERGENCY in case.expected_alerts and EMERGENCY in alerts),
         unexpected_alerts=sorted(alerts - case.expected_alerts),
         invented_items=sorted(reported & case.expected_missing),
         wrongly_missing=sorted(missing & case.expected_items),
@@ -174,6 +195,8 @@ def summarize(scores: list[CaseScore]) -> dict:
         "fields": (sum(s.fields_detected for s in scores), sum(s.fields_expected for s in scores)),
         "omissions": (sum(s.omissions_detected for s in scores), sum(s.omissions_expected for s in scores)),
         "changes": (sum(s.changes_detected for s in scores), sum(s.changes_expected for s in scores)),
+        "emergencies": (sum(s.emergencies_detected for s in scores), sum(s.emergencies_expected for s in scores)),
+        "emergency_false_alarms": sum(s.emergency_false_alarms for s in scores),
         "missing": (sum(s.missing_detected for s in scores), sum(s.missing_expected for s in scores)),
         "false_alarms": sum(s.false_alarms for s in scores),
         "quotes": (sum(s.quotes_verified for s in scores), sum(s.quotes for s in scores)),
@@ -189,6 +212,8 @@ def format_summary(title: str, summary: dict) -> str:
         f"   Fields extracted (value + verified quote): {ratio(*summary['fields'])}",
         f"   Omissions detected:                        {ratio(*summary['omissions'])}",
         f"   Changes detected:                          {ratio(*summary['changes'])}",
+        f"   Emergencies detected:                      {ratio(*summary['emergencies'])}",
+        f"   Emergency false alarms:                    {summary['emergency_false_alarms']}",
         f"   Missing items detected:                    {ratio(*summary['missing'])}",
         f"   False alarms:                              {summary['false_alarms']}",
         f"   Quote verification pass rate:              {ratio(*summary['quotes'])}",

@@ -140,8 +140,9 @@ Auth: sign up with name, email and WhatsApp number -> the bot sends a **6-digit 
 - Transcription: Groq Whisper (`whisper-large-v3-turbo`, env `GROQ_API_KEY`) with a vocabulary prompt; CIA-18 compares providers on real audio
 - LLM: structured JSON output. Every call goes through `llm.py`, so any task can switch vendor by config: `<TASK>_MODEL=<provider>:<model>` with `groq` (`GROQ_API_KEY`), `anthropic` (`ANTHROPIC_API_KEY`) or `openai` (any other OpenAI-compatible endpoint via `LLM_BASE_URL` / `LLM_API_KEY`). Switch only if the eval says so. **Decided per task:**
   - Extraction (`extract.py`, transcript -> checklist items with quotes): **decided** Groq `openai/gpt-oss-120b` (strict JSON schema; same `GROQ_API_KEY` as transcription). One schema-constrained call, no tools; code verifies every quote. Override with `EXTRACT_MODEL`.
-  - Cited query (`query.py`, reasoning across several reports): `claude-sonnet-5-5`, through `llm.py` like the others.
-  - Emergency triage (`triage.py`, every message from a registered sender): `claude-haiku-5-5`, small schema (`emergency`, `reason`, `quote`), separate call from extraction so it also covers non-caregivers. Override with `TRIAGE_MODEL`.
+  - Cited query (`query.py`, reasoning across several reports): Groq `openai/gpt-oss-120b` (same key as extraction; switched from Claude Sonnet because no Anthropic key is configured). Override with `QUERY_MODEL`.
+  - Emergency triage (`triage.py`, every message from a registered sender): Groq `openai/gpt-oss-120b` (switched from Claude Haiku for the same reason), small schema (`emergency`, `reason`, `quote`), separate call from extraction so it also covers non-caregivers. Override with `TRIAGE_MODEL`.
+  - All three share Groq's free-tier limit (8,000 tokens/minute; one report = extraction + triage), so space out demo reports and eval cases, or move a task to another provider.
 - WhatsApp: **decided** Meta Cloud API, bot number **+1 555-674-0716** (Meta test number; only numbers on its allowed list can write to it). Setup: `docs/whatsapp-setup.md`, automated by `backend/scripts/setup_whatsapp.py`. Twilio trial does not allow WhatsApp.
 - Deploy: any host with a stable public URL (Render, Railway, Fly). Deploy "hello world" first.
 - Secrets only via environment variables. `.env` is gitignored; commit `.env.example` only.

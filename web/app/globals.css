@@ -35,6 +35,8 @@
     --color-role-family-foreground: var(--role-family-foreground);
     --color-player: var(--player);
     --color-player-mark: var(--player-mark);
+    --color-brand-amber: var(--brand-amber);
+    --color-brand-amber-ink: var(--brand-amber-ink);
     --color-ink-2: var(--ink-2);
     --color-input: var(--input);
     --color-border: var(--border);
@@ -103,6 +105,9 @@
     --role-family-foreground: #6b2a63;
     --player: #16201c;
     --player-mark: #f2b66b;
+    /* Logo (docs/design/DESIGN.md, Marca): amber dot, and a darker amber for the "ía" text so it reads at 3:1+ on light backgrounds. */
+    --brand-amber: #e39b35;
+    --brand-amber-ink: #b87418;
 
     --chart-1: #0e5a55;
     --chart-2: #7a4106;

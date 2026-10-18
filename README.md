@@ -17,25 +17,25 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Capability | Status | Notes |
 |---|---|---|
 | Voice note received from WhatsApp | In progress | Meta Cloud API, bot number +1 555-674-0716 (test number: only allowed phones can write). Inbound voice notes verified against a real Meta payload; end-to-end with transcription pending the Groq key |
-| Audio transcription | In progress | Groq Whisper with a care-vocabulary prompt; live test pending |
-| `process_report` pipeline (triage + extraction + compare + store) | Functional | `backend/app/process.py`, reached through `app/ingest.py` by WhatsApp and the web app. Unit-tested with fake model clients; not yet run against the real models (see Eval) |
-| Structured extraction with verbatim quotes | Functional | `backend/app/extract.py`, Groq `openai/gpt-oss-120b` strict structured output by default; any other vendor via `EXTRACT_MODEL=<provider>:<model>` (`backend/app/llm.py`). Every quote checked in code. Live accuracy not measured yet |
+| Audio transcription | Functional | Groq Whisper with a care-vocabulary prompt. Verified live on Render with a fictional m4a (CIA-20): transcribed and processed in 6.3 s. Accuracy on real voices not measured yet (CIA-18) |
+| `process_report` pipeline (triage + extraction + compare + store) | Functional | `backend/app/process.py`, reached through `app/ingest.py` by WhatsApp and the web app. Verified end to end on Render with the real models (CIA-20): typed and audio reports, ~6–7 s per report with the server warm. Accuracy at scale not measured yet (see Eval) |
+| Structured extraction with verbatim quotes | Functional | `backend/app/extract.py`, Groq `openai/gpt-oss-120b` strict structured output by default; any other vendor via `EXTRACT_MODEL=<provider>:<model>` (`backend/app/llm.py`). Every quote checked in code. Live on Render: all mentioned items extracted with verified quotes. About 1 in 10 calls is still rejected twice by Groq's schema check and returns a retryable `needs_retry` |
 | Quote verification (code) | Functional | Normalized whole-word substring match; unit-tested (`backend/tests/test_extract.py`) |
-| Emergency triage (model decides) | Functional | `backend/app/triage.py`, Claude Haiku 5.5 by default (any OpenAI-compatible model via `TRIAGE_MODEL=openai:<model>`), runs on every message that reaches `process_report`. Fixed reply text and recipients in code. Criteria provisional; live accuracy not measured yet. Family, doctor and patient messages do not reach it from WhatsApp yet (see Pending) |
-| Comparison vs care plan / history / checklist (code) | Functional | `backend/app/compare.py`: omissions, changes, missing checklist items. No model |
+| Emergency triage (model decides) | Functional | `backend/app/triage.py`, Groq `openai/gpt-oss-120b` by default (switch with `TRIAGE_MODEL=<provider>:<model>`), runs on every message that reaches `process_report`. Fixed reply text and recipients in code. Live on Render it runs on every report (`status: ok` means the call completed, not that the decision was right). Its accuracy is not measured: an informal local check against Groq (3 messages, 2 of them emergencies) was classified correctly but is not in the repo; eval case c003 covers one emergency. Criteria provisional. Family, doctor and patient messages do not reach it from WhatsApp yet (see Pending) |
+| Comparison vs care plan / history / checklist (code) | Functional | `backend/app/compare.py`: omissions, changes, missing checklist items. No model. Live on Render: omission and "Apetito: bajo, 3 turnos seguidos" fired on an unplanned report |
 | Confirmation reply to caregiver ("I recorded...") | Functional | Caregiver identified by phone, "which patient?" when several; `confirmation_text` written by code, with the fixed red-flag line on emergencies |
-| Report from the web app (text) | Functional | `POST /patients/{id}/reports` runs the same `process_report`; idempotent on `client_id`. Audio path needs the Groq key |
+| Report from the web app (text or audio) | Functional | `POST /patients/{id}/reports` runs the same `process_report`; idempotent on `client_id` (a repeat returned the same report). Verified live on Render for text and audio (CIA-20) |
 | Versioned report storage and corrections | Functional | `report_version`; `POST /reports/{id}/corrections` adds a new version, earlier versions stay immutable |
 | Read API (patients, reports, alerts, versions) | Functional | `backend/app/api/`; contract in `docs/contract.md` |
 | Emergency notifications: web inbox | Functional | `backend/app/notify.py` writes one row per recipient; the web polls `GET /me/notifications` about every 5 s and shows a toast and a browser notification while the tab is open |
 | Emergency notifications by WhatsApp | Pending | Code path built, off by default: each attempt is recorded as `skipped` unless `NOTIFY_WHATSAPP=1`. Needs Meta approval (template or recipients on the allowed list) |
-| Cited natural-language query | Functional | `POST /patients/{id}/query` (Sonnet); every citation verified in code. Not yet evaluated against the real model |
+| Cited natural-language query | Functional | `POST /patients/{id}/query` (Groq `openai/gpt-oss-120b`, switch with `QUERY_MODEL`); every citation verified in code. Live on Render: cited answer in 3.3 s, citation found verbatim in the transcript; "unclear" when the reports do not say |
 | Web timeline (caregiver view) | Pending | Web owner |
 | Family read-only view | Pending | Web owner |
 | Doctor edits care plan (new version) | Pending | Role and permission in schema; no endpoint/view yet |
 | Patient view (how I feel + I need help; no reports or alerts) | Pending | Role and permission in schema; no endpoint/view yet |
 | Login with 6-digit WhatsApp code | Pending | |
-| Eval script and 20 cases | In progress | `eval/run_eval.py` built and tested; 2 cases so far, 0 unseen. The run against the real `process_report` and query is still to do |
+| Eval script and 20 cases | In progress | `eval/run_eval.py` built and tested; 4 cases in `eval/cases.csv` (c003 is an emergency), all `dev`, 0 unseen. Scores emergency recall and emergency false alarms on their own lines. Groq's free tier (8,000 tokens/minute) allows ~2 reports per minute, so a full run needs spacing |
 
 ### Simulated
 
@@ -106,6 +106,6 @@ python eval/run_eval.py --split unseen  # only the held-out cases
 python eval/run_eval.py --json out.json # per-case details
 ```
 
-Runs every case in `eval/cases.csv` through the real `process_report` on a fresh temporary SQLite database with the fictional seed data (the team database is never touched). Needs the API keys of the configured providers: by default `GROQ_API_KEY` (extraction) and `ANTHROPIC_API_KEY` (triage); `LLM_API_KEY` (+ `LLM_BASE_URL`) for any `openai:<model>`.
+Runs every case in `eval/cases.csv` through the real `process_report` on a fresh temporary SQLite database with the fictional seed data (the team database is never touched). Needs the API keys of the configured providers: by default only `GROQ_API_KEY` (extraction and triage); `LLM_API_KEY` (+ `LLM_BASE_URL`) for any `openai:<model>`.
 
-Reports: fields extracted (value + verified quote), omissions detected, missing checklist items detected, false alarms (unexpected alerts, items reported but not mentioned, items flagged missing but mentioned), quote-verification pass rate, and latency per report. Change alerts are expected as `change:<item>` in `expected_alerts`. A case where `process_report` raises or returns a status other than `ok` counts as failed: its expected counts stay in every ratio with zero detections, and the run exits with code 1. The wording of extracted values is not judged. Cases with `split=unseen` are held out from prompt tuning (keep at least 5).
+Reports: fields extracted (value + verified quote), omissions detected, changes detected, emergencies detected (and emergency false alarms, reported on their own line), missing checklist items detected, false alarms (unexpected alerts, items reported but not mentioned, items flagged missing but mentioned), quote-verification pass rate, and latency per report. Change alerts are expected as `change:<item>` in `expected_alerts`. A case where `process_report` raises or returns a status other than `ok` counts as failed: its expected counts stay in every ratio with zero detections, and the run exits with code 1. The wording of extracted values is not judged. Cases with `split=unseen` are held out from prompt tuning (keep at least 5).
