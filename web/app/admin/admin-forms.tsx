@@ -20,7 +20,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import type { AdminPerson, AdminPreRegistration, AdminRole, OverwriteCurrent, Role } from "@/lib/types";
+import type { AdminMembership, AdminPerson, AdminPreRegistration, AdminRole, OverwriteCurrent, Role } from "@/lib/types";
 import {
   type AdminResult,
   deletePreRegistrationAction,
@@ -29,7 +29,7 @@ import {
   removeMembershipAction,
   setMembershipAction,
 } from "./actions";
-import { ADMIN_ROLE_LABEL } from "./labels";
+import { ADMIN_ROLE_LABEL, membershipLabel } from "./labels";
 
 type PatientOption = { id: string; display_name: string };
 
@@ -41,7 +41,7 @@ const NO_PATIENT = new Set<AdminRole>(["admin", "patient"]);
 const NONE = "__none__";
 
 function roleList(person: AdminPerson): string {
-  const parts = person.memberships.map((m) => `${ADMIN_ROLE_LABEL[m.role].toLowerCase()} de ${m.patient_name}`);
+  const parts = person.memberships.map((m) => membershipLabel(m, person.name).text);
   if (person.is_caregiver && !person.memberships.some((m) => m.role === "caregiver")) parts.push("cuidador/a sin pacientes");
   if (person.is_admin) parts.unshift("administración");
   return parts.length ? parts.join(", ") : "sin roles";
@@ -285,8 +285,10 @@ export function MakeAdmin({ person }: { person: AdminPerson }) {
   );
 }
 
-export function RemoveRole({ person, patientId, label }: { person: AdminPerson; patientId: string; label: string }) {
+export function RemoveRole({ person, membership }: { person: AdminPerson; membership: AdminMembership }) {
   const [pending, setPending] = useState(false);
+  const label = membershipLabel(membership, person.name).text;
+  const patientId = membership.patient_id;
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
@@ -298,7 +300,7 @@ export function RemoveRole({ person, patientId, label }: { person: AdminPerson; 
         <AlertDialogHeader>
           <AlertDialogTitle>¿Quitar este rol?</AlertDialogTitle>
           <AlertDialogDescription>
-            {person.name} deja de ser {label} y pierde el acceso a ese paciente.
+            {person.name} deja de ser {label} y pierde el acceso a {membership.role === "patient" ? "ese perfil" : "ese paciente"}.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
