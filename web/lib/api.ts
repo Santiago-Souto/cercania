@@ -2,7 +2,7 @@
 // Calls the backend at NEXT_PUBLIC_API_URL as the logged-in person: the browser's session cookie does
 // not travel with a server-side fetch, so request() forwards it. No session or a 401 -> /login.
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { API_URL, ApiError, errorFrom, SESSION_COOKIE } from "./api-shared";
@@ -24,9 +24,17 @@ import type {
 
 export { ApiError };
 
+/** Set by proxy.ts on app screens: the page being rendered, so the login can come back to it. */
+const PATH_HEADER = "x-cercania-path";
+
+async function toLogin(): Promise<never> {
+  const next = (await headers()).get(PATH_HEADER);
+  redirect(next ? `/login?mode=login&next=${encodeURIComponent(next)}` : "/login?mode=login");
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const session = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!session) redirect("/login?mode=login");
+  if (!session) return toLogin();
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     cache: "no-store",
@@ -36,7 +44,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
-  if (res.status === 401) redirect("/login?mode=login");
+  if (res.status === 401) return toLogin();
   if (!res.ok) throw await errorFrom(res);
   return res.json() as Promise<T>;
 }
