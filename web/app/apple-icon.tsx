@@ -1,6 +1,8 @@
 import { ImageResponse } from "next/og";
+import { BACKGROUND, Mark } from "@/lib/app-icon";
 
 // Home-screen icon for iPhone/iPad (iOS ignores the manifest icons). iOS rounds the corners itself.
+// See lib/app-icon.tsx for why the background is a gradient (iOS dark mode).
 export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
 
@@ -14,14 +16,10 @@ export default function AppleIcon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#0e5a55",
+          backgroundImage: BACKGROUND,
         }}
       >
-        <svg width={130} height={116} viewBox="14 20 72 64">
-          <circle cx="44" cy="52" r="26" fill="#ffffff" />
-          <circle cx="62" cy="52" r="17" fill="#0e5a55" />
-          <circle cx="62" cy="52" r="13" fill="#e39b35" />
-        </svg>
+        <Mark size={130} />
       </div>
     ),
     size,
