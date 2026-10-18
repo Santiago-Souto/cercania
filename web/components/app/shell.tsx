@@ -22,8 +22,27 @@ export function AppShell({ children, className }: { children: React.ReactNode; c
   );
 }
 
+/** The two overlapping dots: green forms the C that holds the amber dot (the person). Logo, so custom SVG. */
+export function BrandMark({ className }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="14 20 72 64" className={cn("h-7 w-auto", className)}>
+      <circle cx="44" cy="52" r="26" className="fill-primary" />
+      <circle cx="62" cy="52" r="17" className="fill-background" />
+      <circle cx="62" cy="52" r="13" className="fill-brand-amber" />
+    </svg>
+  );
+}
+
+/** Logo lockup: mark + "Cercanía" with "ía" in amber (docs/design/DESIGN.md, Marca). */
 export function Brand() {
-  return <span className="font-heading text-[22px] font-bold tracking-tight text-primary">CercanIA</span>;
+  return (
+    <span role="img" aria-label="Cercanía" className="inline-flex items-center gap-2">
+      <BrandMark />
+      <span aria-hidden="true" className="font-heading text-[22px] font-extrabold tracking-tight text-foreground">
+        Cercan<span className="text-brand-amber-ink">ía</span>
+      </span>
+    </span>
+  );
 }
 
 /** Back button + title, for screens below a tab. */
