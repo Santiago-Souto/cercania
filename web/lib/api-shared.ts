@@ -1,6 +1,8 @@
 // Pieces shared by server calls (lib/api.ts) and browser calls (lib/send-report.ts).
 // No server-only imports here: this file is bundled into client components.
 
+import { PERSONA_COOKIE } from "./persona";
+
 export const USE_FAKE = process.env.NEXT_PUBLIC_USE_FAKE_DATA === "1";
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
@@ -8,8 +10,15 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 // The backend honors it only with ALLOW_DEV_IDENTITY_HEADER=1 (backend/app/deps.py). Fictional data only.
 const DEV_PERSON_ID = process.env.NEXT_PUBLIC_DEV_PERSON_ID ?? "";
 
+// In the browser the persona picked in the demo bar (cookie, lib/persona.ts) wins over the env value.
+// Server calls (lib/api.ts) add the cookie themselves.
 export function identityHeaders(): Record<string, string> {
-  return DEV_PERSON_ID ? { "X-Person-Id": DEV_PERSON_ID } : {};
+  let id = DEV_PERSON_ID;
+  if (typeof document !== "undefined") {
+    const m = document.cookie.split("; ").find((c) => c.startsWith(`${PERSONA_COOKIE}=`));
+    if (m) id = decodeURIComponent(m.split("=")[1]);
+  }
+  return id ? { "X-Person-Id": id } : {};
 }
 
 export class ApiError extends Error {

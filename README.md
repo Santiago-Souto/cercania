@@ -25,6 +25,8 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Comparison vs care plan / history / checklist (code) | Functional | `backend/app/compare.py`: omissions, changes, missing checklist items. No model. Live on Render: omission and "Apetito: bajo, 3 turnos seguidos" fired on an unplanned report |
 | Confirmation reply to caregiver ("I recorded...") | Functional | Caregiver identified by phone, "which patient?" when several; `confirmation_text` written by code, with the fixed red-flag line on emergencies |
 | Report from the web app (text or audio) | Functional | `POST /patients/{id}/reports` runs the same `process_report`; idempotent on `client_id` (a repeat returned the same report). Verified live on Render for text and audio (CIA-20). Web screen `/patients/{id}/reports/new` (CIA-31): record (MediaRecorder) or type, one `client_id` per attempt, shows `confirmation_text`, missing items and alerts, with clear microphone / upload / `needs_retry` / network errors |
+| Audio playback of citations | Functional | Web (CIA-13, `web/components/app/audio-player.tsx`): tapping a citation in Preguntar, or a quote on a report, plays exactly that fragment of the original voice note; "Escuchar nota de voz" plays the whole note. Signed URL from `GET /reports/{id}/audio` (CIA-44), times from Groq's word timestamps. Verified in headless Chromium against the Render API. Reports stored before word timestamps play their whole note |
+| Voice note storage | Functional | `backend/app/storage.py`: the original audio of every stored audio report (web or WhatsApp) goes to a private Supabase Storage bucket after the reply; one object and one `file` row per report. `GET /reports/{id}/audio` returns a 5-minute signed URL. A failed upload never loses the report (`audio_url` stays `null`). Needs `SUPABASE_URL` / `SUPABASE_SERVICE_KEY`; without them nothing is stored |
 | Versioned report storage and corrections | Functional | `report_version`; `POST /reports/{id}/corrections` adds a new version, earlier versions stay immutable |
 | Read API (patients, reports, alerts, versions) | Functional | `backend/app/api/`; contract in `docs/contract.md` |
 | Emergency notifications: web inbox | Functional | `backend/app/notify.py` writes one row per recipient; the web polls `GET /me/notifications` about every 5 s and shows a toast and a browser notification while the tab is open |
@@ -33,25 +35,25 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Web timeline (caregiver view) | Pending | Web owner |
 | Family read-only view | Pending | Web owner |
 | Doctor edits care plan (new version) | Pending | Role and permission in schema; no endpoint/view yet |
-| Patient view (how I feel + I need help; no reports or alerts) | Pending | Role and permission in schema; no endpoint/view yet |
-| Login with 6-digit WhatsApp code | Pending | |
+| Patient view (how I feel + I need help; no reports or alerts) | In progress | Backend done (CIA-29, `backend/app/patient_messages.py`): "Necesito ayuda" notifies every caregiver and health-team member in the web inbox with no model call; "Cómo me siento" (text or audio) goes through triage and notifies the team only on a red flag. Replies to the patient are fixed text. WhatsApp copies are best effort (`NOTIFY_WHATSAPP`). Screen pending (CIA-35) |
+| Login with 6-digit SMS code | Functional (backend) | `POST /auth/signup`, `/auth/login`, `/auth/verify`, `/auth/logout` (`backend/app/api/auth.py`), code sent by Twilio SMS, session cookie. Web screens not wired yet (CIA-32). A Twilio trial only texts numbers verified in its console |
 | Eval script and 20 cases | In progress | `eval/run_eval.py` built and tested; 20 fictional text cases in `eval/cases.csv` (14 `dev`, 6 `unseen`): 4 emergencies, 5 emergency look-alikes, planted medication omissions and missing checklist items. Each case runs against the seed history only (the database is reset per case). Audio recordings of the cases by team voices are pending (never committed). Scores emergency recall and emergency false alarms on their own lines. Groq's free tier (8,000 tokens/minute) allows only a few reports per minute: run it with `--delay 30` |
 
 ### Simulated
 
-- **Caller identity:** until the login backend lands, the web app identifies the user with an `X-Person-Id` header (`backend/app/deps.py`). Anyone can claim any id, so it is honored only with `ALLOW_DEV_IDENTITY_HEADER=1` (local dev / demo with fictional data); otherwise every call gets 401. The web sends it from `NEXT_PUBLIC_DEV_PERSON_ID` (e.g. `cg_001`; `web/lib/api-shared.ts`) until login replaces it. Not for real data.
+- **Caller identity (dev fallback):** the API identifies the caller by the session cookie from `POST /auth/verify`. Until the web login is wired (CIA-32), the web app sends an `X-Person-Id` header: the **Simulado** persona picker in the app shell (Ana `cg_001` caregiver / Carmen `fam_001` family, stored in a cookie) or `NEXT_PUBLIC_DEV_PERSON_ID` (`web/lib/api-shared.ts`); anyone can claim any id, so it is honored only with `ALLOW_DEV_IDENTITY_HEADER=1` (local dev / demo with fictional data). Not for real data.
+- **Login code on the Twilio trial (demo only):** a trial account only sends predefined templates, so with `TWILIO_TRIAL_TEMPLATE=sms_2fa` the backend sends Twilio's `sms_2fa` template and reads the code from Twilio's reply. A real SMS arrives, but on the trial that code is **always the same**, so anyone who knows it can log in as any registered phone. Only with fictional data; leave it unset once the account is upgraded (then our own random code is sent).
+- **Login code delivery (dev only):** with `AUTH_DEV_LOG_CODES=1` the code is written to the API log instead of being texted, for local dev without Twilio. Never set in a real deploy.
 - **Fake model clients** exist only in the backend tests. The running app calls the real models.
+- With fake data (`NEXT_PUBLIC_USE_FAKE_DATA=1`) there is no audio: tapping play says so instead of playing anything.
 - Patient, care plan and history data are fictional seed data (`backend/app/seed.py`). Seeded reports are marked `channel="seed"`, `model="seed"`: they are fixtures, not model output.
-- Web app screens show contract-shaped fake data (`web/lib/fake.ts`) until the backend endpoints land; a "Datos de prueba ficticios" banner is shown while it is on. With fake data on, sending a new report returns the contract's example result whatever was sent (`fakeProcessResult`). Buttons that need the backend (help, invite, login) are not wired yet.
-
-- **Audio:** no audio file is stored yet. `audio_url` is a placeholder path (`/media/{id}`) with no route behind it.
+- Web app screens show contract-shaped fake data (`web/lib/fake.ts`) until the backend endpoints land; a "Datos de prueba ficticios" banner is shown while it is on. With fake data on, sending a new report returns the contract's example result whatever was sent (`fakeProcessResult`). With `NEXT_PUBLIC_USE_FAKE_DATA=0` the web reads the real backend, including the emergency notifications (inbox polled every 5 s, toast, browser Notification). Buttons that need the backend (help, invite, login) are not wired yet.
 
 ### Pending
 
-- Real auth: login with the 6-digit WhatsApp code (CIA-32) is not built.
+- Web login screens (CIA-32) are not wired to `/auth/*` yet.
 - WhatsApp emergency notifications, pending Meta approval. `NOTIFY_WHATSAPP=0` by default, so they are recorded as `skipped`; the web inbox is the channel in use.
-- Audio storage and `audio_url` (Supabase Storage, signed URLs).
-- Audio playback of citations: transcript segments are stored and items and citations get `audio_start_sec` / `audio_end_sec` (CIA-18), but there is no stored audio to play yet (see above). Whisper segments can be long (a 13 s note came back as one segment), so a fragment may cover more than the quote.
+- Audio retention: stored voice notes are never deleted yet.
 - Members, invites and messages endpoints.
 - Eval not yet run against the real model for `process_report` and the cited query.
 

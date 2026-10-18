@@ -93,7 +93,7 @@ Appetite, sleep, urination/diuresis, medication, mood, mobility, pain, incidents
 
 ## 5. Data model (design rules)
 
-Schema lives in `backend/app/models.py`. Entities: `person` (anyone who logs in or messages the bot; name, email, WhatsApp number = identity; "user" in the contract), `patient_access` (person + patient + role; "membership" in the contract, see section 6), `invite` (pending membership by WhatsApp number), `login_code` (hashed 6-digit code, expiry, used flag), `patient` (optionally a registered health provider contact: name + phone, used only for emergency notifications), `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient). Pending in code: `login_code`, `invite`, `patient_message`, `message`; `magic_link` goes away with the 6-digit code login.
+Schema lives in `backend/app/models.py`. Entities: `person` (anyone who logs in or messages the bot; name, email, WhatsApp number = identity; "user" in the contract), `patient_access` (person + patient + role; "membership" in the contract, see section 6), `invite` (pending membership by WhatsApp number), `login_code` (hashed 6-digit code sent by SMS, expiry, attempts, used flag), `auth_session` (hashed web session token), `patient` (optionally a registered health provider contact: name + phone, used only for emergency notifications), `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient). Pending in code: `message` (and the invite endpoints; the `invite` table exists).
 
 Rules:
 - Structured data in Postgres; binaries (audio, images, documents) in object storage. `file` stores only the storage path and metadata.
@@ -119,7 +119,7 @@ Any registered role can raise an emergency over WhatsApp (section 4.1); only car
 
 The patient is the subject of the profile; optionally they also have their own login with the `patient` role. Dose text is written by people (caregiver at creation, doctor afterwards); code never computes or suggests doses.
 
-Auth: sign up with name, email and WhatsApp number -> the bot sends a **6-digit code** to that WhatsApp -> code entered on the web. Codes are single-use, expire in 10 minutes, are stored hashed and are rate-limited per number. No passwords. Outbound WhatsApp messages outside the 24h window need an approved authentication template (or, in the sandbox, the user must join first); verify with the provider's docs. Invited users get the role from their invite after their first login. Only caregivers can invite, by WhatsApp number only (email is not verified, so it never grants access). Email is contact info, not identity, and need not be unique. Login and sign-up never reveal whether a phone is registered. The WhatsApp webhook verifies the provider signature before trusting the sender phone; corrections and reports take the author from the session or the verified sender, never from the request body.
+Auth: sign up with name, email and phone number -> a **6-digit code by SMS** (Twilio; decided Oct 18, CIA-43, because WhatsApp needs an approved template or an allowed-list number to reach a new user) -> code entered on the web -> session cookie. Codes are single-use, expire in 10 minutes, are stored hashed, lock after 5 wrong tries and are rate-limited per number. No passwords. The phone is the same number the person uses on WhatsApp for the bot. Invited users get the role from their invite after their first login. Only caregivers can invite, by WhatsApp number only (email is not verified, so it never grants access). Email is contact info, not identity, and need not be unique. Login and sign-up never reveal whether a phone is registered. The WhatsApp webhook verifies the provider signature before trusting the sender phone; corrections and reports take the author from the session or the verified sender, never from the request body.
 
 ## 7. Safety rules (non-negotiable)
 
@@ -137,12 +137,13 @@ Auth: sign up with name, email and WhatsApp number -> the bot sends a **6-digit 
 - Backend: Python + FastAPI
 - Web: **Next.js** (decided), mobile-first, usable on desktop at a centered ~480px column. UI copy in Spanish (Río de la Plata). **Design source of truth: `docs/design/DESIGN.md`** (tokens, components, screen → route → ticket map) with artboard snapshots in `docs/design/screens/`. UI changes start in the design, then the code. **UI is shadcn/ui only** (themed with our tokens); no custom components or plain HTML unless strictly necessary.
 - DB: **decided** Postgres on Supabase via SQLAlchemy 2.0 + psycopg 3 (`DATABASE_URL`); SQLite is the local default and fallback (same models). Files in Supabase Storage, private bucket, signed URLs.
-- Transcription: **decided** Groq Whisper (`whisper-large-v3-turbo`, env `GROQ_API_KEY`) with a vocabulary prompt; `verbose_json` segments feed audio citations. Free tier, same key as the LLM tasks. The planned comparison with OpenAI Whisper was dropped (Oct 18).
+- Transcription: **decided** Groq Whisper (`whisper-large-v3-turbo`, env `GROQ_API_KEY`) with a vocabulary prompt; word timestamps (`verbose_json`, `timestamp_granularities[]=word`) feed audio citations. Free tier, same key as the LLM tasks. The planned comparison with OpenAI Whisper was dropped (Oct 18).
 - LLM: structured JSON output. Every call goes through `llm.py`, so any task can switch vendor by config: `<TASK>_MODEL=<provider>:<model>` with `groq` (`GROQ_API_KEY`), `anthropic` (`ANTHROPIC_API_KEY`) or `openai` (any other OpenAI-compatible endpoint via `LLM_BASE_URL` / `LLM_API_KEY`). Switch only if the eval says so. **Decided per task:**
   - Extraction (`extract.py`, transcript -> checklist items with quotes): **decided** Groq `openai/gpt-oss-120b` (strict JSON schema; same `GROQ_API_KEY` as transcription). One schema-constrained call, no tools; code verifies every quote. Override with `EXTRACT_MODEL`.
   - Cited query (`query.py`, reasoning across several reports): Groq `openai/gpt-oss-120b` (same key as extraction; switched from Claude Sonnet because no Anthropic key is configured). Override with `QUERY_MODEL`.
   - Emergency triage (`triage.py`, every message from a registered sender): Groq `openai/gpt-oss-120b` (switched from Claude Haiku for the same reason), small schema (`emergency`, `reason`, `quote`), separate call from extraction so it also covers non-caregivers. Override with `TRIAGE_MODEL`.
   - All three share Groq's free-tier limit (8,000 tokens/minute; one report = extraction + triage), so space out demo reports and eval cases (`run_eval.py --delay 30`), or move a task to another provider. On a 429, `llm.py` waits what the provider's `Retry-After` says (up to 15 s) and retries once; asked to wait longer, it fails at once.
+- SMS (login code only): **decided** Twilio Programmable Messaging REST API via `httpx` (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` or `TWILIO_MESSAGING_SERVICE_SID`). A trial account only texts numbers verified in its console.
 - WhatsApp: **decided** Meta Cloud API, bot number **+1 555-674-0716** (Meta test number; only numbers on its allowed list can write to it). Setup: `docs/whatsapp-setup.md`, automated by `backend/scripts/setup_whatsapp.py`. Twilio trial does not allow WhatsApp.
 - Deploy: any host with a stable public URL (Render, Railway, Fly). Deploy "hello world" first.
 - Secrets only via environment variables. `.env` is gitignored; commit `.env.example` only.
@@ -153,14 +154,17 @@ Auth: sign up with name, email and WhatsApp number -> the bot sends a **6-digit 
 backend/app/
   main.py          API + webhook (ack fast, process async)
   whatsapp.py      receive, download audio, reply            [infra/input owner]
+  sms.py           send the login code by SMS (Twilio)       [infra/input owner]
   transcribe.py    audio -> text with vocabulary hint        [infra/input owner]
   web_reports.py   POST /patients/{id}/reports (text/audio)  [infra/input owner]
+  patient_messages.py  POST/GET /patients/{id}/patient-messages (help, feeling) [infra/input owner]
   ingest.py        single hand-off from channels to process_report [infra/input owner]
+  storage.py       voice notes in Supabase Storage, signed URLs [infra/input owner]
   deps.py          DB session + current person dependencies  [shared]
   errors.py        {error: {code, message}} shape and handlers [shared]
   schemas.py       Pydantic models for every endpoint (mirror contract) [shared]
   serializers.py   ORM -> contract dicts, one place          [shared]
-  api/             web routes, one module per area: patients, reports, corrections, me, notifications, query [shared]
+  api/             web routes, one module per area: auth, patients, reports, corrections, me, notifications, query [shared]
   process.py       process_report: triage + extraction -> compare -> store [brain owner]
   notify.py        emergency notifications: web inbox, WhatsApp best effort [shared]
   llm.py           one JSON-schema call, any vendor          [brain owner]
@@ -249,7 +253,7 @@ Problem: the shift handoff gets lost. Live demo: a juror dictates a report, sees
 ## 16. Open decisions
 
 - Stack confirmation (section 8; web is decided: Next.js).
-- WhatsApp authentication template for the 6-digit code vs sandbox join (section 6).
+- Twilio: trial (verified numbers only) vs a paid number for the demo; some countries need a registered sender for SMS.
 - Final checklist item list (section 4) once validated with a caregiver contact.
 - Emergency triage criteria (section 4.2): the prompt in `triage.py` is provisional. It currently treats a past event the message says was attended, with the patient now fine ("se cayó a la mañana, la vio el médico, está bien"), as **not** an emergency, and anything unclear as an emergency. Confirm or change.
 - Whether to add a deterministic phrase list as a second safety net next to the model (rejected for now, Oct 17).

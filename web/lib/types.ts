@@ -34,38 +34,92 @@ export type ReportItem = {
   level?: string | null;
   quote: string | null;
   quote_verified: boolean | null;
+  /** Where the quote is in the voice note (docs/contract.md, "Transcript segments"); null without audio times. */
+  audio_start_sec?: number | null;
+  audio_end_sec?: number | null;
+};
+
+export type NotificationRecipient = "health_provider" | "caregiver" | "family";
+
+/** One delivery of an emergency alert to one recipient on one channel (contract: "Emergency notifications"). */
+export type AlertNotification = {
+  to: NotificationRecipient;
+  person_id: string | null;
+  channel: "web" | "whatsapp";
+  /** "skipped" = channel not active (e.g. WhatsApp off). Not an error. */
+  status: "sent" | "failed" | "skipped";
+  error: string | null;
 };
 
 export type Alert = {
+  id?: number;
   type: "omission" | "change" | "missing_item" | "emergency";
+  item?: ChecklistItem | null;
   detail: string;
-  plan_ref?: string;
+  plan_ref?: string | null;
   report_refs?: string[];
   evidence_quote?: string | null;
-  /** False when code could not find `evidence_quote` in the transcript. */
   evidence_verified?: boolean | null;
+  /** Only on "emergency" alerts; [] otherwise. */
+  notifications?: AlertNotification[];
+  report_id?: string;
+  report_version?: number;
+  created_at?: string;
+};
+
+export type Person = { id: string; display_name: string; role?: Role };
+
+export type Triage = {
+  status: "ok" | "failed";
+  emergency: boolean;
+  reason: string | null;
+  quote: string | null;
+  quote_verified: boolean | null;
 };
 
 export type Report = {
   id: string;
   version: number;
   created_at: string;
-  caregiver: { id: string; display_name: string };
+  kind?: "shift" | "emergency";
+  channel?: "whatsapp" | "web" | "seed";
+  sender?: Person;
+  /** Compatibility alias of `sender`. */
+  caregiver: Person;
   transcript: string;
-  audio_url: string;
-  audio_duration_sec?: number;
+  audio_url: string | null;
+  audio_duration_sec?: number | null;
   items: ReportItem[];
   missing_items: ChecklistItem[];
   alerts: Alert[];
   red_flag: boolean;
   red_flag_quote?: string | null;
+  triage?: Triage | null;
+  confirmation_text?: string;
+};
+
+/** Web inbox row from GET /me/notifications. */
+export type AppNotification = {
+  id: string;
+  patient_id: string;
+  patient_display_name: string;
+  alert_id: number | null;
+  report_id: string | null;
+  recipient: NotificationRecipient;
+  channel: "web";
+  status: "sent" | "failed" | "skipped";
+  title: string;
+  body: string;
+  created_at: string;
+  read_at: string | null;
 };
 
 export type Citation = {
   report_id: string;
   quote: string;
-  audio_start_sec: number;
-  audio_end_sec: number;
+  // null when the report has no segments (typed) or the quote is not in them (docs/contract.md).
+  audio_start_sec: number | null;
+  audio_end_sec: number | null;
 };
 
 export type QueryResponse = {

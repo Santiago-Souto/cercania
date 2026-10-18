@@ -36,3 +36,26 @@ def test_no_match_no_segments_or_no_quote():
     assert quote_times("Durmió bien", None) == (None, None)
     assert quote_times(None, SEGMENTS) == (None, None)
     assert quote_times("  ", SEGMENTS) == (None, None)
+
+
+WORDS = [  # Groq word timestamps from a fictional test note
+    {"start": 7.84, "end": 7.98, "text": "A"}, {"start": 7.98, "end": 8.12, "text": "la"},
+    {"start": 8.12, "end": 8.40, "text": "noche"}, {"start": 8.40, "end": 8.88, "text": "durmió"},
+    {"start": 8.88, "end": 9.36, "text": "mal,"}, {"start": 9.36, "end": 9.60, "text": "se"},
+    {"start": 9.60, "end": 10.16, "text": "despertó"},
+]
+
+
+def test_word_level_pieces_give_the_exact_range():
+    assert quote_times("durmió mal", WORDS) == (8.40, 9.36)
+    assert quote_times("A la noche durmió mal, se despertó", WORDS) == (7.84, 10.16)
+
+
+def test_long_transcripts_stay_fast():
+    import time
+
+    words = [{"start": i * 0.3, "end": i * 0.3 + 0.3, "text": f"palabra{i}"} for i in range(2000)]
+    t0 = time.perf_counter()
+    assert quote_times("palabra1500 palabra1501", words) == (450.0, 450.6)
+    assert quote_times("no esta en el audio", words) == (None, None)
+    assert time.perf_counter() - t0 < 0.5

@@ -9,7 +9,7 @@ from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
-from app import models, web_reports, whatsapp
+from app import models, patient_messages, storage, web_reports, whatsapp
 from app.api import api_router
 from app.errors import error_response, install_error_handlers
 
@@ -20,6 +20,8 @@ log = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     models.init_db()  # create_all: creates missing tables, never drops
+    if not storage.configured():
+        log.warning("SUPABASE_URL / SUPABASE_SERVICE_KEY not set: report audio is not stored")
     yield
 
 
@@ -47,6 +49,7 @@ app.add_middleware(
 )
 install_error_handlers(app)
 app.include_router(web_reports.router)
+app.include_router(patient_messages.router)
 app.include_router(api_router)
 
 

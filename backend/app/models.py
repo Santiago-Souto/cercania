@@ -105,24 +105,30 @@ class Permission(str, enum.Enum):
     read_care_plan = "read_care_plan"
     edit_care_plan = "edit_care_plan"  # creates a new care_plan version
     raise_emergency = "raise_emergency"  # WhatsApp message that triage flags as an emergency
+    send_patient_message = "send_patient_message"  # "how I feel" / "I need help" (AGENTS.md 6)
+    read_patient_messages = "read_patient_messages"
 
 
 # Checked by the API, per patient (a person's role comes from patient_access).
 # Every role may raise an emergency; that grants no extra read access.
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
+    # Caregivers may also send patient messages, to test the patient view (docs/contract.md).
     Role.caregiver: frozenset({Permission.send_report, Permission.correct_report,
                                Permission.read_reports, Permission.read_care_plan,
-                               Permission.raise_emergency}),
+                               Permission.raise_emergency, Permission.send_patient_message,
+                               Permission.read_patient_messages}),
     Role.family: frozenset({Permission.read_reports, Permission.read_care_plan,
                             Permission.raise_emergency}),
     Role.doctor: frozenset({Permission.read_reports, Permission.read_care_plan,
-                            Permission.edit_care_plan, Permission.raise_emergency}),
+                            Permission.edit_care_plan, Permission.raise_emergency,
+                            Permission.read_patient_messages}),
     Role.nurse: frozenset({Permission.read_reports, Permission.read_care_plan,
-                           Permission.raise_emergency}),
+                           Permission.raise_emergency, Permission.read_patient_messages}),
     Role.institution: frozenset({Permission.read_reports, Permission.read_care_plan,
-                                 Permission.raise_emergency}),
-    # The patient sees their profile and care plan, never reports about them.
-    Role.patient: frozenset({Permission.read_care_plan, Permission.raise_emergency}),
+                                 Permission.raise_emergency, Permission.read_patient_messages}),
+    # The patient sees their profile, care plan and own messages, never reports about them.
+    Role.patient: frozenset({Permission.read_care_plan, Permission.raise_emergency,
+                             Permission.send_patient_message, Permission.read_patient_messages}),
 }
 
 
@@ -136,6 +142,11 @@ class AlertType(str, enum.Enum):
 class ReportKind(str, enum.Enum):
     shift = "shift"  # caregiver's report: checklist extraction + comparison
     emergency = "emergency"  # another role raised an emergency: no checklist items
+
+
+class PatientMessageKind(str, enum.Enum):
+    feeling = "feeling"  # how the patient feels: triaged by the model
+    help = "help"  # "I need help": fixed rule, never the model (AGENTS.md 7)
 
 
 class TriageStatus(str, enum.Enum):
@@ -243,15 +254,56 @@ class PatientAccess(TimestampMixin, Base):
     patient: Mapped[Patient] = relationship(back_populates="access")
 
 
-class MagicLink(TimestampMixin, Base):
-    """Single-use login link. Only the token hash is stored."""
+class LoginCode(TimestampMixin, Base):
+    """6-digit code sent by SMS (api/auth.py). Only a salted hash of the code is stored.
 
-    __tablename__ = "magic_link"
+    A sign-up code carries the name and email typed at sign-up: the person row is
+    created only when the code is verified, so nobody can claim a phone without it.
+    """
+
+    __tablename__ = "login_code"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    phone: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # E.164
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False)  # hmac-sha256 hex
+    salt: Mapped[str] = mapped_column(String(32), nullable=False)
+    signup_name: Mapped[str | None] = mapped_column(String(120))
+    signup_email: Mapped[str | None] = mapped_column(String(254))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AuthSession(TimestampMixin, Base):
+    """Web session behind the cookie. Only the token hash is stored."""
+
+    __tablename__ = "auth_session"
 
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)  # sha256 hex
     person_id: Mapped[str] = mapped_column(ForeignKey("person.id"), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class InviteStatus(str, enum.Enum):
+    pending = "pending"
+    accepted = "accepted"
+
+
+class Invite(TimestampMixin, Base):
+    """Pending membership for a phone number. Becomes a `patient_access` row when
+    that phone verifies a login code (matched on the phone only, never on email)."""
+
+    __tablename__ = "invite"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("inv"))
+    patient_id: Mapped[str] = mapped_column(ForeignKey("patient.id"), nullable=False)
+    phone: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # E.164
+    role: Mapped[Role] = mapped_column(enum_column(Role), nullable=False)
+    invited_by: Mapped[str | None] = mapped_column(ForeignKey("person.id"))
+    status: Mapped[InviteStatus] = mapped_column(
+        enum_column(InviteStatus), default=InviteStatus.pending, nullable=False
+    )
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 # --- Care plan -----------------------------------------------------------------
@@ -464,6 +516,45 @@ class Alert(TimestampMixin, Base):
     report_version: Mapped[ReportVersion] = relationship(back_populates="alerts")
 
 
+class PatientMessage(TimestampMixin, Base):
+    """What the patient sent from their view: how they feel, or "I need help" (AGENTS.md 6-7).
+
+    `help` never goes through the model. `feeling` (text, or the transcript of audio) goes
+    through triage; red_flag == the model said emergency. Written once.
+    """
+
+    __tablename__ = "patient_message"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("pm"))
+    patient_id: Mapped[str] = mapped_column(ForeignKey("patient.id"), nullable=False, index=True)
+    sender_id: Mapped[str] = mapped_column(ForeignKey("person.id"), nullable=False)
+    kind: Mapped[PatientMessageKind] = mapped_column(enum_column(PatientMessageKind), nullable=False)
+    text: Mapped[str | None] = mapped_column(Text)  # null for help
+    from_audio: Mapped[bool] = mapped_column(default=False, nullable=False)
+    red_flag: Mapped[bool] = mapped_column(default=False, nullable=False)
+    triage_status: Mapped[TriageStatus | None] = mapped_column(enum_column(TriageStatus))  # null for help
+    triage_reason: Mapped[str | None] = mapped_column(Text)
+    triage_quote: Mapped[str | None] = mapped_column(Text)
+    triage_quote_verified: Mapped[bool | None] = mapped_column()
+    triage_model: Mapped[str | None] = mapped_column(String(64))
+
+    seen: Mapped[list[PatientMessageSeen]] = relationship(order_by="PatientMessageSeen.seen_at")
+
+
+class PatientMessageSeen(Base):
+    """A team member saw a patient message (listing the messages marks them seen)."""
+
+    __tablename__ = "patient_message_seen"
+    __table_args__ = (UniqueConstraint("patient_message_id", "person_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    patient_message_id: Mapped[str] = mapped_column(ForeignKey("patient_message.id"), nullable=False, index=True)
+    person_id: Mapped[str] = mapped_column(ForeignKey("person.id"), nullable=False)
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    person: Mapped[Person] = relationship()
+
+
 class Notification(TimestampMixin, Base):
     """One delivery of an alert to one recipient on one channel (web inbox or WhatsApp).
 
@@ -476,11 +567,14 @@ class Notification(TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("alert_id", "recipient", "person_id", "channel"),)
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("ntf"))
-    alert_id: Mapped[int] = mapped_column(ForeignKey("alert.id"), nullable=False, index=True)
-    report_id: Mapped[str] = mapped_column(ForeignKey("report.id"), nullable=False)
+    # Set for emergency alerts on a report; NULL for patient messages (then patient_message_id is set).
+    alert_id: Mapped[int | None] = mapped_column(ForeignKey("alert.id"), index=True)
+    report_id: Mapped[str | None] = mapped_column(ForeignKey("report.id"))
+    patient_message_id: Mapped[str | None] = mapped_column(ForeignKey("patient_message.id"), index=True)
     patient_id: Mapped[str] = mapped_column(ForeignKey("patient.id"), nullable=False, index=True)
     person_id: Mapped[str | None] = mapped_column(ForeignKey("person.id"), index=True)  # null = health provider
-    recipient: Mapped[str] = mapped_column(String(20), nullable=False)  # health_provider|caregiver|family
+    # health_provider | caregiver | family (emergencies); caregiver | doctor | nurse | institution (patient messages)
+    recipient: Mapped[str] = mapped_column(String(20), nullable=False)
     channel: Mapped[NotificationChannel] = mapped_column(enum_column(NotificationChannel), nullable=False)
     status: Mapped[NotificationStatus] = mapped_column(enum_column(NotificationStatus), nullable=False)
     error: Mapped[str | None] = mapped_column(Text)
@@ -542,7 +636,8 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 
 def init_db() -> None:
-    """Create missing tables and nullable columns. Safe to call repeatedly; never drops anything."""
+    """Create missing tables and nullable columns, and relax NOT NULL where the model became
+    nullable (Postgres). Safe to call repeatedly; never drops anything."""
     Base.metadata.create_all(engine)
     # No migration tool: add nullable columns that were introduced after a table existed.
     existing = inspect(engine)
@@ -553,6 +648,13 @@ def init_db() -> None:
                 if col.name not in have and col.nullable:
                     col_type = col.type.compile(dialect=engine.dialect)
                     conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col_type}'))
+            # e.g. notification.alert_id / report_id became nullable for patient messages (CIA-29).
+            # SQLite cannot alter a column: delete an old local database file instead.
+            if engine.dialect.name == "postgresql":
+                db_nullable = {c["name"]: c["nullable"] for c in existing.get_columns(table.name)}
+                for col in table.columns:
+                    if col.nullable and db_nullable.get(col.name) is False:
+                        conn.execute(text(f'ALTER TABLE "{table.name}" ALTER COLUMN "{col.name}" DROP NOT NULL'))
 
 
 def role_for(session: Session, person_id: str, patient_id: str) -> Role | None:
@@ -602,6 +704,28 @@ def emergency_recipients(session: Session, patient_id: str, sender_id: str) -> l
         recipients.append({"to": role.value, "person_id": person.id,
                            "name": person.display_name, "phone": person.phone})
     return recipients
+
+
+# Health team roles (AGENTS.md 6).
+HEALTH_TEAM = (Role.doctor, Role.nurse, Role.institution)
+
+
+def patient_team(session: Session, patient_id: str, sender_id: str) -> list[dict]:
+    """Who is notified of a patient's help request or red-flag message (AGENTS.md 7).
+
+    Every caregiver and health-team member with access to the patient. Never family,
+    never the patient, never the sender (a caregiver testing the patient view). Code only.
+    """
+    rows = session.execute(
+        select(PatientAccess.role, Person)
+        .join(Person, Person.id == PatientAccess.person_id)
+        .where(PatientAccess.patient_id == patient_id,
+               PatientAccess.role.in_([Role.caregiver, *HEALTH_TEAM]),
+               Person.id != sender_id)
+        .order_by(PatientAccess.role, Person.id)
+    ).all()
+    return [{"to": role.value, "person_id": person.id, "name": person.display_name, "phone": person.phone}
+            for role, person in rows]
 
 
 def next_version(session: Session, report_id: str) -> int:

@@ -136,6 +136,11 @@ class ReportVersions(BaseModel):
     versions: list[ReportVersion]
 
 
+class ReportAudio(BaseModel):
+    url: str
+    expires_in_sec: int
+
+
 class CorrectionIn(BaseModel):
     item: ChecklistItemName
     value: str | None = None
@@ -196,8 +201,9 @@ class Notification(BaseModel):
     id: str
     patient_id: str
     patient_display_name: str
-    alert_id: int
-    report_id: str
+    alert_id: int | None = None
+    report_id: str | None = None
+    patient_message_id: str | None = None
     recipient: str
     channel: str
     status: str

@@ -10,6 +10,8 @@ from app.main import app
 from app.models import (
     Base,
     CarePlan,
+    File,
+    FileKind,
     Medication,
     Patient,
     PatientAccess,
@@ -58,13 +60,21 @@ def brain(monkeypatch):
     return calls
 
 
+@pytest.fixture(autouse=True)
+def stored_audio(monkeypatch):
+    """Records store_audio calls (run as a background task after the response)."""
+    calls = []
+    monkeypatch.setattr(ingest, "store_audio", lambda result, audio: calls.append((result, audio)))
+    return calls
+
+
 @pytest.fixture
 def groq(monkeypatch):
     calls = []
 
     def fake(audio, filename, mime_type, vocabulary):
         calls.append({"audio": audio, "filename": filename, "mime_type": mime_type, "vocabulary": vocabulary})
-        return Transcript(text="comió poco en la cena", segments=[Segment(0.0, 1.8, "comió poco en la cena")])
+        return Transcript(text="comió poco en la cena", duration=1.8, segments=[Segment(0.0, 1.8, "comió poco en la cena")])
 
     monkeypatch.setattr(web_reports, "transcribe", fake)
     return calls
@@ -74,7 +84,7 @@ client = TestClient(app)
 AS_CAREGIVER = {"X-Person-Id": "cg"}
 
 
-def test_text_report_goes_to_process_report(db, brain):
+def test_text_report_goes_to_process_report(db, brain, stored_audio):
     r = client.post(URL, json={"client_id": "web_1", "text": "  durmió bien  "}, headers=AS_CAREGIVER)
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
@@ -82,9 +92,10 @@ def test_text_report_goes_to_process_report(db, brain):
         "patient_id": "pat_x", "sender_id": "cg", "transcript": "durmió bien",
         "audio_ref": None, "message_id": "web:cg:web_1", "segments": [],
     }]
+    assert stored_audio == []  # typed: nothing to store
 
 
-def test_audio_report_is_transcribed_with_patient_vocabulary(db, brain, groq):
+def test_audio_report_is_transcribed_with_patient_vocabulary(db, brain, groq, stored_audio):
     r = client.post(
         URL,
         data={"client_id": "web_2"},
@@ -98,10 +109,14 @@ def test_audio_report_is_transcribed_with_patient_vocabulary(db, brain, groq):
     assert brain[0]["transcript"] == "comió poco en la cena"
     assert brain[0]["message_id"] == "web:cg:web_2"
     assert brain[0]["segments"] == [{"start": 0.0, "end": 1.8, "text": "comió poco en la cena"}]
+    # The original voice note is kept for the stored report, after the response.
+    assert stored_audio == [({"status": "ok", "report": {"id": "rep_1", "version": 1}},
+                             ingest.Audio(b"\x1aE\xdf\xa3", "audio/webm", 1.8))]
 
 
-def test_repeated_client_id_reuses_stored_transcript_without_transcribing(db, brain, groq):
-    db.add(Report(id="rep_1", patient_id="pat_x", sender_id="cg", message_id="web:cg:web_3", transcript="ya guardado"))
+def test_repeated_client_id_reuses_stored_transcript_without_transcribing(db, brain, groq, stored_audio):
+    db.add(Report(id="rep_1", patient_id="pat_x", sender_id="cg", message_id="web:cg:web_3", transcript="ya guardado",
+                  segments=[{"start": 0.0, "end": 2.0, "text": "ya guardado"}]))
     db.commit()
     r = client.post(
         URL, data={"client_id": "web_3"}, files={"audio": ("rec.ogg", b"OggS", "audio/ogg")}, headers=AS_CAREGIVER
@@ -110,6 +125,41 @@ def test_repeated_client_id_reuses_stored_transcript_without_transcribing(db, br
     assert groq == []
     assert brain[0]["transcript"] == "ya guardado"
     assert brain[0]["message_id"] == "web:cg:web_3"
+    # An audio report whose first upload failed (segments, no file): this retry attaches the audio.
+    assert [audio for _, audio in stored_audio] == [ingest.Audio(b"OggS", "audio/ogg", 2.0)]
+
+
+def test_retry_never_attaches_audio_to_a_typed_report(db, brain, groq, stored_audio):
+    db.add(Report(id="rep_7", patient_id="pat_x", sender_id="cg", message_id="web:cg:web_7", transcript="durmió bien"))
+    db.commit()
+    r = client.post(
+        URL, data={"client_id": "web_7"}, files={"audio": ("rec.ogg", b"OggS", "audio/ogg")}, headers=AS_CAREGIVER
+    )
+    assert r.status_code == 200
+    assert brain[0]["transcript"] == "durmió bien"
+    assert groq == [] and stored_audio == []
+
+
+def test_retry_of_a_report_that_already_has_audio_stores_nothing(db, brain, groq, stored_audio):
+    db.add(Report(id="rep_9", patient_id="pat_x", sender_id="cg", message_id="web:cg:web_9", transcript="ya guardado",
+                  segments=[{"start": 0.0, "end": 4.2, "text": "ya guardado"}]))
+    db.add(File(patient_id="pat_x", report_id="rep_9", kind=FileKind.audio,
+                storage_path="reports/pat_x/rep_9.ogg", mime_type="audio/ogg"))
+    db.commit()
+    r = client.post(
+        URL, data={"client_id": "web_9"}, files={"audio": ("rec.ogg", b"OggS", "audio/ogg")}, headers=AS_CAREGIVER
+    )
+    assert r.status_code == 200
+    assert groq == [] and stored_audio == []
+
+
+def test_retry_takes_the_duration_from_the_stored_segments(db, brain, groq, stored_audio):
+    db.add(Report(id="rep_8", patient_id="pat_x", sender_id="cg", message_id="web:cg:web_8", transcript="ya guardado",
+                  segments=[{"start": 0.0, "end": 4.2, "text": "ya guardado"}]))
+    db.commit()
+    client.post(URL, data={"client_id": "web_8"}, files={"audio": ("rec.ogg", b"OggS", "audio/ogg")}, headers=AS_CAREGIVER)
+    assert groq == []
+    assert [audio for _, audio in stored_audio] == [ingest.Audio(b"OggS", "audio/ogg", 4.2)]
 
 
 @pytest.mark.parametrize("person", ["fam", "doc"])

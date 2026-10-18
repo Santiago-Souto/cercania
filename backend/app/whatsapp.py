@@ -413,9 +413,10 @@ def handle_message(message: IncomingMessage) -> None:
 
 
 def process(db: Session, report: IncomingMessage, caregiver_id: str, patient: tuple[str, str]) -> None:
-    transcript = to_transcript(report, ingest.vocabulary_for(db, patient[0]))
-    if transcript is not None:
-        deliver(report, caregiver_id, patient[0], transcript)
+    got = to_transcript(report, ingest.vocabulary_for(db, patient[0]))
+    if got is not None:
+        transcript, voice_note = got
+        deliver(report, caregiver_id, patient[0], transcript, voice_note)
 
 
 def _looks_like_report(text: str | None) -> bool:
@@ -429,26 +430,29 @@ def _is_report(message: IncomingMessage) -> bool:
     return message.type == "text" and bool(message.text and message.text.strip())
 
 
-def to_transcript(message: IncomingMessage, vocabulary: list[str]) -> Transcript | None:
-    """Voice note -> transcript; typed report -> transcript as is. On failure the
-    caregiver is told why and None is returned."""
+def to_transcript(message: IncomingMessage, vocabulary: list[str]) -> tuple[Transcript, ingest.Audio | None] | None:
+    """Voice note -> (transcript, audio kept for storage); typed report -> (transcript as is,
+    None). On failure the caregiver is told why and None is returned."""
     if message.type == "text":
-        return Transcript(text=message.text.strip())
+        return Transcript(text=message.text.strip()), None
     try:
         audio, mime = download_media(message.audio_id)
     except DownloadError as exc:
         log.error("Download failed for %s: %s", message.id, exc)
         send_text(message.sender, MSG_DOWNLOAD_FAILED)
         return None
+    mime = mime.split(";")[0].strip()
     try:
-        return transcribe(audio, mime_type=mime.split(";")[0].strip(), vocabulary=vocabulary)
+        transcript = transcribe(audio, mime_type=mime, vocabulary=vocabulary)
     except TranscriptionError as exc:
         log.error("Transcription failed for %s: %s", message.id, exc)
         send_text(message.sender, exc.user_message)
         return None
+    return transcript, ingest.Audio(audio, mime, transcript.duration)
 
 
-def deliver(message: IncomingMessage, caregiver_id: str, patient_id: str, transcript: Transcript) -> None:
+def deliver(message: IncomingMessage, caregiver_id: str, patient_id: str, transcript: Transcript,
+            voice_note: ingest.Audio | None = None) -> None:
     """process_report, then the confirmation back to the caregiver.
 
     The transcript is health data: it goes to the database, never to the logs.
@@ -479,3 +483,5 @@ def deliver(message: IncomingMessage, caregiver_id: str, patient_id: str, transc
             notify.dispatch_emergency(result["report"]["id"])
         except Exception:  # noqa: BLE001 - the reply path must never break
             log.exception("Emergency notification dispatch failed for message %s", message.id)
+    # Last: the caregiver's reply never waits for storage (store_audio never raises).
+    ingest.store_audio(result, voice_note)
