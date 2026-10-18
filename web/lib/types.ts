@@ -132,11 +132,14 @@ export type AppNotification = {
   patient_display_name: string;
   alert_id: number | null;
   report_id: string | null;
+  patient_message_id: string | null;
   recipient: NotificationRecipient;
   channel: "web";
   status: "sent" | "failed" | "skipped";
   title: string;
   body: string;
+  /** Emergency, help, red flag or failed triage; false for a plain "how I feel" message (CIA-60). */
+  urgent: boolean;
   created_at: string;
   read_at: string | null;
 };
@@ -166,6 +169,8 @@ export type MyPatient = {
   open_alerts: number | null;
   red_flag: boolean | null;
   missing_report: boolean | null;
+  /** The caller's unread inbox notifications for this patient: the "Novedades" dot (CIA-60). */
+  unread_notifications: number;
   /** Newest patient help request / red-flag message of the last 24 h; null for family and the patient. */
   patient_alarm: "help" | "emergency" | null;
 };

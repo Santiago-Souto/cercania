@@ -14,6 +14,8 @@ from app.models import (
     AlertType,
     Invite,
     InviteStatus,
+    Notification,
+    NotificationChannel,
     Patient,
     PatientAccess,
     PatientMessage,
@@ -74,6 +76,7 @@ def get_my_patients(person_id: str = Depends(current_person_id), db: Session = D
       cannot read patient messages (family, the patient).
     - A person with no role at all gets their own patient profile first (`roles.ensure_default_role`).
     - Role `patient` never sees reports or alerts (AGENTS.md section 6): all four are null.
+    - `unread_notifications`: the caller's own unread web inbox rows for the patient (CIA-60).
     """
     person = db.get(Person, person_id)
     if person is None:
@@ -82,11 +85,18 @@ def get_my_patients(person_id: str = Depends(current_person_id), db: Session = D
     if roles.ensure_default_role(db, person):
         db.commit()
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    unread = dict(db.execute(
+        select(Notification.patient_id, func.count())
+        .where(Notification.person_id == person_id, Notification.channel == NotificationChannel.web.value,
+               Notification.read_at.is_(None))
+        .group_by(Notification.patient_id)
+    ).all())
     out = []
     for access, patient in _memberships(db, person_id):
         entry = {"id": patient.id, "display_name": patient.display_name, "location": patient.location,
                  "role": access.role.value, "last_report_at": None, "open_alerts": None,
-                 "red_flag": None, "missing_report": None, "patient_alarm": None}
+                 "red_flag": None, "missing_report": None, "patient_alarm": None,
+                 "unread_notifications": unread.get(patient.id, 0)}
         if access.role != Role.patient:
             entry["last_report_at"] = db.scalar(
                 select(func.max(Report.created_at)).where(Report.patient_id == patient.id))

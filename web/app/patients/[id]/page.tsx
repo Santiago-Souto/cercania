@@ -2,12 +2,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { ChevronLeftIcon, MessageCircleIcon, MicIcon, TriangleAlertIcon, UsersIcon } from "lucide-react";
+import { ChevronLeftIcon, HeartPulseIcon, MessageCircleIcon, MicIcon, TriangleAlertIcon, UsersIcon } from "lucide-react";
 import { AppShell, Brand, BottomNav } from "@/components/app/shell";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { EmergencyCallButton } from "@/components/app/emergency-call";
 import { EmergencyContactCard } from "@/components/app/emergency-contact-card";
-import { PatientAlarmCard, getPatientAlarms, isRecent } from "@/components/app/patient-alarm";
+import { MarkPatientSeen } from "@/components/app/mark-patient-seen";
+import { PatientAlarmCard, getPatientMessagesOrNone, isAlarm, isRecent } from "@/components/app/patient-alarm";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,8 @@ import { Progress } from "@/components/ui/progress";
 import { getMyPatients, getPatient, getReports } from "@/lib/api";
 import { CHECKLIST_LABEL, dayTime, duration, firstName } from "@/lib/format";
 
+const SHOWN_PATIENT_MESSAGES = 3;
+
 export default async function PatientHome(props: PageProps<"/patients/[id]">) {
   const { id } = await props.params;
   // The patient never sees reports or alerts about them (the backend answers 403): send them to their view first.
@@ -24,13 +27,16 @@ export default async function PatientHome(props: PageProps<"/patients/[id]">) {
   const role = mine.find((p) => p.id === id)?.role;
   if (role === "patient") redirect(`/patients/${id}/me` as Route);
   const healthTeam = role === "doctor" || role === "nurse" || role === "institution";
-  // Patient help requests and red flags reach caregivers and the health team only (never family).
-  const [patient, reports, alarms] = await Promise.all([
+  // Only caregivers and the health team read the patient's own messages (family gets 403). One fetch feeds
+  // both the alarm card (help and red flags) and the plain messages list (CIA-60).
+  const [patient, reports, patientMessages] = await Promise.all([
     getPatient(id),
     getReports(id),
-    role === "caregiver" || healthTeam ? getPatientAlarms(id) : Promise.resolve([]),
+    role === "caregiver" || healthTeam ? getPatientMessagesOrNone(id) : Promise.resolve([]),
   ]);
+  const alarms = patientMessages.filter(isAlarm);
   const recentAlarms = alarms.filter((m) => isRecent(m));
+  const recentMessages = patientMessages.filter((m) => !isAlarm(m)).slice(0, SHOWN_PATIENT_MESSAGES);
   const last = reports[0];
   const plan = patient.care_plan;
   const covered = last ? last.items.filter((i) => i.value !== null).length : 0;
@@ -86,6 +92,30 @@ export default async function PatientHome(props: PageProps<"/patients/[id]">) {
               <EmergencyCallButton contact={patient.emergency_contact} className="self-start" />
             </AlertDescription>
           </Alert>
+        )}
+
+        {recentMessages.length > 0 && (
+          <section id="mensajes-paciente" className="flex scroll-mt-4 flex-col gap-2.5">
+            <h2 className="text-lg font-semibold">Mensajes de {firstName(patient.display_name)}</h2>
+            <ItemGroup className="gap-0 rounded-xl border bg-card">
+              {recentMessages.map((m, i) => (
+                <div key={m.id}>
+                  {i > 0 && <ItemSeparator className="my-0" />}
+                  <Item className="rounded-none px-4 py-3.5">
+                    <ItemContent>
+                      <ItemDescription className="flex items-center gap-1.5 text-[13px]">
+                        <HeartPulseIcon className="size-4" aria-hidden="true" />
+                        {dayTime(m.created_at)}
+                      </ItemDescription>
+                      <ItemTitle className="text-base font-normal">
+                        <em>“{m.text}”</em>
+                      </ItemTitle>
+                    </ItemContent>
+                  </Item>
+                </div>
+              ))}
+            </ItemGroup>
+          </section>
         )}
 
         {healthTeam && (
@@ -202,6 +232,7 @@ export default async function PatientHome(props: PageProps<"/patients/[id]">) {
         </section>
       </main>
 
+      <MarkPatientSeen patientId={id} />
       <BottomNav patientId={id} active="home" />
     </AppShell>
   );

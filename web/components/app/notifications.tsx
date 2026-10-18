@@ -1,5 +1,5 @@
 "use client";
-// Emergency notifications while the tab is open: poll GET /me/notifications every 5 s, show a toast and a
+// Inbox notifications (emergencies, help, every patient message) while the tab is open: poll GET /me/notifications every 5 s, show a toast and a
 // browser Notification, keep an unread badge. No Web Push / service worker (out of scope, AGENTS.md section 10).
 // Same tick polls GET /me/invites, so an invite to the caller's phone shows up without reloading.
 import { useEffect, useRef, useSyncExternalStore } from "react";
@@ -82,6 +82,7 @@ export function NotificationWatcher() {
     let stopped = false;
     // Toasts on screen, by patient: the alerts screen lists them all, so "Ver alerta" clears that patient's.
     const onScreen = new Map<string, AppNotification["patient_id"]>();
+    const opened = new Set<string>();
 
     // The invite card lives on "Mis pacientes" and on the patient's own view: refresh so it renders there.
     function announceInvite(inv: MyInvite) {
@@ -104,6 +105,9 @@ export function NotificationWatcher() {
     }
 
     function open(n: AppNotification) {
+      // The toast action and the browser Notification can both fire for the same row.
+      if (opened.has(n.id)) return;
+      opened.add(n.id);
       for (const [id, patient] of onScreen) {
         if (patient !== n.patient_id) continue;
         toast.dismiss(id);
@@ -111,29 +115,46 @@ export function NotificationWatcher() {
       }
       setUnread(unread - 1);
       markNotificationRead(n.id).catch(() => {});
-      routerRef.current.push(`/patients/${n.patient_id}/alerts` as Route);
+      // Urgent ones (emergencies, help, red flags) are on the alerts panel; a plain patient message is
+      // listed on the patient home (CIA-60).
+      const to = n.urgent === false ? `/patients/${n.patient_id}#mensajes-paciente` : `/patients/${n.patient_id}/alerts`;
+      routerRef.current.push(to as Route);
     }
 
     function announce(n: AppNotification) {
       onScreen.set(n.id, n.patient_id);
-      toast.warning(n.title, {
-        id: n.id,
-        onDismiss: () => onScreen.delete(n.id),
-        // "Abrí CercanIA." is for the browser notification; inside the app it is noise.
-        description: n.body.replace(/\s*Abrí CercanIA[^.]*\.?$/, ""),
-        duration: Infinity,
-        closeButton: true,
-        action: { label: "Ver alerta", onClick: () => open(n) },
-        // Emergency look (danger tokens) and readable text: sonner's default description is too faint.
-        classNames: {
-          toast: "items-start! gap-3! border-2! border-danger! bg-danger-soft! p-4! text-danger-soft-foreground!",
-          icon: "mt-0.5! text-danger!",
-          title: "font-heading! text-base! font-bold!",
-          description: "mt-1! text-[15px]! leading-snug! text-danger-soft-foreground!",
-          actionButton: "h-10! self-center! rounded-full! bg-danger! px-4! text-sm! font-bold! text-danger-foreground!",
-          closeButton: "border-danger-ring! bg-card! text-danger-soft-foreground!",
-        },
-      });
+      // "Abrí CercanIA." is for the browser notification; inside the app it is noise.
+      const description = n.body.replace(/\s*Abrí CercanIA[^.]*\.?$/, "");
+      if (n.urgent === false) {
+        // A plain "how I feel" message (CIA-60): informative, closes on its own.
+        toast.info(n.title, {
+          id: n.id,
+          onDismiss: () => onScreen.delete(n.id),
+          onAutoClose: () => onScreen.delete(n.id),
+          description,
+          duration: 10000,
+          closeButton: true,
+          action: { label: "Ver mensaje", onClick: () => open(n) },
+        });
+      } else {
+        toast.warning(n.title, {
+          id: n.id,
+          onDismiss: () => onScreen.delete(n.id),
+          description,
+          duration: Infinity,
+          closeButton: true,
+          action: { label: "Ver alerta", onClick: () => open(n) },
+          // Emergency look (danger tokens) and readable text: sonner's default description is too faint.
+          classNames: {
+            toast: "items-start! gap-3! border-2! border-danger! bg-danger-soft! p-4! text-danger-soft-foreground!",
+            icon: "mt-0.5! text-danger!",
+            title: "font-heading! text-base! font-bold!",
+            description: "mt-1! text-[15px]! leading-snug! text-danger-soft-foreground!",
+            actionButton: "h-10! self-center! rounded-full! bg-danger! px-4! text-sm! font-bold! text-danger-foreground!",
+            closeButton: "border-danger-ring! bg-card! text-danger-soft-foreground!",
+          },
+        });
+      }
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
         try {
           const b = new Notification(n.title, { body: n.body, tag: n.id });

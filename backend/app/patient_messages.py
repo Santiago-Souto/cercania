@@ -3,7 +3,8 @@
 The patient has two actions:
 - "I need help" (`help`): a fixed rule. The team is notified right away; the model is never called.
 - "How I feel" (`feeling`, text or audio): audio is transcribed, then the text goes through the
-  same triage as every message. If the model says emergency, the team is notified as for help.
+  same triage as every message. The team is always notified (CIA-60); if the model says
+  emergency, with the same urgent wording as for help.
 
 What the patient reads back is fixed text written here, never model output. The team is every
 caregiver and health-team member of the patient (models.patient_team): web inbox (notify.py).
@@ -130,11 +131,10 @@ async def create_patient_message(
 
     db.add(message)
     db.flush()  # assigns message.id for the notification rows
-    notified: list[str] = []
-    if kind is PatientMessageKind.help or message.red_flag:
-        notified = notify.notify_patient_team(db, message)
-        if not notified:
-            reply = NO_TEAM_MESSAGE
+    # Every message reaches the team (CIA-60); help and red flags get the urgent wording.
+    notified = notify.notify_patient_team(db, message)
+    if not notified:
+        reply = NO_TEAM_MESSAGE
     db.commit()
     log.info("Patient message %s stored kind=%s red_flag=%s notified=%d",
              message.id, kind.value, message.red_flag, len(notified))

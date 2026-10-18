@@ -363,6 +363,7 @@ Any authenticated person. One entry per membership, for the dashboard. A person 
 - `missing_report`: no report in the last 24 h.
 - `patient_alarm`: `help` or `emergency` when the newest patient help request or red-flag "how I feel" message from the last 24 h (see Patient messages) is one, else `null`. Always `null` for roles without `read_patient_messages` (family, patient).
 - Role `patient` never sees reports or alerts: `last_report_at`, `open_alerts`, `red_flag`, `missing_report` and `patient_alarm` are all `null`.
+- `unread_notifications`: count of the caller's own unread web notifications for that patient (any role, `0` when none). The web shows it as a "novedades" dot; opening the patient clears its plain messages with `POST /me/notifications/read-all?patient_id=&urgent=false` (CIA-60); urgent rows stay unread until the person opens them, so an emergency is never consumed unseen.
 
 ```json
 {
@@ -376,7 +377,8 @@ Any authenticated person. One entry per membership, for the dashboard. A person 
       "open_alerts": 1,
       "red_flag": false,
       "missing_report": false,
-      "patient_alarm": null
+      "patient_alarm": null,
+      "unread_notifications": 0
     }
   ]
 }
@@ -400,6 +402,7 @@ Any authenticated person. The caller's own **web** notifications only. Query: `s
       "status": "sent",
       "title": "Emergencia: Rosa (fictional)",
       "body": "Ana (fictional) reportó una emergencia a las 21:30. Motivo: caída. Abrí CercanIA para ver el reporte.",
+      "urgent": true,
       "created_at": "2026-10-18T00:30:01Z",
       "read_at": null
     }
@@ -408,7 +411,9 @@ Any authenticated person. The caller's own **web** notifications only. Query: `s
 }
 ```
 
-`alert_id` and `report_id` are set for emergency notifications. For patient help requests and red-flag messages they are `null` and `patient_message_id` is set instead (see Patient messages); `recipient` is then `caregiver`, `doctor`, `nurse` or `institution`.
+`alert_id` and `report_id` are set for emergency notifications. For patient messages (help, and every "how I feel" message since CIA-60) they are `null` and `patient_message_id` is set instead (see Patient messages); `recipient` is then `caregiver`, `doctor`, `nurse` or `institution`.
+
+`urgent` is computed by code: `true` for emergency alerts, help requests, red-flag messages and messages whose triage failed; `false` for a plain "how I feel" message. The web shows urgent ones as a persistent warning toast and the rest as an info toast.
 
 `unread_count` counts all unread web notifications of the caller, regardless of `since` and `limit`. The web polls this endpoint with `since` set to the newest `created_at` it has seen, about every 5 seconds. Errors: `401`, `422`.
 
@@ -418,7 +423,7 @@ Marks one of the caller's web notifications as read. Returns the notification ob
 
 ### `POST /me/notifications/read-all`
 
-Marks all of the caller's unread web notifications as read. Returns `{ "updated": 3 }`.
+Marks all of the caller's unread web notifications as read, or only those for one patient with the optional `patient_id` query. With `urgent=false` it only marks non-urgent rows (plain "how I feel" messages) and `urgent=true` only urgent ones. Returns `{ "updated": 3 }`.
 
 ### Emergency notifications
 
@@ -670,7 +675,7 @@ Permission: `send_patient_message` (the `patient` role, and caregivers testing t
 { "id": "pm_002", "kind": "feeling", "notified": ["usr_001", "usr_004"], "red_flag": true, "message_for_patient": "Avisamos a tu equipo. Si es una emergencia, llamá a emergencias o a tu médico ahora." }
 ```
 
-When `feeling` is not an emergency, nobody is notified and `message_for_patient` is "Gracias, tu equipo va a ver tu mensaje. Si es una emergencia, llamá a emergencias." If triage fails, it is "Gracias, tu equipo va a ver tu mensaje." plus the fixed triage-failed line, and the message is stored with its triage status.
+When `feeling` is not an emergency, the same team is still notified (CIA-60) with a non-urgent title ("Mensaje de <paciente>"; "Revisá el mensaje de <paciente>" if triage failed), never the patient's words, and `message_for_patient` is "Gracias, tu equipo va a ver tu mensaje. Si es una emergencia, llamá a emergencias." If triage fails, it is "Gracias, tu equipo va a ver tu mensaje." plus the fixed triage-failed line, and the message is stored with its triage status. If nobody is on the team, `notified` is `[]` and `message_for_patient` is "Todavía no hay nadie en tu equipo para avisar. Si es una emergencia, llamá a emergencias ahora."
 
 Errors: `401`; `404 not_found` (unknown patient or no access); `403 forbidden` (role without `send_patient_message`); `400` `invalid_kind`, `text_missing`, `text_too_long`, `audio_missing`, `audio_empty`, `invalid_json`; `413 audio_too_large`; `415` `unsupported_audio`, `unsupported_media_type`; `502 transcription_failed` (message asks to retry or type and says to call emergency services).
 

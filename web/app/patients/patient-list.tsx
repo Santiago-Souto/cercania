@@ -76,18 +76,30 @@ export function PatientList({
               className={p.patient_alarm ? "rounded-xl border-2 border-danger bg-danger-soft px-4 py-3.5" : "rounded-xl bg-card px-4 py-3.5"}
             >
               <Link href={(p.role === "patient" ? `/patients/${p.id}/me` : `/patients/${p.id}`) as Route}>
-                <ItemMedia>
+                <ItemMedia className="relative">
                   <Avatar className="size-11">
                     <AvatarFallback className="bg-secondary font-heading text-lg font-bold text-primary">
                       {p.display_name[0]}
                     </AvatarFallback>
                   </Avatar>
+                  {/* Unread inbox notifications for this patient (CIA-60); cleared when the patient is opened. */}
+                  {p.unread_notifications > 0 && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute -top-0.5 -right-0.5 size-3.5 rounded-full bg-danger ring-2 ring-card"
+                    />
+                  )}
                 </ItemMedia>
                 <ItemContent>
                   <ItemTitle className="text-base font-bold">{p.display_name}</ItemTitle>
                 </ItemContent>
                 <ItemActions className="text-[13px] text-muted-foreground">{p.location}</ItemActions>
                 <ItemFooter className="flex-wrap justify-start gap-1.5 pl-14">
+                  {p.unread_notifications > 0 && (
+                    <Badge variant="default">
+                      {p.unread_notifications === 1 ? "1 novedad" : `${p.unread_notifications} novedades`}
+                    </Badge>
+                  )}
                   {p.patient_alarm && (
                     <Badge variant="danger" size="lg">
                       {p.patient_alarm === "help" ? <HandHelpingIcon /> : <TriangleAlertIcon />}

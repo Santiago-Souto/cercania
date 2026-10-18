@@ -1,4 +1,4 @@
-"""Emergency notifications (AGENTS.md 4.2, step 3) and patient help / red-flag messages (AGENTS.md 7).
+"""Emergency notifications (AGENTS.md 4.2, step 3) and patient messages (AGENTS.md 7; every one, CIA-60).
 
 Who is notified comes from `models.emergency_recipients` (code, never the model).
 The only channel is the in-app inbox (`notification` rows with channel `web`, polled by
@@ -28,6 +28,7 @@ from app.models import (
     Report,
     ReportVersion,
     SessionLocal,
+    TriageStatus,
     emergency_recipients,
     patient_team,
 )
@@ -123,12 +124,28 @@ def patient_message_text(patient: Patient, message: PatientMessage) -> tuple[str
     if message.kind is PatientMessageKind.help:
         return (f"Pedido de ayuda: {patient.display_name}",
                 f"{patient.display_name} pidió ayuda a las {at}. Abrí CercanIA.")
-    parts = [f"{patient.display_name} envió un mensaje a las {at} que puede ser una emergencia."]
-    reason = (message.triage_reason or "").strip().rstrip(".")
-    if reason:
-        parts.append(f"Motivo: {reason}.")
-    parts.append("Abrí CercanIA.")
-    return f"Posible emergencia: {patient.display_name}", " ".join(parts)
+    if message.red_flag:
+        parts = [f"{patient.display_name} envió un mensaje a las {at} que puede ser una emergencia."]
+        reason = (message.triage_reason or "").strip().rstrip(".")
+        if reason:
+            parts.append(f"Motivo: {reason}.")
+        parts.append("Abrí CercanIA.")
+        return f"Posible emergencia: {patient.display_name}", " ".join(parts)
+    if message.triage_status is TriageStatus.failed:
+        # Leans to urgent (AGENTS.md 7): nobody checked whether it is an emergency.
+        return (f"Revisá el mensaje de {patient.display_name}",
+                f"{patient.display_name} contó cómo se siente a las {at}. No pudimos revisar si es una "
+                "emergencia: leelo en CercanIA.")
+    return (f"Mensaje de {patient.display_name}",
+            f"{patient.display_name} contó cómo se siente a las {at}. Abrí CercanIA para leerlo.")
+
+
+def is_urgent(n: Notification, message: PatientMessage | None) -> bool:
+    """Emergency alerts, help requests, red-flag messages and messages whose triage failed."""
+    if n.patient_message_id is None or message is None:
+        return True
+    return (message.kind is PatientMessageKind.help or message.red_flag
+            or message.triage_status is TriageStatus.failed)
 
 
 def notify_patient_team(session: Session, message: PatientMessage) -> list[str]:

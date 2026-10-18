@@ -10,15 +10,21 @@ import { ApiError, getPatientMessages } from "@/lib/api";
 import { dayTime, firstName } from "@/lib/format";
 import type { EmergencyContact, PatientMessage } from "@/lib/types";
 
-/** Help requests and red flags, newest first. Family has no `read_patient_messages` (403): nothing to show. */
-export async function getPatientAlarms(patientId: string): Promise<PatientMessage[]> {
+export const isAlarm = (m: PatientMessage) => m.kind === "help" || m.red_flag;
+
+/** Every patient message, newest first. Family has no `read_patient_messages` (403): nothing to show. */
+export async function getPatientMessagesOrNone(patientId: string): Promise<PatientMessage[]> {
   try {
-    const messages = await getPatientMessages(patientId);
-    return messages.filter((m) => m.kind === "help" || m.red_flag);
+    return await getPatientMessages(patientId);
   } catch (err) {
     if (err instanceof ApiError && err.status === 403) return [];
     throw err;
   }
+}
+
+/** Help requests and red flags, newest first. */
+export async function getPatientAlarms(patientId: string): Promise<PatientMessage[]> {
+  return (await getPatientMessagesOrNone(patientId)).filter(isAlarm);
 }
 
 export function isRecent(m: PatientMessage, hours = 24): boolean {

@@ -100,9 +100,9 @@ App chrome shared by all screens (centered 480px column, top bar, bottom nav, bo
 |---|---|---|---|
 | `SignIn` | `/login` (phone with country picker), `/login/code` (code, then name step for a new phone) | CIA-32 | `POST /auth/login`, `/auth/verify` |
 | `Code` (+ `Link` as the expired state) | `/login/code` | CIA-32 | `POST /auth/verify` |
-| `Patients` | `/patients` | CIA-33 | `GET /me/patients` |
+| `Patients` | `/patients` | CIA-33, CIA-60 | `GET /me/patients`; red dot on the avatar + "N novedades" badge from `unread_notifications` (no artboard snapshot yet) |
 | `AddPatient` | `/patients/new` | CIA-34, CIA-51 | `POST /patients` (optional emergency number), members, invites |
-| `Main` | `/patients/[id]` | CIA-11, CIA-51 | `GET /patients/{id}`, `/reports`; "Número de emergencia" card + call banner (no artboard snapshot yet) |
+| `Main` | `/patients/[id]` | CIA-11, CIA-51 | `GET /patients/{id}`, `/reports`, `/patient-messages`; "Número de emergencia" card + call banner; "Mensajes de <nombre>" list (last 3, CIA-60) (no artboard snapshot yet) |
 | `Report` | `/patients/[id]/reports/[reportId]` | CIA-11, CIA-50 | `GET /patients/{id}/reports`, `GET /reports/{id}/versions`, `POST /reports/{id}/corrections` |
 | `NewReport` | `/patients/[id]/reports/new` | CIA-31 | `POST /patients/{id}/reports` |
 | `Alerts` | `/patients/[id]/alerts` | CIA-12 | reports' `alerts`, `red_flag` |

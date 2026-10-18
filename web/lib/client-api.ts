@@ -63,6 +63,14 @@ export function markNotificationRead(id: string) {
   return call<AppNotification>(`/me/notifications/${id}/read`, { method: "POST" });
 }
 
+/** Opening a patient clears its plain "how I feel" news (CIA-60). Urgent rows stay unread until announced and opened. */
+export function markPatientNotificationsRead(patientId: string) {
+  const q = new URLSearchParams({ patient_id: patientId, urgent: "false" });
+  return call<{ updated: number }>(`/me/notifications/read-all?${q}`, {
+    method: "POST",
+  });
+}
+
 export function fetchMessages(patientId: string) {
   return call<{ messages: Message[] }>(`/patients/${patientId}/messages`).then((d) => d.messages);
 }
