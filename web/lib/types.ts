@@ -27,7 +27,7 @@ export type Patient = {
   display_name: string;
   location?: string;
   emergency_contact: EmergencyContact | null;
-  care_plan: CarePlan;
+  care_plan: CarePlan | null;
 };
 
 export type MedicationDose = {

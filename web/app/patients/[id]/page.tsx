@@ -30,11 +30,14 @@ export default async function PatientHome(props: PageProps<"/patients/[id]">) {
   const total = last ? last.items.length : 0;
   const pct = total ? Math.round((covered / total) * 100) : 0;
 
-  const planRows: [string, string][] = [
-    ...plan.medications.map((m): [string, string] => [m.name, m.times.join(" · ")]),
-    ["Indicaciones", plan.indications.join(" · ") || "Ninguna"],
-    ["Alergias", plan.allergies.join(" · ") || "Ninguna registrada"],
-  ];
+  // `care_plan` is null when the patient has no active plan (e.g. a patient who signed up on their own).
+  const planRows: [string, string][] = plan
+    ? [
+        ...plan.medications.map((m): [string, string] => [m.name, m.times.join(" · ")]),
+        ["Indicaciones", plan.indications.join(" · ") || "Ninguna"],
+        ["Alergias", plan.allergies.join(" · ") || "Ninguna registrada"],
+      ]
+    : [["Plan de cuidado", "Sin plan registrado"]];
 
   return (
     <AppShell>
