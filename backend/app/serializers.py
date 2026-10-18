@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     Alert,
+    Invite,
     Message,
     Notification,
     Patient,
@@ -138,6 +139,10 @@ def serialize_patient(session: Session, patient: Patient) -> dict:
         }
     return {"id": patient.id, "display_name": patient.display_name, "location": patient.location,
             "care_plan": care_plan}
+
+
+def serialize_invite(invite: Invite) -> dict:
+    return {"id": invite.id, "contact": invite.phone, "role": invite.role.value, "status": invite.status.value}
 
 
 def serialize_message(message: Message, viewer_id: str, read_before: set[str]) -> dict:

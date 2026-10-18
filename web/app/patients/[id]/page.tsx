@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { ChevronLeftIcon, MessageCircleIcon, MicIcon } from "lucide-react";
+import { ChevronLeftIcon, MessageCircleIcon, MicIcon, UsersIcon } from "lucide-react";
 import { AppShell, Brand, BottomNav } from "@/components/app/shell";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -81,6 +81,12 @@ export default async function PatientHome(props: PageProps<"/patients/[id]">) {
                 <span className="text-right font-bold">{v}</span>
               </div>
             ))}
+            <Button asChild variant="outline" size="touch" className="mt-2 w-full font-bold">
+              <Link href={`/patients/${id}/team` as Route}>
+                <UsersIcon />
+                Equipo y accesos
+              </Link>
+            </Button>
           </CardContent>
         </Card>
 
