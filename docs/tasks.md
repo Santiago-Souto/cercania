@@ -36,14 +36,14 @@ Files: `web/`
 
 ## Dev C: Infra and input
 
-Files: `backend/app/main.py`, `whatsapp.py`, `transcribe.py`, `eval/`
+Files: `backend/app/main.py`, `web_reports.py`, `transcribe.py`, `eval/`
 
 | By    | Task                                                                                                                                                                            |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 12:30 | Backend hello world on Render, Railway or Fly with a stable URL                                                                                                                 |
-| 14:00 | Webhook: reply 200 right away, process in the background, drop duplicate message ids. Download the voice note and transcribe it with the vocabulary hint. **WhatsApp go/no-go** |
+| 14:00 | Report endpoint: drop duplicate client ids. Transcribe the voice note with the vocabulary hint. |
 | 15:30 | Compare the two transcription providers on 5 audios and pick one. Request **segment timestamps** (the web player needs them)                                                    |
-| 16:30 | Reply to the caregiver with `confirmation_text`. Identify the caregiver by phone number; ask "which patient?" if they have several                                              |
+| 16:30 | Return `confirmation_text` to the caregiver; the patient comes from the URL                                              |
 | 17:00 | **End-to-end: audio -> record -> alert -> view**                                                                                                                                |
 | 19:30 | `eval/run_eval.py` printing the `AGENTS.md` section 11 metrics, magic-link backend, README status table, backup demo video                                                      |
 

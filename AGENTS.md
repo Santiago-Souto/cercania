@@ -7,7 +7,7 @@ Read this fully before changing code. Keep it updated: if reality and this file 
 
 A care-handoff assistant for caregivers of dependent people (e.g. older adults in a residential center).
 
-- A caregiver sends an end-of-shift **voice note via WhatsApp** to a bot. No app install. The same report can also be sent from the web app (audio or text); both go through the same pipeline.
+- A caregiver sends an end-of-shift report from the **web app**, as a voice note or as text, from their phone or a computer. Decided Oct 18 (CIA-47): the web app is the only channel.
 - The system transcribes it, extracts structured data, **compares it against the patient's care plan and history by code**, flags omissions/changes, and stores everything on a web app.
 - The next shift (or a family member) can **query the record in natural language** and gets answers **with a citation to the exact fragment of the original report**.
 
@@ -40,68 +40,64 @@ Rubric weights: working product 35%, problem and user value 25%, AI quality 20% 
 ## 4. Pipeline
 
 ```
-WhatsApp message (voice note or text)  |  or web app report (POST /patients/:id/reports, audio or text)
-  (web: sender = session user, dedupe by client id, patient from the URL; joins at transcription)
-  -> webhook (ack immediately, process async, dedupe by message id)
-  -> identify sender by phone number (code)
-       unknown number -> fixed reply, stop (see 4.1)
-  -> resolve patient (code; caregiver with several patients -> ask "which patient?")
-  -> download audio + transcription (with patient vocabulary hint); text messages skip this
+web app report (POST /patients/:id/reports, audio or text)
+  (sender = session user, dedupe by client id, patient from the URL)
+  -> permission check (code): only roles that can send reports (caregivers)
+  -> transcription (with patient vocabulary hint); text reports skip this
        empty/unintelligible -> ask to resend, stop
-  -> triage (LLM, every sender, every message): emergency yes/no + reason + quote
+  -> triage (LLM): emergency yes/no + reason + quote
   -> route by triage result and sender role (see 4.1, 4.2)
   -> caregiver, any triage result: extraction (LLM, JSON schema, quote per field, null if not mentioned)
   -> quote verification (code: substring/normalized match against transcript)
   -> comparison (code, no model): vs care plan, vs previous days, vs required checklist
   -> alerts + missing-item list
   -> stored as a report (new versions only via corrections in the web)
-  -> bot replies to the sender
+  -> the web app shows the confirmation to the sender
   -> web app timeline + natural-language query with cited answers
 ```
 
-Target: confirmation message back to the caregiver in **under 10 seconds**. Triage and extraction may run concurrently for caregivers. If both are needed, the emergency reply goes out first and does not wait for extraction.
+Target: confirmation shown to the caregiver in **under 10 seconds**. Triage and extraction may run concurrently for caregivers. If both are needed, the emergency reply goes out first and does not wait for extraction.
 
 ### 4.1 Routing by sender
 
-The sender's role comes from `patient_access` for the resolved patient. Checked in code, never by the model.
+The sender is the logged-in session user; their role comes from `patient_access` for the patient in the URL. Checked in code, never by the model. Unknown phone numbers cannot reach the pipeline: they have no session.
 
 | Sender | Triage: no emergency | Triage: emergency |
 |---|---|---|
-| Unknown number | No model call, nothing stored. Fixed reply: number not registered; *if this is an emergency, call emergency services*. | (triage does not run) |
 | Caregiver | Shift report: extraction, comparison, confirmation | Shift report **plus** the emergency flow (4.2) |
-| Family / Doctor / Patient | Nothing stored. Reply with a magic link to the web. | Emergency report (no checklist extraction) **plus** the emergency flow (4.2) |
+| Family / Doctor / Patient (`process_report` only; the web report endpoint accepts caregivers, and the patient raises alarms through the patient view) | Nothing stored (`not_a_report`). | Emergency report (no checklist extraction) **plus** the emergency flow (4.2) |
 
-- Each message is a **new report**. Replies to the bot (e.g. answering a missing item) are separate reports; corrections to a recorded report are made only in the web and create a new `report_version`.
-- The confirmation text lists what was recorded and what is missing, and invites the caregiver to send another note. It does not wait for a "yes".
-- One report = one patient. If a note seems to cover several patients, the bot asks for one note per patient.
+- Each message is a **new report**. A follow-up note (e.g. answering a missing item) is a separate report; corrections to a recorded report are made only in the web and create a new `report_version`.
+- The confirmation text lists what was recorded and what is missing, and invites the caregiver to send another report. It does not wait for a "yes".
+- One report = one patient. The report is always filed under the patient in the URL; a note that covers several patients should be sent once per patient.
 
 ### 4.2 Emergency flow
 
 Triggered when triage says emergency, for any registered sender.
 
-1. **Reply to the sender immediately** with the fixed message: contact emergency services or the physician. No checklist questions in this reply.
+1. **Answer the sender immediately** with the fixed message: contact emergency services or the physician. No checklist questions in this reply.
 2. **Store** the report with `red_flag = true` and create an alert of type `emergency`, carrying the triage reason and quote, plus that quote's verification status.
-3. **Notify by WhatsApp**: the patient's registered health provider contact (if any), and the other caregivers and family members with access to that patient. Never notify the patient. Log each notification and its delivery status on the alert.
+3. **Notify in the web inbox**: the other caregivers and family members with access to that patient (never the patient, never the sender). Record each notification on the alert and in the `notification` table; the app polls the inbox every ~5 s and shows a browser Notification while the tab is open. The patient's registered health provider contact is stored as contact information only: with no inbox it is not notified.
 4. The web shows the emergency as a banner on the patient and in the alerts panel.
 
-Notifications to people who did not message the bot in the last 24h need an approved template (Meta), and the Meta test number only delivers to phones on its allowed list. If a notification can't be sent, record it as failed and show the failure on the alert; never fail silently.
+There is no push channel outside the app: a recipient sees the emergency when they open the web app (or have it open). If the inbox write fails, the failure is logged on the server (dispatch is idempotent, so it can be re-run); never fail silently.
 
-If triage itself fails (model error/timeout), the bot still replies with a message that includes the fixed emergency line, and the report is stored with `triage_status = failed` so it is visible.
+If triage itself fails (model error/timeout), the sender still gets a message that includes the fixed emergency line, and the report is stored with `triage_status = failed` so it is visible.
 
 ### Required checklist per report
 Appetite, sleep, urination/diuresis, medication, mood, mobility, pain, incidents. Code detects which items were **not mentioned**; the confirmation lists them so the caregiver can send another note.
 
 ## 5. Data model (design rules)
 
-Schema lives in `backend/app/models.py`. Entities: `person` (anyone who logs in or messages the bot; name, email, WhatsApp number = identity; "user" in the contract), `patient_access` (person + patient + role; "membership" in the contract, see section 6), `invite` (pending membership by WhatsApp number), `login_code` (hashed 6-digit code sent by SMS, expiry, attempts, used flag), `auth_session` (hashed web session token), `patient` (optionally a registered health provider contact: name + phone, used only for emergency notifications), `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient). `message_read` records who opened the thread after each message.
+Schema lives in `backend/app/models.py`. Entities: `person` (anyone who logs in; name, email, phone number = identity; "user" in the contract), `patient_access` (person + patient + role; "membership" in the contract, see section 6), `invite` (pending membership by phone number), `login_code` (hashed 6-digit code sent by SMS, expiry, attempts, used flag), `auth_session` (hashed web session token), `patient` (optionally a registered health provider contact: name + phone, shown as contact information only), `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient). `message_read` records who opened the thread after each message.
 
 Rules:
 - Structured data in Postgres; binaries (audio, images, documents) in object storage. `file` stores only the storage path and metadata.
 - `report` stores what was received: audio (via `file`), transcript, timestamped segments, timestamp, sender (any role), message id, `kind` (`shift` from a caregiver, `emergency` from another role) and the triage result. Written once. An `emergency` report has no checklist items.
 - `report_version` stores what was recorded. Corrections create a **new version**; previous versions stay visible and immutable (this is the evidence trail).
 - `report_item` stores: item type, value, coarse `level` (for code comparison over time), item `details` (e.g. medication doses), **verbatim supporting quote**, verification status. One row per checklist item; `value` null = not mentioned.
-- `alert` types: `omission` (plan vs report), `change` (vs usual), `missing_item` (checklist), `emergency` (triage; carries the notifications sent and their status).
-- Idempotency: processing the same WhatsApp message id twice must not create two reports.
+- `alert` types: `omission` (plan vs report), `change` (vs usual), `missing_item` (checklist), `emergency` (triage; carries the web inbox notifications created).
+- Idempotency: processing the same web report client id twice must not create two reports.
 - All seed/demo data is **fictional**. Never commit real audio, names or health data.
 
 ## 6. Roles and access (keep it minimal)
@@ -110,22 +106,22 @@ One web app, same data, a view per role. Roles are per patient (`patient_access`
 
 | Role | Can do |
 |---|---|
-| Caregiver | Send reports (WhatsApp or web), confirm/correct, query, see timeline and alerts, add patients (with their initial care plan) and invite people |
+| Caregiver | Send reports (web, audio or text), confirm/correct, query, see timeline and alerts, add patients (with their initial care plan) and invite people |
 | Health team (doctor, nurse, hospital/institution) | See assigned patients, reports, alerts and query; reply to family messages. The **doctor** is the only role that edits the care plan after creation (each edit = new plan version) |
 | Family | Read-only summary and alerts; message the health team |
 | Patient | Only two actions: tell how they feel (audio or text) and press "I need help". **No access to reports or alerts about them.** |
 
-Any registered role can raise an emergency over WhatsApp (section 4.1); only caregivers send shift reports. Raising an emergency gives the sender no extra read access.
+Any role can raise an emergency (a caregiver in a report, the patient in the patient view; section 4.1); only caregivers send shift reports. Raising an emergency gives the sender no extra read access.
 
 The patient is the subject of the profile; optionally they also have their own login with the `patient` role. Dose text is written by people (caregiver at creation, doctor afterwards); code never computes or suggests doses.
 
-Auth: sign up with name, email and phone number -> a **6-digit code by SMS** (Twilio; decided Oct 18, CIA-43, because WhatsApp needs an approved template or an allowed-list number to reach a new user) -> code entered on the web -> session cookie. Codes are single-use, expire in 10 minutes, are stored hashed, lock after 5 wrong tries and are rate-limited per number. No passwords. The phone is the same number the person uses on WhatsApp for the bot. Invited users see the invite in the web app (matched on the phone their session proved) and get its role only when they accept it. Only caregivers can invite, by WhatsApp number only (email is not verified, so it never grants access). A caregiver may invite with any of the six roles, including `doctor` (decided Oct 18, CIA-34): the caregiver sets up the team, so the app trusts them on who the doctor is and does not verify it. Email is contact info, not identity, and need not be unique. Login and sign-up never reveal whether a phone is registered. The WhatsApp webhook verifies the provider signature before trusting the sender phone; corrections and reports take the author from the session or the verified sender, never from the request body.
+Auth: sign up with name, email and phone number -> a **6-digit code by SMS** (Twilio; decided Oct 18, CIA-43) -> code entered on the web -> session cookie. Codes are single-use, expire in 10 minutes, are stored hashed, lock after 5 wrong tries and are rate-limited per number. No passwords. The phone number is the person's identity; invites are matched on it. Invited users see the invite in the web app (matched on the phone their session proved) and get its role only when they accept it. Only caregivers can invite, by phone number only (email is not verified, so it never grants access). A caregiver may invite with any of the six roles, including `doctor` (decided Oct 18, CIA-34): the caregiver sets up the team, so the app trusts them on who the doctor is and does not verify it. Email is contact info, not identity, and need not be unique. Login and sign-up never reveal whether a phone is registered. Corrections and reports take the author from the session, never from the request body.
 
 ## 7. Safety rules (non-negotiable)
 
 - **Never diagnose. Never suggest, change or compute doses.** Record, compare, alert.
 - If something is ambiguous, **ask or say "unclear"**. Never guess.
-- Emergencies (the patient needs immediate help or their health is at risk: a fall, injury, chest pain, breathing difficulty, etc.) are detected by the **model in the triage step** (section 4.2). The reply is a **fixed message** written in code: "contact emergency services or the physician." The bot never gives first-aid or clinical instructions. This is a safety net, not the product's core.
+- Emergencies (the patient needs immediate help or their health is at risk: a fall, injury, chest pain, breathing difficulty, etc.) are detected by the **model in the triage step** (section 4.2). The reply is a **fixed message** written in code: "contact emergency services or the physician." The app never gives first-aid or clinical instructions. This is a safety net, not the product's core.
 - When in doubt, triage leans to emergency: a false alarm costs less than a missed one.
 - Patient "I need help" is a **fixed rule**, never routed through the model: notify every caregiver and health-team member of that patient right away and show the patient "help is on the way; if it is an emergency, call emergency services". Patient "how I feel" messages go through the same triage step, text or audio (audio is triaged on its transcript).
 - Family <-> health team messages are human-to-human. The model never answers them, and the thread always shows "not for emergencies".
@@ -144,7 +140,6 @@ Auth: sign up with name, email and phone number -> a **6-digit code by SMS** (Tw
   - Emergency triage (`triage.py`, every message from a registered sender): Groq `openai/gpt-oss-120b` (switched from Claude Haiku for the same reason), small schema (`emergency`, `reason`, `quote`), separate call from extraction so it also covers non-caregivers. Override with `TRIAGE_MODEL`.
   - All three share Groq's free-tier limit (8,000 tokens/minute; one report = extraction + triage), so space out demo reports and eval cases (`run_eval.py --delay 30`), or move a task to another provider. On a 429, `llm.py` waits what the provider's `Retry-After` says (up to 15 s) and retries once; asked to wait longer, it fails at once.
 - SMS (login code only): **decided** Twilio Programmable Messaging REST API via `httpx` (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` or `TWILIO_MESSAGING_SERVICE_SID`). A trial account only texts numbers verified in its console.
-- WhatsApp: **decided** Meta Cloud API, bot number **+1 555-674-0716** (Meta test number; only numbers on its allowed list can write to it). Setup: `docs/whatsapp-setup.md`, automated by `backend/scripts/setup_whatsapp.py`. Twilio trial does not allow WhatsApp.
 - Deploy: any host with a stable public URL (Render, Railway, Fly). Deploy "hello world" first.
 - Secrets only via environment variables. `.env` is gitignored; commit `.env.example` only.
 
@@ -152,8 +147,7 @@ Auth: sign up with name, email and phone number -> a **6-digit code by SMS** (Tw
 
 ```
 backend/app/
-  main.py          API + webhook (ack fast, process async)
-  whatsapp.py      receive, download audio, reply            [infra/input owner]
+  main.py          API                                       [shared]
   sms.py           send the login code by SMS (Twilio)       [infra/input owner]
   transcribe.py    audio -> text with vocabulary hint        [infra/input owner]
   web_reports.py   POST /patients/{id}/reports (text/audio)  [infra/input owner]
@@ -166,7 +160,7 @@ backend/app/
   serializers.py   ORM -> contract dicts, one place          [shared]
   api/             web routes, one module per area: auth, patients, reports, corrections, me, notifications, query, messages [shared]
   process.py       process_report: triage + extraction -> compare -> store [brain owner]
-  notify.py        emergency notifications: web inbox, WhatsApp best effort [shared]
+  notify.py        emergency notifications: web inbox [shared]
   llm.py           one JSON-schema call, any vendor          [brain owner]
   triage.py        text -> emergency yes/no + quote (LLM)    [brain owner]
   extract.py       text -> JSON with quotes                  [brain owner]
@@ -175,8 +169,6 @@ backend/app/
   query.py         cited natural-language answers            [brain owner]
   models.py        schema                                    [brain owner]
   seed.py          2-3 fictional patients + care plans       [brain owner]
-backend/scripts/
-  setup_whatsapp.py  registers the webhook with Meta         [infra/input owner]
 web/               Next.js app, one view per role            [web owner]
                    sign-up + code, my patients, add patient + roles,
                    patient home, report, alerts, ask, new report,
@@ -201,7 +193,7 @@ Endpoints (initial): `GET /patients/:id`, `GET /patients/:id/reports`, `POST /pa
 
 ## 10. Out of scope (do not build)
 
-Health-system / clinical-record integration, app/browser push notifications (alerts, help requests and the emergency notifications in section 4.2 go out by WhatsApp; until Meta approves the number, the in-app web inbox, polled every ~5 s, plus the browser Notification API while the tab is open, is the interim channel), passwords / OAuth / SSO, voice replies from the agent (text confirmation first; audio reply only if time remains Sunday), roles beyond the six in section 6 (caregiver, family, patient, doctor, nurse, institution), AI answers inside family <-> health team messages.
+Health-system / clinical-record integration, any push channel outside the web app (decided Oct 18, CIA-47; alerts, help requests and emergency notifications go to the in-app web inbox, polled every ~5 s, plus the browser Notification API while the tab is open), passwords / OAuth / SSO, voice replies from the agent (text confirmation first; audio reply only if time remains Sunday), roles beyond the six in section 6 (caregiver, family, patient, doctor, nurse, institution), AI answers inside family <-> health team messages.
 
 **Priority order (scope was widened on Sat 13:45; the critical path still comes first):**
 1. Critical path: voice note or web report in -> verified record + alerts -> cited query, and the views that show it.
@@ -223,7 +215,7 @@ Rule: never tune the prompt against the same cases we will demo with and then ca
 
 - Brain: given a transcript, returns record + missing items + alerts, every quote verified.
 - Web: someone who has not seen the project opens the link and understands the last shift with no explanation; progress and error messages are clear; each datum shows its citation and plays the audio fragment.
-- Infra/input: a voice note sent from a phone returns a confirmation in under 10 s; duplicate deliveries are ignored; eval script runs from one command.
+- Infra/input: a voice note recorded in the web app returns a confirmation in under 10 s; duplicate deliveries are ignored; eval script runs from one command.
 
 ## 13. Working agreements for agents
 
@@ -241,7 +233,7 @@ Rule: never tune the prompt against the same cases we will demo with and then ca
 | Time | Must exist |
 |---|---|
 | 12:30 | Contract, schema, seed data, hello-world deployed |
-| 14:00 | Voice note transcribing (WhatsApp or fallback). Brain processes text. Web shows fake data. **WhatsApp go/no-go.** |
+| 14:00 | Voice note transcribing from the web app. Brain processes text. Web shows fake data. |
 | 17:00 | First end-to-end integration: audio -> record -> alert -> view. Most important checkpoint. |
 | 19:30 | Feature freeze. Bugs, eval cases, error handling, README only. |
 | 21:00 | Venue closes. Everything deployed. (No backup video: decided Oct 18, the live demo relies on its fallbacks.) |
@@ -258,6 +250,5 @@ Problem: the shift handoff gets lost. Live demo: a juror dictates a report, sees
 - Final checklist item list (section 4) once validated with a caregiver contact.
 - Emergency triage criteria (section 4.2): the prompt in `triage.py` is provisional. It currently treats a past event the message says was attended, with the patient now fine ("se cayó a la mañana, la vio el médico, está bien"), as **not** an emergency, and anything unclear as an emergency. Confirm or change.
 - Whether to add a deterministic phrase list as a second safety net next to the model (rejected for now, Oct 17).
-- "Health provider" contact: who it is (residential center, emergency service, doctor) and where it lives (field on `patient` vs a contact table). Demo uses a fictional team phone.
-- WhatsApp emergency notifications: template approval / sandbox join for recipients (section 4.2). If not ready, list as Pending and keep only the web alert.
+- "Health provider" contact: who it is (residential center, emergency service, doctor) and where it lives (field on `patient` vs a contact table). It is contact information only until a channel to reach it exists.
 - Messages from family/doctor/patient that are not emergencies only get a link for now; revisit (e.g. family questions answered with `query.py`).

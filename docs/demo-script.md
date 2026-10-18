@@ -20,7 +20,7 @@ For whoever runs the live demo. There is no backup video (team decision, Oct 18)
 | 1:10–1:35 | The confirmation | Point at: what was recorded, **omissions** (Enalapril 08:00, Metformina 08:00 not mentioned), the **change** (appetite low, 3 shifts in a row) and the **missing item** (sleep). "The model only reads; code compares against the care plan and the history." |
 | 1:35–2:00 | Open the new report | Every item shows the caregiver's exact words and "verificada". **Tap the quote "Comió poco en la cena"**: it plays exactly that fragment of the voice note. |
 | 2:00–2:40 | **Preguntar** → "¿Cómo viene comiendo?" | The answer cites the reports. **Tap the citation from today's report**: it plays the exact words. Seed reports were entered as text, so their citations have no audio. |
-| 2:40–3:00 | Back to Rosa | Close with the limits: no diagnosis and no doses, fictional data, and the simulated parts (SMS code on the Twilio trial; WhatsApp pending Meta approval). |
+| 2:40–3:00 | Back to Rosa | Close with the limits: no diagnosis and no doses, fictional data, and the simulated parts (SMS code on the Twilio trial; notifications only reach people through the web inbox). |
 
 **Note to dictate** (tested through the real pipeline: status `ok` in 2.7 s, with exactly the alerts above):
 

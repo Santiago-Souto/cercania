@@ -44,21 +44,20 @@ Done when someone who has never seen the project opens the link and understands
 the last shift without explanation. No extra roles, no push notifications.
 ```
 
-## Role: infra and input (WhatsApp, transcription, eval)
+## Role: infra and input (web reports, transcription, eval)
 
 ```
 You are the "infra/input" owner per AGENTS.md section 9. Work in backend/app/main.py,
-whatsapp.py, transcribe.py and eval/. Priorities in order:
+web_reports.py, transcribe.py and eval/. Priorities in order:
 1. Deploy a hello-world with a stable public URL.
-2. Webhook that acks immediately, processes asynchronously, dedupes by message id,
-   identifies the caregiver by phone number.
-3. Download a real WhatsApp voice note and transcribe it. Compare two providers on
+2. POST /patients/:id/reports (text or audio) that dedupes by client id and takes
+   the caregiver from the session.
+3. Transcribe a recorded voice note. Compare two providers on
    5 real audios and report the word-error evidence before choosing. Pass the
    patient's care-plan vocabulary as a hint.
-4. Reply "I recorded: ... Is that right?" and ask for missing items using the
-   brain's ProcessResult.
+4. Show "I recorded: ..." and the missing items using the brain's ProcessResult.
 5. eval/run_eval.py reading eval/cases.csv; print the metrics in AGENTS.md section 11.
-Cut rule: if a real voice note does not flow end to end by 14:00 Saturday, switch to
-a Telegram bot or web recorder and mark WhatsApp as Pending in README.md.
+Cut rule: if a recorded voice note does not flow end to end by 14:00 Saturday, fall
+back to typed text and mark audio as Pending in README.md.
 Never commit audio or secrets.
 ```
