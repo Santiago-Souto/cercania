@@ -35,7 +35,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Doctor edits care plan (new version) | Pending | Role and permission in schema; no endpoint/view yet |
 | Patient view (how I feel + I need help; no reports or alerts) | Pending | Role and permission in schema; no endpoint/view yet |
 | Login with 6-digit WhatsApp code | Pending | |
-| Eval script and 20 cases | In progress | `eval/run_eval.py` built and tested; 4 cases in `eval/cases.csv` (c003 is an emergency), all `dev`, 0 unseen. Groq's free tier (8,000 tokens/minute) allows ~2 reports per minute, so a full run needs spacing |
+| Eval script and 20 cases | In progress | `eval/run_eval.py` built and tested; 4 cases in `eval/cases.csv` (c003 is an emergency), all `dev`, 0 unseen. Scores emergency recall and emergency false alarms on their own lines. Groq's free tier (8,000 tokens/minute) allows ~2 reports per minute, so a full run needs spacing |
 
 ### Simulated
 
@@ -108,4 +108,4 @@ python eval/run_eval.py --json out.json # per-case details
 
 Runs every case in `eval/cases.csv` through the real `process_report` on a fresh temporary SQLite database with the fictional seed data (the team database is never touched). Needs the API keys of the configured providers: by default only `GROQ_API_KEY` (extraction and triage); `LLM_API_KEY` (+ `LLM_BASE_URL`) for any `openai:<model>`.
 
-Reports: fields extracted (value + verified quote), omissions detected, missing checklist items detected, false alarms (unexpected alerts, items reported but not mentioned, items flagged missing but mentioned), quote-verification pass rate, and latency per report. Change alerts are expected as `change:<item>` in `expected_alerts`. A case where `process_report` raises or returns a status other than `ok` counts as failed: its expected counts stay in every ratio with zero detections, and the run exits with code 1. The wording of extracted values is not judged. Cases with `split=unseen` are held out from prompt tuning (keep at least 5).
+Reports: fields extracted (value + verified quote), omissions detected, changes detected, emergencies detected (and emergency false alarms, reported on their own line), missing checklist items detected, false alarms (unexpected alerts, items reported but not mentioned, items flagged missing but mentioned), quote-verification pass rate, and latency per report. Change alerts are expected as `change:<item>` in `expected_alerts`. A case where `process_report` raises or returns a status other than `ok` counts as failed: its expected counts stay in every ratio with zero detections, and the run exits with code 1. The wording of extracted values is not judged. Cases with `split=unseen` are held out from prompt tuning (keep at least 5).
