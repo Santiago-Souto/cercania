@@ -3,7 +3,7 @@
 // Same-origin through the /api rewrite, so the session cookie goes along; a 401 sends the browser to /login.
 
 import { BROWSER_API, onUnauthorized } from "./api-shared";
-import type { AppNotification } from "./types";
+import type { AppNotification, Message } from "./types";
 
 export class ClientApiError extends Error {
   constructor(
@@ -48,6 +48,18 @@ export function fetchNotifications(opts: { since?: string; unreadOnly?: boolean 
 
 export function markNotificationRead(id: string) {
   return call<AppNotification>(`/me/notifications/${id}/read`, { method: "POST" });
+}
+
+export function fetchMessages(patientId: string) {
+  return call<{ messages: Message[] }>(`/patients/${patientId}/messages`).then((d) => d.messages);
+}
+
+/** `clientId` is reused on retry, so a send that timed out after the server stored it is not duplicated. */
+export function sendMessage(patientId: string, text: string, clientId: string) {
+  return call<Message>(`/patients/${patientId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ text, client_id: clientId }),
+  });
 }
 
 /** Signed URL for a report's voice note. `audioPath` is the report's `audio_url` (GET /reports/{id}/audio). */
