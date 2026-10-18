@@ -26,6 +26,9 @@ PROVIDERS = tuple(API_KEY_ENV)
 OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1"
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 RETRY_DELAY_SEC = 0.5  # one retry on transient errors, like the Anthropic SDK with max_retries=1
+# Groq checks strict-schema output after generating it and answers 400 with this code
+# when the model left out a required field. Sampling again usually fixes it.
+SCHEMA_REJECTED_CODES = {"json_validate_failed"}
 
 
 class LLMError(Exception):
@@ -144,7 +147,8 @@ def _openai(system, user, schema, name, max_tokens, timeout, client, base_url, a
                 if attempt:
                     raise LLMError("unavailable", str(e)) from e
             else:
-                transient = response.status_code == 429 or response.status_code >= 500
+                transient = (response.status_code == 429 or response.status_code >= 500
+                             or _schema_rejected(response))
                 if attempt or not transient:
                     break
             time.sleep(RETRY_DELAY_SEC)
@@ -153,6 +157,9 @@ def _openai(system, user, schema, name, max_tokens, timeout, client, base_url, a
             client.close()
 
     status = response.status_code
+    if _schema_rejected(response):
+        # Our request was fine; the model's output was not. Retryable for the caller.
+        raise LLMError("bad_output", f"schema rejected by the provider: {_error_message(response)[:300]}")
     if status in (401, 403):
         raise LLMError("auth", response.text[:200])
     if status in (400, 404, 422):
@@ -171,3 +178,19 @@ def _openai(system, user, schema, name, max_tokens, timeout, client, base_url, a
         raise LLMError("refused")
     content = message.get("content")
     return content if isinstance(content, str) else None
+
+
+def _error_body(response) -> dict:
+    try:
+        error = response.json().get("error")
+    except (ValueError, AttributeError):
+        return {}
+    return error if isinstance(error, dict) else {}
+
+
+def _schema_rejected(response) -> bool:
+    return response.status_code == 400 and _error_body(response).get("code") in SCHEMA_REJECTED_CODES
+
+
+def _error_message(response) -> str:
+    return str(_error_body(response).get("message") or response.text)

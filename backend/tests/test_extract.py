@@ -253,3 +253,11 @@ def test_live_extraction_unseen_transcript():
     assert items["appetite"]["level"] == "normal"
     assert items["pain"]["value"] is None
     assert all(i["quote_verified"] for i in result.items if i["value"] is not None), result.warnings
+
+
+def test_prompt_requires_value_and_quote_for_medication():
+    # Groq rejected live outputs where medication had doses but no value/quote.
+    from app.extract import SYSTEM_PROMPT
+
+    assert "Return all eight items, and every field of every item" in SYSTEM_PROMPT
+    assert "Never leave out value or" in SYSTEM_PROMPT
