@@ -509,6 +509,10 @@ Deletes the session server-side and clears the cookie. Returns `{ "status": "log
 
 Permission: `edit_emergency_contact` (**caregiver and doctor** only; other roles get `403 forbidden`). Body: `{ "name": "Emergencias Residencia", "phone": "+598 99 123 456" }` to set, or the JSON `null` to clear. Name 1-120 characters; the phone is normalized to E.164. Returns `200` with the patient as in `GET /patients/{patient_id}`. Errors: `401`, `403`, `404`, `422 invalid_request` (empty name, malformed body), `422 phone_invalid` (message in Spanish, same text as other phone errors).
 
+### `DELETE /patients/{patient_id}`
+
+Permission: `archive_patient` (**caregiver** only; other roles get `403 forbidden`). Removes the patient from the app as a **soft delete**: every membership, pending invite and pre-registration for it is deleted (the memberships it had are logged in `role_change` as `patient_archived`), and `patient.archived_at` is set. Reports, versions, alerts and messages stay stored as the evidence trail, but nobody can reach them any more (`404` for everyone, and the patient leaves every `GET /me/patients`). Admins can no longer assign roles on it. Returns `{ "status": "archived" }`. Errors: `401`, `403`, `404`.
+
 ### `GET /patients/{patient_id}/members`
 
 ```json
@@ -533,7 +537,7 @@ Same invite with the patient in the body: `{ "contact": "+59899111111", "role": 
 
 ### `GET /me/invites`
 
-Any authenticated person. Pending invites addressed to the caller's own phone (the one their session proved), newest first. The web shows them on "Mis pacientes" with Aceptar / Rechazar. Errors: `401`.
+Any authenticated person. Pending invites addressed to the caller's own phone (the one their session proved), newest first. The web shows them on "Mis pacientes" and on the patient's own view (a self-signed-up patient's only screen) with Aceptar / Rechazar, and polls this endpoint with the notifications (about every 5 s) to show a toast for an invite that arrives while the app is open. Errors: `401`.
 
 ```json
 { "invites": [ { "id": "inv_001", "patient_id": "pat_001", "patient_display_name": "Rosa (fictional)", "role": "family", "invited_by": "Ana Pérez (fictional)", "created_at": "2026-10-18T00:05:00Z" } ] }
@@ -543,7 +547,7 @@ Any authenticated person. Pending invites addressed to the caller's own phone (t
 
 ### `POST /me/invites/{invite_id}/accept`
 
-Creates the membership with the invite's role, family or patient (if the caller is already a member, their current role is kept). For a `patient` invite without a patient, it first creates the caller's own patient profile and makes the inviting caregiver its caregiver; `patient_id` in the answer is that new profile and marks the invite `accepted`. Returns the membership: `{ "patient_id": "pat_001", "display_name": "Rosa (fictional)", "role": "family" }`. Errors: `401`; `404 not_found` (unknown, addressed to another phone, or no longer pending).
+Creates the membership with the invite's role, family or patient (if the caller is already a member, their current role is kept). For a `patient` invite without a patient, it first creates the caller's own patient profile and makes the inviting caregiver its caregiver; `patient_id` in the answer is that new profile and marks the invite `accepted`. For a `patient` invite to an existing patient, a caller who already has their own profile (self sign-up) gets it **merged**: if no one else has access to that profile and it has no reports, its patient messages (and their notifications) move to the invited patient and the old profile is archived as in `DELETE /patients/{patient_id}` (logged as `own_profile_merged`); otherwise both profiles stay. Returns the membership: `{ "patient_id": "pat_001", "display_name": "Rosa (fictional)", "role": "family" }`. Errors: `401`; `404 not_found` (unknown, addressed to another phone, or no longer pending).
 
 ### `POST /me/invites/{invite_id}/decline`
 

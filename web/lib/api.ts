@@ -104,6 +104,11 @@ export async function setEmergencyContact(patientId: string, contact: EmergencyC
   return request<Patient>(`/patients/${patientId}/emergency-contact`, { method: "PATCH", body: JSON.stringify(contact) });
 }
 
+/** DELETE /patients/{id}: a caregiver archives the patient (records stay stored, nobody keeps access). */
+export async function archivePatient(patientId: string): Promise<void> {
+  await request(`/patients/${patientId}`, { method: "DELETE" });
+}
+
 /** POST /invites (CIA-48): a caregiver invites a patient who has no profile yet. */
 export async function invitePatientWithoutProfile(contact: string): Promise<Invite> {
   return request<Invite>(`/invites`, { method: "POST", body: JSON.stringify({ contact, role: "patient" }) });

@@ -110,6 +110,7 @@ class Permission(str, enum.Enum):
     read_patient_messages = "read_patient_messages"
     invite = "invite"  # POST /patients/{id}/invites, by phone number only
     edit_emergency_contact = "edit_emergency_contact"  # PATCH /patients/{id}/emergency-contact (CIA-51)
+    archive_patient = "archive_patient"  # DELETE /patients/{id}: soft delete, records stay
     team_messages = "team_messages"  # family <-> health team thread, human to human (CIA-36)
 
 
@@ -121,7 +122,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
                                Permission.read_reports, Permission.read_care_plan,
                                Permission.raise_emergency, Permission.send_patient_message,
                                Permission.read_patient_messages, Permission.invite,
-                               Permission.edit_emergency_contact}),
+                               Permission.edit_emergency_contact, Permission.archive_patient}),
     # Family <-> health team messages: only those roles, never caregiver or patient (AGENTS.md 6).
     Role.family: frozenset({Permission.read_reports, Permission.read_care_plan,
                             Permission.raise_emergency, Permission.team_messages}),
@@ -242,6 +243,9 @@ class Patient(TimestampMixin, Base):
     # information only: it has no inbox, so it is not notified; both null = none registered.
     health_provider_name: Mapped[str | None] = mapped_column(String(120))
     health_provider_phone: Mapped[str | None] = mapped_column(String(20))  # E.164
+    # Archived by a caregiver (DELETE /patients/{id}): every membership and pending invite is
+    # removed, so nobody reaches it; reports and versions stay as the evidence trail.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     access: Mapped[list[PatientAccess]] = relationship(back_populates="patient")
     care_plans: Mapped[list[CarePlan]] = relationship(

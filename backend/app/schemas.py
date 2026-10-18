@@ -327,6 +327,10 @@ class MyInvites(BaseModel):
     invites: list[MyInvite]
 
 
+class PatientArchived(BaseModel):
+    status: str = "archived"
+
+
 class InviteDeclined(BaseModel):
     status: Literal["declined"]
 

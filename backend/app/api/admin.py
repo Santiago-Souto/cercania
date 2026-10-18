@@ -30,6 +30,12 @@ def require_admin(person_id: str = Depends(current_person_id), db: Session = Dep
     return person_id
 
 
+def _live_patient(db: Session, patient_id: str) -> Patient | None:
+    """Archived patients (a caregiver removed them) can no longer be assigned."""
+    patient = db.get(Patient, patient_id)
+    return patient if patient is not None and patient.archived_at is None else None
+
+
 def _overwrite(message: str, current: dict) -> Exception:
     exc = api_error(409, "overwrite_required", message)
     exc.detail["current"] = jsonable_encoder(current)  # the error handler writes plain JSON
@@ -41,7 +47,7 @@ def _check_role_and_patient(db: Session, role: str, patient_id: str | None) -> N
         raise api_error(422, "patient_required", "Elegí el paciente para este rol.")
     if role in roles.NO_PATIENT and patient_id:
         raise api_error(422, "patient_not_used", "Este rol no va asociado a un paciente.")
-    if patient_id and db.get(Patient, patient_id) is None:
+    if patient_id and _live_patient(db, patient_id) is None:
         raise api_error(404, "not_found", "No encontramos a ese paciente.")
 
 
@@ -51,7 +57,7 @@ def list_people(admin_id: str = Depends(require_admin), db: Session = Depends(ge
     (names only: an admin never sees clinical data)."""
     people = db.scalars(select(Person).order_by(Person.display_name, Person.id)).all()
     pres = db.scalars(select(PreRegistration).order_by(PreRegistration.created_at, PreRegistration.id)).all()
-    patients = db.scalars(select(Patient).order_by(Patient.display_name, Patient.id)).all()
+    patients = db.scalars(select(Patient).where(Patient.archived_at.is_(None)).order_by(Patient.display_name, Patient.id)).all()
     return {
         "people": [roles.person_state(db, p) for p in people],
         "pre_registrations": [roles.pre_registration_state(db, p) for p in pres],
@@ -66,7 +72,7 @@ def set_membership(person_id: str, patient_id: str, body: schemas.AdminMembershi
     person = db.get(Person, person_id)
     if person is None:
         raise api_error(404, "not_found", "No encontramos a esa persona.")
-    if db.get(Patient, patient_id) is None:
+    if _live_patient(db, patient_id) is None:
         raise api_error(404, "not_found", "No encontramos a ese paciente.")
     if body.role == Role.patient.value and roles.other_patient_login(db, patient_id, person_id):
         raise api_error(409, "patient_has_login", roles.PATIENT_HAS_LOGIN)  # one own login per patient

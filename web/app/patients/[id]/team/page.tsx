@@ -4,12 +4,13 @@ import { TeamList } from "@/components/app/team-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FieldDescription } from "@/components/ui/field";
 import { getMembers, getMyPatients, getPatient } from "@/lib/api";
+import { ArchivePatient } from "./archive";
 import { TeamInvite } from "./invite";
 
 export default async function TeamPage(props: PageProps<"/patients/[id]/team">) {
   const { id } = await props.params;
   const [patient, { members, invites }, mine] = await Promise.all([getPatient(id), getMembers(id), getMyPatients()]);
-  // Only caregivers invite (AGENTS.md section 6); the backend enforces it too.
+  // Only caregivers invite and remove the patient (AGENTS.md section 6); the backend enforces it too.
   const canInvite = mine.find((p) => p.id === id)?.role === "caregiver";
 
   return (
@@ -33,6 +34,7 @@ export default async function TeamPage(props: PageProps<"/patients/[id]/team">) 
             </FieldDescription>
           </CardContent>
         </Card>
+        {canInvite && <ArchivePatient patientId={id} name={patient.display_name} />}
       </main>
     </AppShell>
   );

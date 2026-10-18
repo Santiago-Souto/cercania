@@ -1,5 +1,5 @@
 """Patient routes: reads (GET /patients/{id}, /reports, /alerts) and the team
-(POST /patients, PATCH /patients/{id}/emergency-contact, GET /patients/{id}/members, POST /patients/{id}/invites).
+(POST /patients, DELETE /patients/{id}, PATCH /patients/{id}/emergency-contact, GET /patients/{id}/members, POST /patients/{id}/invites).
 
 See docs/contract.md. Permissions via `patient_access`.
 """
@@ -175,6 +175,18 @@ async def set_emergency_contact(
         ctx.patient.health_provider_name = body.name
     db.commit()
     return serialize_patient(db, ctx.patient)
+
+
+@router.delete("/patients/{patient_id}", response_model=schemas.PatientArchived)
+def archive_patient(
+    ctx: PatientContext = Depends(patient_access(Permission.archive_patient)),
+    db: Session = Depends(get_db),
+) -> dict:
+    """A caregiver removes the patient: soft delete. Nobody keeps access and pending invites are
+    dropped; reports and their versions stay stored (evidence trail), never shown again."""
+    roles.archive_patient(db, ctx.patient, ctx.person_id)
+    db.commit()
+    return {"status": "archived"}
 
 
 @router.get("/patients/{patient_id}/members", response_model=schemas.Members)

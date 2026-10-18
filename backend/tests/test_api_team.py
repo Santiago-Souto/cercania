@@ -364,3 +364,61 @@ def test_patch_emergency_contact_invalid_phone_is_422(db):
     r = client.patch("/patients/pat_a/emergency-contact", json={"name": "X", "phone": "abc"}, headers=h("cg"))
     assert r.status_code == 422
     assert r.json()["error"]["code"] == "phone_invalid"
+
+
+def _self_signed_up_patient(db, person_id="new"):
+    """Like sign-up with no invite: the person gets their own profile, then asks for help."""
+    from app import roles
+    from app.models import PatientMessage, PatientMessageKind
+    person = db.get(Person, person_id)
+    person.is_caregiver = False
+    own = roles.own_patient_profile(db, person)
+    db.add(PatientMessage(patient_id=own.id, sender_id=person_id, kind=PatientMessageKind.help))
+    db.commit()
+    return own.id
+
+
+def test_self_signed_up_patient_accepting_an_invite_merges_their_own_profile(db):
+    from app.models import PatientMessage
+    own = _self_signed_up_patient(db)
+    inv = client.post("/patients/pat_a/invites", json={"contact": "+15550100009", "role": "patient"}, headers=h("cg")).json()
+    # The invite reaches them even though they already have a profile.
+    assert [i["id"] for i in client.get("/me/invites", headers=h("new")).json()["invites"]] == [inv["id"]]
+    r = client.post(f"/me/invites/{inv['id']}/accept", headers=h("new"))
+    assert r.status_code == 200 and r.json()["patient_id"] == "pat_a"
+    # One profile left; the help request moved with them and the caregiver now sees it.
+    assert [(m["patient_id"], m["role"]) for m in client.get("/me", headers=h("new")).json()["memberships"]] == [("pat_a", "patient")]
+    assert db.get(Patient, own).archived_at is not None
+    assert [m.patient_id for m in db.scalars(select(PatientMessage))] == ["pat_a"]
+    assert len(client.get("/patients/pat_a/patient-messages", headers=h("cg")).json()["messages"]) == 1
+
+
+def test_own_profile_with_a_team_is_not_merged(db):
+    own = _self_signed_up_patient(db)
+    db.add(PatientAccess(person_id="doc", patient_id=own, role=Role.doctor))
+    db.commit()
+    inv = client.post("/patients/pat_a/invites", json={"contact": "+15550100009", "role": "patient"}, headers=h("cg")).json()
+    client.post(f"/me/invites/{inv['id']}/accept", headers=h("new"))
+    assert db.get(Patient, own).archived_at is None
+    assert len(client.get("/me", headers=h("new")).json()["memberships"]) == 2
+
+
+def test_caregiver_archives_a_patient(db):
+    from app.models import RoleChange
+    client.post("/patients/pat_a/invites", json={"contact": "+59899111111", "role": "family"}, headers=h("cg"))
+    r = client.delete("/patients/pat_a", headers=h("cg"))
+    assert r.status_code == 200 and r.json() == {"status": "archived"}
+    assert db.get(Patient, "pat_a").archived_at is not None
+    for pid in ("cg", "fam", "doc"):
+        assert client.get("/me/patients", headers=h(pid)).json() == {"patients": []}
+        assert client.get("/patients/pat_a", headers=h(pid)).status_code == 404
+    assert db.scalars(select(Invite).where(Invite.patient_id == "pat_a")).all() == []
+    log = db.scalar(select(RoleChange).where(RoleChange.action == "patient_archived"))
+    assert {m["person_id"] for m in log.before["memberships"]} == {"cg", "fam", "doc"}
+
+
+@pytest.mark.parametrize("person", ["fam", "doc"])
+def test_only_caregivers_archive(db, person):
+    r = client.delete("/patients/pat_a", headers=h(person))
+    assert r.status_code == 403
+    assert db.get(Patient, "pat_a").archived_at is None

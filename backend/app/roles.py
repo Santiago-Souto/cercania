@@ -15,12 +15,16 @@ from sqlalchemy.orm import Session
 from .models import (
     Invite,
     InviteStatus,
+    Notification,
     Patient,
     PatientAccess,
+    PatientMessage,
     Person,
     PreRegistration,
+    Report,
     Role,
     RoleChange,
+    utcnow,
 )
 
 ADMIN = "admin"
@@ -127,6 +131,49 @@ def set_membership(session: Session, person: Person, patient_id: str, role: Role
     else:
         access.role = role
     return access
+
+
+def archive_patient(session: Session, patient: Patient, actor_id: str | None) -> None:
+    """Soft delete: drop every membership, pending invite and pre-registration for the patient,
+    so nobody reaches it any more. Reports, versions and messages stay (evidence trail); the
+    memberships it had are kept in the `role_change` log."""
+    accesses = session.scalars(select(PatientAccess).where(PatientAccess.patient_id == patient.id)).all()
+    log(session, "patient_archived", actor_id=actor_id, patient_id=patient.id,
+        before={"memberships": [{"person_id": a.person_id, "role": a.role.value} for a in accesses]})
+    for a in accesses:
+        session.delete(a)
+    for model in (Invite, PreRegistration):
+        for row in session.scalars(select(model).where(model.patient_id == patient.id)):
+            if model is PreRegistration or row.status == InviteStatus.pending:
+                session.delete(row)
+    patient.archived_at = utcnow()
+    session.flush()
+
+
+def merge_own_profile(session: Session, person: Person, into_patient_id: str) -> bool:
+    """A self-signed-up patient accepted a caregiver's invite as the login of another profile.
+    If their own profile is only theirs (no one else with access, no reports), its patient
+    messages move to the new profile and the old one is archived: one person, one profile.
+    Returns whether it merged."""
+    old = session.scalar(
+        select(Patient).join(PatientAccess, PatientAccess.patient_id == Patient.id)
+        .where(PatientAccess.person_id == person.id, PatientAccess.role == Role.patient,
+               Patient.id != into_patient_id)
+    )
+    if old is None:
+        return False
+    others = session.scalar(select(PatientAccess.id).where(PatientAccess.patient_id == old.id,
+                                                           PatientAccess.person_id != person.id).limit(1))
+    reports = session.scalar(select(Report.id).where(Report.patient_id == old.id).limit(1))
+    if others is not None or reports is not None:
+        return False
+    for model in (PatientMessage, Notification):
+        for row in session.scalars(select(model).where(model.patient_id == old.id)):
+            row.patient_id = into_patient_id
+    log(session, "own_profile_merged", actor_id=person.id, person_id=person.id, patient_id=into_patient_id,
+        before={"patient_id": old.id}, after={"patient_id": into_patient_id})
+    archive_patient(session, old, person.id)
+    return True
 
 
 def apply_role(session: Session, person: Person, role: str, patient_id: str | None) -> None:
