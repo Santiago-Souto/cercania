@@ -34,6 +34,9 @@ export type ReportItem = {
   level?: string | null;
   quote: string | null;
   quote_verified: boolean | null;
+  /** Where the quote is in the voice note (docs/contract.md, "Transcript segments"); null without audio times. */
+  audio_start_sec?: number | null;
+  audio_end_sec?: number | null;
 };
 
 export type NotificationRecipient = "health_provider" | "caregiver" | "family";
@@ -114,8 +117,9 @@ export type AppNotification = {
 export type Citation = {
   report_id: string;
   quote: string;
-  audio_start_sec: number;
-  audio_end_sec: number;
+  // null when the report has no segments (typed) or the quote is not in them (docs/contract.md).
+  audio_start_sec: number | null;
+  audio_end_sec: number | null;
 };
 
 export type QueryResponse = {

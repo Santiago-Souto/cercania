@@ -66,10 +66,13 @@ class Transcript:
     language: str | None = None
     duration: float | None = None
     segments: list[Segment] = field(default_factory=list)
+    # Word timestamps: a whole voice note often comes back as one segment, so citations need words.
+    words: list[Segment] = field(default_factory=list)
 
     def segment_dicts(self) -> list[dict]:
-        """Segments in the stored format, {start, end, text} (docs/contract.md)."""
-        return [asdict(s) for s in self.segments]
+        """Stored timing pieces, {start, end, text} (docs/contract.md "Transcript segments"):
+        words when the provider returned them, else segments."""
+        return [asdict(s) for s in (self.words or self.segments)]
 
 
 def build_prompt(vocabulary: list[str] | None) -> str:
@@ -98,6 +101,7 @@ def transcribe(
         "model": os.environ.get("GROQ_TRANSCRIPTION_MODEL", DEFAULT_MODEL),
         "language": "es",
         "response_format": "verbose_json",
+        "timestamp_granularities[]": ["word", "segment"],
         "temperature": "0",
         "prompt": build_prompt(vocabulary),
     }
@@ -139,5 +143,10 @@ def transcribe(
         segments=[
             Segment(start=s["start"], end=s["end"], text=s["text"].strip())
             for s in body.get("segments") or []
+        ],
+        words=[
+            Segment(start=w["start"], end=w["end"], text=w["word"].strip())
+            for w in body.get("words") or []
+            if (w.get("word") or "").strip()
         ],
     )

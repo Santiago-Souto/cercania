@@ -71,3 +71,8 @@ export function sendMessage(patientId: string, text: string, clientId: string) {
     body: JSON.stringify({ text, client_id: clientId }),
   });
 }
+
+/** Signed URL for a report's voice note. `audioPath` is the report's `audio_url` (GET /reports/{id}/audio). */
+export function fetchAudioUrl(audioPath: string) {
+  return call<{ url: string; expires_in_sec: number }>(audioPath);
+}
