@@ -173,7 +173,7 @@ Used by `GET /patients/{id}/reports`, `GET /reports/{id}` and the corrections re
 - `channel` is `whatsapp`, `web`, or `seed` (fixtures).
 - `sender.role` is the sender's role for this patient. `caregiver` is a compatibility alias of `sender` for the web (`web/lib/types.ts`). Both are additive.
 - `red_flag_quote` is the same value as `triage.quote`.
-- `audio_url` and `audio_duration_sec`: **SIMULATED**. Audio is not stored yet, so both are `null` for new reports. A stored audio file returns `/media/{report_id}` as a placeholder path; no `/media` route exists yet.
+- `audio_url`: `/reports/{id}/audio` when the original voice note is stored, else `null` (typed reports, storage not configured, or a failed upload). It is an API path, not the file: call it (with the usual identity) to get a short-lived signed URL, then play that. `audio_duration_sec` is the voice note's length in seconds from transcription, or `null`.
 - `triage` is `null` for seed fixtures, which never went through triage.
 
 ## Transcript segments
@@ -241,6 +241,19 @@ Permission: `read_reports`. Query: `since` (ISO datetime; returns alerts created
 ### `GET /reports/{report_id}`
 
 Permission: `read_reports` on the report's patient. Returns the **latest version** in the Report shape. Errors: `401`, `404 not_found` (unknown report, or no access), `403 forbidden`.
+
+### `GET /reports/{report_id}/audio`
+
+Permission: `read_reports` on the report's patient. Returns a signed URL for the original voice note in the private bucket. Anyone holding the URL can play it until it expires, so the web asks for a fresh one each time it plays and never stores it.
+
+```json
+{ "url": "https://<project>.supabase.co/storage/v1/object/sign/media/reports/pat_001/rep_123.webm?token=…", "expires_in_sec": 300 }
+```
+
+- Voice notes are stored after the report (web: after the response; WhatsApp: after the reply), so `audio_url` can stay `null` for a moment after `POST /patients/{id}/reports` returns.
+- Play a citation: fetch `url`, set it as the player's source, seek to `audio_start_sec`, stop at `audio_end_sec`.
+
+Errors: `401`; `404 not_found` (unknown report, no access, or the report has no stored audio); `403 forbidden` (patient role); `502 audio_unavailable` (storage did not answer or is not configured; the message is safe to show and asks to retry).
 
 ### `GET /reports/{report_id}/versions`
 

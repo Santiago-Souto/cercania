@@ -136,6 +136,11 @@ class ReportVersions(BaseModel):
     versions: list[ReportVersion]
 
 
+class ReportAudio(BaseModel):
+    url: str
+    expires_in_sec: int
+
+
 class CorrectionIn(BaseModel):
     item: ChecklistItemName
     value: str | None = None

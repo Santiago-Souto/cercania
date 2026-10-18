@@ -83,6 +83,7 @@ async def create_report(
         return error_response(409, "client_id_conflict", "Ese identificador ya se usó para otro paciente. Generá uno nuevo.")
     transcript = existing.transcript if existing is not None else None
     segments: list[dict] = []
+    voice_note: ingest.Audio | None = None
     if transcript is None and audio is not None:
         mime = (audio.content_type or "").split(";")[0].strip()
         if mime not in AUDIO_TYPES:
@@ -106,6 +107,7 @@ async def create_report(
             return error_response(502, "transcription_failed", exc.user_message)
         transcript = result.text
         segments = result.segment_dicts()
+        voice_note = ingest.Audio(data, mime, result.duration)
     elif transcript is None:
         transcript = text.strip()
 
@@ -130,4 +132,7 @@ async def create_report(
     if isinstance(result, dict) and result.get("red_flag") and report_id:
         # Runs after the response is sent; dispatch is idempotent, so repeats are harmless.
         background.add_task(notify.dispatch_emergency, report_id)
+    if voice_note is not None:
+        # After the response: the caregiver never waits for storage, and a failure never loses the report.
+        background.add_task(ingest.store_audio, result, voice_note)
     return result
