@@ -140,6 +140,9 @@ def accept_invite(invite_id: str, person_id: str = Depends(current_person_id), d
     invite = _my_pending_invite(db, person, invite_id)
     if invite.patient_id is None:
         # Patient invite with no profile yet (CIA-48): their own profile, the inviter as its caregiver.
+        # Someone who already has a profile can only decline it: it never opens their existing profile.
+        if roles.has_own_profile(db, person):
+            raise api_error(409, "profile_exists", "Ya tenés tu perfil de paciente. Podés rechazar esta invitación.")
         patient = roles.own_patient_profile(db, person)
         if invite.invited_by and invite.invited_by != person.id:
             roles.set_membership(db, db.get(Person, invite.invited_by), patient.id, Role.caregiver)

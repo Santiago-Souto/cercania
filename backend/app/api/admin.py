@@ -68,6 +68,8 @@ def set_membership(person_id: str, patient_id: str, body: schemas.AdminMembershi
         raise api_error(404, "not_found", "No encontramos a esa persona.")
     if db.get(Patient, patient_id) is None:
         raise api_error(404, "not_found", "No encontramos a ese paciente.")
+    if body.role == Role.patient.value and roles.other_patient_login(db, patient_id, person_id):
+        raise api_error(409, "patient_has_login", roles.PATIENT_HAS_LOGIN)  # one own login per patient
     access = db.scalar(select(PatientAccess).where(PatientAccess.person_id == person_id,
                                                    PatientAccess.patient_id == patient_id))
     before = {"role": access.role.value} if access else None

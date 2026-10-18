@@ -99,7 +99,9 @@ function useConfirmed(copy = REPLACE) {
               setAsk(null);
               if (!retry) return;
               const res = await retry();
-              if ("error" in res) toast.error(res.error);
+              // Something changed since the warning (e.g. the phone signed up): ask again with what is there now.
+              if ("conflict" in res) setAsk({ text: describeCurrent(res.conflict.current), retry });
+              else if ("error" in res) toast.error(res.error);
               else toast.success(copy.done);
             }}
           >

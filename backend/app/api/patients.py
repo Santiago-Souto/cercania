@@ -197,9 +197,12 @@ def _invite(db: Session, response: Response, inviter_id: str, patient_id: str | 
         )
         if already is not None:
             raise api_error(409, "already_member", "Esa persona ya tiene acceso a este paciente.")
-        if role is Role.patient and db.scalar(select(PatientAccess.id).where(
-                PatientAccess.patient_id == patient_id, PatientAccess.role == Role.patient)) is not None:
-            raise api_error(409, "patient_has_login", "Este paciente ya tiene su propio acceso.")
+        if role is Role.patient and roles.other_patient_login(db, patient_id, None):
+            raise api_error(409, "patient_has_login", roles.PATIENT_HAS_LOGIN)
+    elif roles.has_own_profile(db, db.scalar(select(Person).where(Person.phone == phone))):
+        # A profile-less patient invite is for someone with no profile yet: never a way into an
+        # existing person's profile (it would make the inviter their caregiver).
+        raise api_error(409, "profile_exists", roles.PROFILE_EXISTS)
     invite = _pending_invite(db, patient_id, phone, inviter_id)
     created = invite is None
     if created:

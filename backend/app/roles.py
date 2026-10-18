@@ -83,6 +83,26 @@ def log(session: Session, action: str, *, actor_id: str | None, person_id: str |
                            patient_id=patient_id, before=before, after=after))
 
 
+PATIENT_HAS_LOGIN = "Este paciente ya tiene su propio acceso."
+PROFILE_EXISTS = "Esa persona ya tiene su perfil de paciente. Pedí a una persona administradora que te sume a su equipo."
+
+
+def has_own_profile(session: Session, person: Person | None) -> bool:
+    """The person already holds the `patient` role on some profile (their own)."""
+    return person is not None and session.scalar(
+        select(PatientAccess.id).where(PatientAccess.person_id == person.id,
+                                       PatientAccess.role == Role.patient).limit(1)
+    ) is not None
+
+
+def other_patient_login(session: Session, patient_id: str, person_id: str | None) -> bool:
+    """Someone other than `person_id` is already this patient's own login (one per patient)."""
+    stmt = select(PatientAccess.id).where(PatientAccess.patient_id == patient_id, PatientAccess.role == Role.patient)
+    if person_id is not None:
+        stmt = stmt.where(PatientAccess.person_id != person_id)
+    return session.scalar(stmt.limit(1)) is not None
+
+
 def own_patient_profile(session: Session, person: Person) -> Patient:
     """The person's own patient profile (role `patient`), created if they have none."""
     existing = session.scalar(

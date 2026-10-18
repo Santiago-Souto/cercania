@@ -281,3 +281,27 @@ def test_admin_makes_an_existing_person_admin_after_confirming(db):
     assert client.get("/admin/people", headers=h("cg")).status_code == 200  # Ana can now admin
     assert db.scalar(select(RoleChange).where(RoleChange.action == "admin_granted")).actor_id == "adm"
     assert client.put("/admin/people/fam/admin", json={"confirm_overwrite": True}, headers=h("fam")).status_code == 403
+
+
+
+def test_new_patient_invite_never_opens_an_existing_profile(db, signup):
+    """Tenki #55: someone who already has their own profile cannot be invited into it as a 'new' patient."""
+    _, verified = signup()  # self sign-up: own profile
+    own = verified["memberships"][0]["patient_id"]
+    r = client.post("/invites", json={"contact": NEW, "role": "patient"}, headers=h("cg"))
+    assert r.status_code == 409 and r.json()["error"]["code"] == "profile_exists"
+    # Even an invite that slipped in earlier cannot be accepted into the existing profile.
+    db.add(Invite(patient_id=None, phone=NEW, role=Role.patient, invited_by="cg"))
+    db.commit()
+    [inv] = client.get("/me/invites", headers=h(person(db, NEW).id)).json()["invites"]
+    r = client.post(f"/me/invites/{inv['id']}/accept", headers=h(person(db, NEW).id))
+    assert r.status_code == 409 and r.json()["error"]["code"] == "profile_exists"
+    assert db.scalar(select(PatientAccess).where(PatientAccess.patient_id == own, PatientAccess.person_id == "cg")) is None
+
+
+def test_admin_cannot_give_a_patient_a_second_own_login(db):
+    client.put("/admin/people/fam/memberships/pat_b", json={"role": "patient"}, headers=h("adm"))
+    r = client.put("/admin/people/cg/memberships/pat_b", json={"role": "patient"}, headers=h("adm"))
+    assert r.status_code == 409 and r.json()["error"]["code"] == "patient_has_login"
+    # The same person keeping their own login is fine.
+    assert client.put("/admin/people/fam/memberships/pat_b", json={"role": "patient"}, headers=h("adm")).status_code == 200
