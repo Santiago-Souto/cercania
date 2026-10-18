@@ -437,7 +437,7 @@ The signature check runs before the ack and before anything is processed; the se
 
 ## Auth (6-digit code by SMS)
 
-No passwords. The code goes out **by SMS** (Twilio, `backend/app/sms.py`); the bot, invites and emergency notifications stay on WhatsApp. The phone number is the identity either way.
+No passwords. The code goes out **by SMS** (Twilio, `backend/app/sms.py`); the bot and emergency notifications stay on WhatsApp; invites are seen and accepted in the app. The phone number is the identity either way.
 
 The web app keeps the session in a cookie (`cercania_session`) set by `POST /auth/verify` (`HttpOnly`; `Secure` and `SameSite` from `SESSION_COOKIE_SECURE` / `SESSION_COOKIE_SAMESITE`). The web and the API are on different sites (`onrender.com` is a public suffix), and browsers block cross-site cookies, so **the browser never calls the API host directly**: it calls `/api/*` on the web origin, which Next.js rewrites to the API (`web/next.config.ts`). The cookie is therefore first-party on the web origin, and the deploy uses `SameSite=Lax`. Server components read the cookie and forward it to the API as a `Cookie` header (`web/lib/api.ts`). The web sends people with no cookie, or whose call returns `401`, to `/login`. The cookie is persistent (`Max-Age` = `SESSION_TTL_DAYS`), so the same device stays logged in: `/` and `/login` check `GET /me` and send a logged-in person straight to their home; a cookie the API no longer accepts shows the login form. Sessions last `SESSION_TTL_DAYS` (default 30) and are stored hashed server-side. Every endpoint below except `/auth/*` and `/webhook/*` requires the cookie and returns `401 { "error": { "code": "unauthenticated" } }` without it. (Local dev only: `ALLOW_DEV_IDENTITY_HEADER=1` also accepts an `X-Person-Id` header; simulated identity, never in a real deploy.)
 
@@ -475,7 +475,7 @@ Anti-enumeration: these two endpoints must not reveal whether a phone is registe
 { "user": { "id": "usr_001", "name": "Ana Pérez (fictional)" }, "memberships": [ { "patient_id": "pat_001", "display_name": "Rosa (fictional)", "role": "caregiver" } ] }
 ```
 
-Only the latest code sent to the phone is valid. Codes are single-use, expire after `LOGIN_CODE_TTL_MINUTES` (default 10), are stored as salted hashes, and lock after 5 wrong attempts. Errors: `code_invalid` (400), `code_expired` (400), `too_many_attempts` (429; ask for a new code). A code that is not 6 digits is `422 invalid_request`. Pending invites for the verified phone become memberships here. Invites are matched only on the phone proven by the code, never on email.
+Only the latest code sent to the phone is valid. Codes are single-use, expire after `LOGIN_CODE_TTL_MINUTES` (default 10), are stored as salted hashes, and lock after 5 wrong attempts. Errors: `code_invalid` (400), `code_expired` (400), `too_many_attempts` (429; ask for a new code). A code that is not 6 digits is `422 invalid_request`. Verifying never joins a patient: pending invites for the phone stay pending until accepted in the app (`POST /me/invites/{invite_id}/accept`). Invites are matched only on the phone proven by the code, never on email.
 
 ### `POST /auth/logout`
 
@@ -513,9 +513,25 @@ Permission: `read_reports` (caregiver, family, health team; not the patient). `i
 { "contact": "+59899111111", "role": "family" }
 ```
 
-`contact` is a WhatsApp number (E.164); emails are rejected with `phone_invalid` because email ownership is never verified. Sends a WhatsApp invite; the membership is created when that person verifies an SMS code (`POST /auth/verify`). Only `caregiver` memberships can invite (`403 forbidden` otherwise), matching `AGENTS.md` section 6. Health-team and family members cannot invite.
+`contact` is a WhatsApp number (E.164); emails are rejected with `phone_invalid` because email ownership is never verified. The invited person sees the invite in the app (`GET /me/invites`) once they sign in with that phone, and the membership is created only when they accept it. Only `caregiver` memberships can invite (`403 forbidden` otherwise), matching `AGENTS.md` section 6. Health-team and family members cannot invite.
 
-Returns the invite (`201`, same shape as in `members.invites`). Re-inviting a number that already has a pending invite for this patient updates its role and returns `200` with the same invite. The WhatsApp message is best effort, sent after the response and only with `NOTIFY_WHATSAPP=1` (otherwise skipped and logged); the invite works without it once that phone logs in. Errors: `400 phone_invalid` (not E.164, or an email); `409 already_member` (that phone already has access to the patient); `422 invalid_request` (unknown role); `401`, `404`, `403`.
+Returns the invite (`201`, same shape as in `members.invites`). Re-inviting a number that already has a pending invite for this patient updates its role and returns `200` with the same invite. The WhatsApp message is best effort, sent after the response and only with `NOTIFY_WHATSAPP=1` (otherwise skipped and logged); the invite is seen in the app without it. Errors: `400 phone_invalid` (not E.164, or an email); `409 already_member` (that phone already has access to the patient); `422 invalid_request` (unknown role); `401`, `404`, `403`.
+
+### `GET /me/invites`
+
+Any authenticated person. Pending invites addressed to the caller's own phone (the one their session proved), newest first. The web shows them on "Mis pacientes" with Aceptar / Rechazar. Errors: `401`.
+
+```json
+{ "invites": [ { "id": "inv_001", "patient_id": "pat_001", "patient_display_name": "Rosa (fictional)", "role": "family", "invited_by": "Ana Pérez (fictional)", "created_at": "2026-10-18T00:05:00Z" } ] }
+```
+
+### `POST /me/invites/{invite_id}/accept`
+
+Creates the membership with the invite's role (if the caller is already a member, their current role is kept) and marks the invite `accepted`. Returns the membership: `{ "patient_id": "pat_001", "display_name": "Rosa (fictional)", "role": "family" }`. Errors: `401`; `404 not_found` (unknown, addressed to another phone, or no longer pending).
+
+### `POST /me/invites/{invite_id}/decline`
+
+Deletes the invite, so the caregiver can invite the number again. Returns `{ "status": "declined" }`. Same errors as accept.
 
 ## Reports from the web app
 

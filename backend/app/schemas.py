@@ -290,3 +290,20 @@ class Messages(BaseModel):
 class MessageRequest(BaseModel):
     text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
     client_id: Annotated[str, StringConstraints(min_length=1, max_length=64)] | None = None
+
+
+class MyInvite(BaseModel):
+    id: str
+    patient_id: str
+    patient_display_name: str
+    role: RoleName
+    invited_by: str | None = None
+    created_at: datetime
+
+
+class MyInvites(BaseModel):
+    invites: list[MyInvite]
+
+
+class InviteDeclined(BaseModel):
+    status: Literal["declined"]

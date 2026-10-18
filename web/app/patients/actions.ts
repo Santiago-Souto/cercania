@@ -4,7 +4,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { ApiError, createInvite, createPatient } from "@/lib/api";
+import { acceptInvite, ApiError, createInvite, createPatient, declineInvite } from "@/lib/api";
 import { checkPhone } from "@/lib/team";
 import type { NewPatient, Role } from "@/lib/types";
 
@@ -57,5 +57,17 @@ export async function inviteAction(patientId: string, contact: string, role: Rol
     return { error: asError(e) };
   }
   revalidatePath(`/patients/${patientId}/team`);
+  return { ok: true };
+}
+
+/** The invited person answers an invite to their own phone ("Mis pacientes"). */
+export async function answerInviteAction(inviteId: string, accept: boolean): Promise<{ error: ActionError } | { ok: true }> {
+  try {
+    if (accept) await acceptInvite(inviteId);
+    else await declineInvite(inviteId);
+  } catch (e) {
+    return { error: asError(e) };
+  }
+  revalidatePath("/patients");
   return { ok: true };
 }

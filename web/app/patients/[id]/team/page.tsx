@@ -24,12 +24,12 @@ export default async function TeamPage(props: PageProps<"/patients/[id]/team">) 
             <TeamList
               rows={[
                 ...members.map((m) => ({ key: m.user_id, name: m.name, role: m.role })),
-                ...invites.map((inv) => ({ key: inv.id, name: inv.contact, role: inv.role, pending: "Invitación por WhatsApp" })),
+                ...invites.map((inv) => ({ key: inv.id, name: inv.contact, role: inv.role, pending: "Invitación pendiente: la ve al entrar con ese número" })),
               ]}
             />
             {canInvite && <TeamInvite patientId={id} />}
             <FieldDescription>
-              Familia: solo lectura. Paciente: solo cuenta cómo se siente o pide ayuda. Equipo de salud: ve reportes y alertas. La persona invitada recibe el rol cuando entra con ese número.
+              Familia: solo lectura. Paciente: solo cuenta cómo se siente o pide ayuda. Equipo de salud: ve reportes y alertas. La persona invitada ve la invitación al entrar con ese número y recibe el rol cuando la acepta.
             </FieldDescription>
           </CardContent>
         </Card>
