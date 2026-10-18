@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app import schemas, serializers
 from app.deps import PatientContext, get_db, patient_access
+from app.errors import api_error
 from app.models import Message, MessageRead, Permission, utcnow
 
 router = APIRouter(tags=["messages"])
@@ -61,7 +62,8 @@ def send_message(
     ctx: PatientContext = Depends(patient_access(Permission.team_messages)),
     db: Session = Depends(get_db),
 ):
-    """Idempotent on `client_id`: a retry of a message already stored returns that message."""
+    """Idempotent on `client_id`: a retry of a message already stored returns that message.
+    The same `client_id` already used for another patient is a 409, as for reports."""
     existing = _by_client_id(db, ctx, body.client_id)
     if existing is not None:
         return serializers.serialize_message(existing, ctx.person_id, set())
@@ -80,7 +82,10 @@ def send_message(
 
 
 def _by_client_id(db: Session, ctx: PatientContext, client_id: str | None) -> Message | None:
+    """The caller's message with this `client_id` (unique per sender), or None; 409 if it is another patient's."""
     if client_id is None:
         return None
-    return db.scalar(select(Message).where(Message.sender_id == ctx.person_id, Message.client_id == client_id,
-                                           Message.patient_id == ctx.patient.id))
+    found = db.scalar(select(Message).where(Message.sender_id == ctx.person_id, Message.client_id == client_id))
+    if found is not None and found.patient_id != ctx.patient.id:
+        raise api_error(409, "client_id_conflict", "Ese identificador ya se usó para otro paciente. Generá uno nuevo.")
+    return found

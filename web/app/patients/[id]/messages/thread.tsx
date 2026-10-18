@@ -78,6 +78,14 @@ export function MessageThread({ patientId, initial }: { patientId: string; initi
 
   async function deliver(p: Pending) {
     setPending((list) => [...list.filter((x) => x.key !== p.key), { ...p, status: "sending", error: undefined }]);
+    if (USE_FAKE) {
+      // SIMULATED (fake-data demo, no backend): the message is kept on this page only, never stored.
+      const now = new Date().toISOString();
+      const fakeFrom = { user_id: "demo", name: "Vos", role: "family" as const };
+      setMessages((list) => [...list, { id: p.key, from: fakeFrom, text: p.text, created_at: now, read: false, mine: true }]);
+      setPending((list) => list.filter((x) => x.key !== p.key));
+      return;
+    }
     try {
       const sent = await sendMessage(patientId, p.text, p.key);
       applied.current = ++epoch.current; // polls already in flight may predate this message

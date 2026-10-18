@@ -127,6 +127,16 @@ def test_retry_with_same_client_id_is_stored_once(db):
     assert len(db.scalars(select(Message)).all()) == 2
 
 
+def test_client_id_reused_for_another_patient_is_409(db):
+    db.add(PatientAccess(person_id="fam", patient_id="pat_y", role=Role.family))
+    db.commit()
+    client.post(URL, json={"text": "Hola", "client_id": "c-1"}, headers=as_("fam"))
+    r = client.post("/patients/pat_y/messages", json={"text": "Hola", "client_id": "c-1"}, headers=as_("fam"))
+    assert r.status_code == 409
+    assert r.json()["error"]["code"] == "client_id_conflict"
+    assert len(db.scalars(select(Message)).all()) == 1
+
+
 def test_threads_are_per_patient(db):
     client.post(URL, json={"text": "solo pat_x"}, headers=as_("fam"))
     assert client.get("/patients/pat_y/messages", headers=as_("other")).json() == {"messages": []}

@@ -609,7 +609,7 @@ A caregiver or health-team member listing the messages marks the listed ones as 
 ### `GET /patients/{patient_id}/messages`
 
 ```json
-{ "messages": [ { "id": "msg_001", "from": { "user_id": "usr_005", "name": "Marta (fictional)", "role": "family" }, "text": "…", "created_at": "2026-10-17T15:02:00-03:00", "read": true, "mine": false } ] }
+{ "messages": [ { "id": "msg_001", "from": { "user_id": "usr_005", "name": "Marta (fictional)", "role": "family" }, "text": "…", "created_at": "2026-10-17T18:02:00Z", "read": true, "mine": false } ] }
 ```
 
 The latest `limit` messages (default 100, max 200), **oldest first**. Listing marks the other people's messages as read by the caller. `read`: on the caller's own message, someone else has opened the thread since it was sent; on anyone else's, the caller had already seen it before this request (so the UI can mark new ones). `mine`: the caller sent it. The web polls this every few seconds.
@@ -620,7 +620,7 @@ The latest `limit` messages (default 100, max 200), **oldest first**. Listing ma
 { "text": "Hola doctora…", "client_id": "b7c1…" }
 ```
 
-`201` with the stored message (same shape as one item above). `text` is trimmed, 1-2000 chars; otherwise `422 invalid_request`. `client_id` (optional, up to 64 chars) is generated once per message by the client and reused on retry: a repeat with the same `client_id` returns the message already stored instead of a second copy.
+`201` with the stored message (same shape as one item above). `text` is trimmed, 1-2000 chars; otherwise `422 invalid_request`. `client_id` (optional, up to 64 chars) is generated once per message by the client and reused on retry: a repeat with the same `client_id` returns the message already stored instead of a second copy; the same `client_id` already used for another patient is `409 client_id_conflict`.
 
 Only `family` and health-team roles (`doctor`, `nurse`, `institution`); `caregiver` and `patient` get `403 forbidden`, no access `404`. Human-to-human: no model call. The UI always shows "not for emergencies".
 
