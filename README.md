@@ -35,19 +35,21 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Family read-only view | Pending | Web owner |
 | Doctor edits care plan (new version) | Pending | Role and permission in schema; no endpoint/view yet |
 | Patient view (how I feel + I need help; no reports or alerts) | Pending | Role and permission in schema; no endpoint/view yet |
-| Login with 6-digit WhatsApp code | Pending | |
+| Login with 6-digit SMS code | Functional (backend) | `POST /auth/signup`, `/auth/login`, `/auth/verify`, `/auth/logout` (`backend/app/api/auth.py`), code sent by Twilio SMS, session cookie. Web screens not wired yet (CIA-32). A Twilio trial only texts numbers verified in its console |
 | Eval script and 20 cases | In progress | `eval/run_eval.py` built and tested; 4 cases in `eval/cases.csv` (c003 is an emergency), all `dev`, 0 unseen. Scores emergency recall and emergency false alarms on their own lines. Groq's free tier (8,000 tokens/minute) allows only a few reports per minute: run it with `--delay 30` |
 
 ### Simulated
 
-- **Caller identity:** until the login backend lands, the web app identifies the user with an `X-Person-Id` header (`backend/app/deps.py`). Anyone can claim any id, so it is honored only with `ALLOW_DEV_IDENTITY_HEADER=1` (local dev / demo with fictional data); otherwise every call gets 401. The web sends it from `NEXT_PUBLIC_DEV_PERSON_ID` (e.g. `cg_001`; `web/lib/api-shared.ts`) until login replaces it. Not for real data.
+- **Caller identity (dev fallback):** the API identifies the caller by the session cookie from `POST /auth/verify`. Until the web login is wired (CIA-32), the web app can still send an `X-Person-Id` header from `NEXT_PUBLIC_DEV_PERSON_ID` (e.g. `cg_001`; `web/lib/api-shared.ts`); anyone can claim any id, so it is honored only with `ALLOW_DEV_IDENTITY_HEADER=1` (local dev / demo with fictional data). Not for real data.
+- **Login code on the Twilio trial (demo only):** a trial account only sends predefined templates, so with `TWILIO_TRIAL_TEMPLATE=sms_2fa` the backend sends Twilio's `sms_2fa` template and reads the code from Twilio's reply. A real SMS arrives, but on the trial that code is **always the same**, so anyone who knows it can log in as any registered phone. Only with fictional data; leave it unset once the account is upgraded (then our own random code is sent).
+- **Login code delivery (dev only):** with `AUTH_DEV_LOG_CODES=1` the code is written to the API log instead of being texted, for local dev without Twilio. Never set in a real deploy.
 - **Fake model clients** exist only in the backend tests. The running app calls the real models.
 - Patient, care plan and history data are fictional seed data (`backend/app/seed.py`). Seeded reports are marked `channel="seed"`, `model="seed"`: they are fixtures, not model output.
 - Web app screens show contract-shaped fake data (`web/lib/fake.ts`) until the backend endpoints land; a "Datos de prueba ficticios" banner is shown while it is on. With fake data on, sending a new report returns the contract's example result whatever was sent (`fakeProcessResult`). Buttons that need the backend (help, invite, login) are not wired yet.
 
 ### Pending
 
-- Real auth: login with the 6-digit WhatsApp code (CIA-32) is not built.
+- Web login screens (CIA-32) are not wired to `/auth/*` yet.
 - WhatsApp emergency notifications, pending Meta approval. `NOTIFY_WHATSAPP=0` by default, so they are recorded as `skipped`; the web inbox is the channel in use.
 - Audio playback of citations in the web (CIA-13). The backend side is ready: voice notes are stored in a private Supabase Storage bucket (CIA-44), `GET /reports/{id}/audio` returns a 5-minute signed URL, and items and citations carry `audio_start_sec` / `audio_end_sec` (CIA-18). Whisper segments can be long (a 13 s note came back as one segment), so a fragment may cover more than the quote.
 - Audio retention: stored voice notes are never deleted yet.

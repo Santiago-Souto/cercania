@@ -1,6 +1,6 @@
 "use client";
 
-// 6-digit WhatsApp code (artboards "Code" and "Link" as the expired state). Ticket: CIA-32.
+// 6-digit SMS code (artboards "Code" and "Link" as the expired state). Ticket: CIA-32.
 // Skeleton: POST /auth/verify, resend countdown and error states land in CIA-32.
 import Link from "next/link";
 import { REGEXP_ONLY_DIGITS } from "input-otp";
@@ -15,7 +15,7 @@ export default function CodePage() {
       <TopBar back="/login" title="Ingresá el código" />
       <main className="flex flex-1 flex-col gap-7 px-6 pt-2 pb-8">
         <p className="text-ink-2">
-          Lo mandamos por WhatsApp al número terminado en <strong>0000</strong>.
+          Lo mandamos por SMS al número terminado en <strong>0000</strong>.
         </p>
 
         <Field>
@@ -27,7 +27,7 @@ export default function CodePage() {
               ))}
             </InputOTPGroup>
           </InputOTP>
-          <FieldDescription>El código vence en 10 minutos y sirve una sola vez. Si no te llega, mandale “hola” al bot y pedí otro código.</FieldDescription>
+          <FieldDescription>El código vence en 10 minutos y sirve una sola vez. Si no te llega en un minuto, pedí otro código.</FieldDescription>
         </Field>
 
         <div className="flex items-center justify-between text-sm">
