@@ -17,3 +17,14 @@ def test_init_db_adds_new_nullable_columns(monkeypatch):
     cols = {c["name"] for c in inspect(engine).get_columns("person")}
     assert "email" in cols
     assert "location" in {c["name"] for c in inspect(engine).get_columns("patient")}
+
+
+def test_init_db_adds_indexes_to_existing_tables(monkeypatch):
+    engine = create_engine("sqlite://")
+    models.Base.metadata.create_all(engine)
+    with engine.begin() as conn:
+        conn.execute(text("DROP INDEX uq_invite_pending"))  # an invite table from before the index
+    monkeypatch.setattr(models, "engine", engine)
+    models.init_db()
+    models.init_db()
+    assert "uq_invite_pending" in {i["name"] for i in inspect(engine).get_indexes("invite")}

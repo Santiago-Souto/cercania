@@ -12,10 +12,12 @@ import type {
   Member,
   Message,
   MyPatient,
+  NewPatient,
   Patient,
   PatientMessage,
   QueryResponse,
   Report,
+  Role,
 } from "./types";
 
 export { ApiError };
@@ -71,6 +73,17 @@ export async function getMyPatients(): Promise<MyPatient[]> {
 export async function getMembers(patientId: string): Promise<{ members: Member[]; invites: Invite[] }> {
   await connection(); // patient data is always live: render at request time
   return request(`/patients/${patientId}/members`);
+}
+
+export async function createPatient(body: NewPatient): Promise<Patient> {
+  return request<Patient>(`/patients`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function createInvite(patientId: string, contact: string, role: Role): Promise<Invite> {
+  return request<Invite>(`/patients/${patientId}/invites`, {
+    method: "POST",
+    body: JSON.stringify({ contact, role }),
+  });
 }
 
 export async function getPatientMessages(patientId: string): Promise<PatientMessage[]> {

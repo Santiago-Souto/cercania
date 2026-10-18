@@ -144,6 +144,13 @@ export type MyPatient = {
 export type Member = { user_id: string; name: string; role: Role };
 export type Invite = { id: string; contact: string; role: Role; status: "pending" | "accepted" };
 
+/** Body of `POST /patients`. Doses are sent exactly as typed; nothing is computed. */
+export type NewPatient = {
+  display_name: string;
+  location: string | null;
+  care_plan: { medications: Omit<Medication, "id">[]; indications: string[]; allergies: string[] };
+};
+
 export type PatientMessage = {
   id: string;
   kind: "feeling" | "help";
