@@ -163,6 +163,26 @@ def test_signup_verify_creates_person_session_and_leaves_invites_to_accept(db, t
     assert me.status_code == 200 and me.json()["display_name"] == "Nueva (ficticia)"
 
 
+def test_invite_after_login_is_seen_and_accepted_in_the_same_session(db, texts, client):
+    """Sessions last 30 days: an invite made while the person is logged in must reach them without
+    logging out (the old flow only joined patients at /auth/verify)."""
+    client.post("/auth/signup", json={"name": "Nueva (ficticia)", "phone": NEW})
+    assert client.post("/auth/verify", json={"phone": NEW, "code": code_in(texts[0][1])}).status_code == 200
+    assert client.get("/me/invites").json() == {"invites": []}
+
+    caregiver = TestClient(app, base_url="https://testserver")
+    caregiver.post("/auth/login", json={"phone": KNOWN})
+    assert caregiver.post("/auth/verify", json={"phone": KNOWN, "code": code_in(texts[1][1])}).status_code == 200
+    r = caregiver.post("/patients/pat_a/invites", json={"contact": NEW, "role": "family"})
+    assert r.status_code == 201
+
+    [invite] = client.get("/me/invites").json()["invites"]
+    assert invite["patient_id"] == "pat_a" and invite["role"] == "family"
+    r = client.post(f"/me/invites/{invite['id']}/accept")
+    assert r.status_code == 200 and r.json()["role"] == "family"
+    assert [p["id"] for p in client.get("/me/patients").json()["patients"]] == ["pat_a"]
+
+
 def test_code_is_single_use(db, texts, client):
     client.post("/auth/login", json={"phone": KNOWN})
     code = code_in(texts[0][1])

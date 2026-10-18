@@ -39,13 +39,21 @@ def web_origins(raw: str | None = None) -> list[str]:
     return [o for o in origins if o != "*"]
 
 
+def cors_headers() -> list[str]:
+    """Request headers browsers may send. `X-Person-Id` is the simulated dev identity
+    (deps.current_person_id), so it is allowed only when that fallback is on."""
+    if os.environ.get("ALLOW_DEV_IDENTITY_HEADER") == "1":
+        return ["Content-Type", "X-Person-Id"]
+    return ["Content-Type"]
+
+
 app = FastAPI(title="CercanIA API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=web_origins(),
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["Content-Type", "X-Person-Id"],
+    allow_headers=cors_headers(),
 )
 install_error_handlers(app)
 app.include_router(web_reports.router)

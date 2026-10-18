@@ -107,7 +107,15 @@ export function useRecorder({
       return;
     }
     const mimeType = recordingType();
-    const rec = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: AUDIO_BITS_PER_SEC });
+    let rec: MediaRecorder;
+    try {
+      rec = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: AUDIO_BITS_PER_SEC });
+    } catch (err) {
+      stream.getTracks().forEach((t) => t.stop());
+      setState("idle");
+      handlers.current.onError(errorKind(err));
+      return;
+    }
     const chunks: Blob[] = [];
     rec.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data);
     rec.onstop = () => {
@@ -119,8 +127,17 @@ export function useRecorder({
       if (blob.size === 0) handlers.current.onError("empty");
       else handlers.current.onRecorded(blob);
     };
+    try {
+      rec.start();
+    } catch (err) {
+      rec.ondataavailable = null;
+      rec.onstop = null;
+      stream.getTracks().forEach((t) => t.stop());
+      setState("idle");
+      handlers.current.onError(errorKind(err));
+      return;
+    }
     recorder.current = rec;
-    rec.start();
     setSeconds(0);
     setState("recording");
     const started = Date.now();
