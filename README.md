@@ -35,7 +35,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Doctor edits care plan (new version) | Pending | Role and permission in schema; no endpoint/view yet |
 | Patient view (how I feel + I need help; no reports or alerts) | Pending | Role and permission in schema; no endpoint/view yet |
 | Login with 6-digit WhatsApp code | Pending | |
-| Eval script and 20 cases | In progress | `eval/run_eval.py` built and tested; 4 cases in `eval/cases.csv` (c003 is an emergency), all `dev`, 0 unseen. Scores emergency recall and emergency false alarms on their own lines. Groq's free tier (8,000 tokens/minute) allows only a few reports per minute: run it with `--delay 30` |
+| Eval script and 20 cases | In progress | `eval/run_eval.py` built and tested; 20 fictional text cases in `eval/cases.csv` (14 `dev`, 6 `unseen`): 4 emergencies, 5 emergency look-alikes, planted medication omissions and missing checklist items. Each case runs against the seed history only (the database is reset per case). Audio recordings of the cases by team voices are pending (never committed). Scores emergency recall and emergency false alarms on their own lines. Groq's free tier (8,000 tokens/minute) allows only a few reports per minute: run it with `--delay 30` |
 
 ### Simulated
 
