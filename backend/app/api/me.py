@@ -16,7 +16,11 @@ from app.models import (
     InviteStatus,
     Patient,
     PatientAccess,
+    PatientMessage,
+    PatientMessageKind,
+    Permission,
     Person,
+    ROLE_PERMISSIONS,
     Report,
     ReportVersion,
     Role,
@@ -65,6 +69,9 @@ def get_my_patients(person_id: str = Depends(current_person_id), db: Session = D
     - `open_alerts`: emergency/omission/change alerts on the latest version of reports from the
       last 24 h (missing_item alerts are not counted so the number stays meaningful).
     - `missing_report`: no report in the last 24 h.
+    - `patient_alarm`: `help` or `emergency` when the newest patient help request or red-flag
+      "how I feel" message of the last 24 h is one; null otherwise, and always null for roles that
+      cannot read patient messages (family, the patient).
     - A person with no role at all gets their own patient profile first (`roles.ensure_default_role`).
     - Role `patient` never sees reports or alerts (AGENTS.md section 6): all four are null.
     """
@@ -79,7 +86,7 @@ def get_my_patients(person_id: str = Depends(current_person_id), db: Session = D
     for access, patient in _memberships(db, person_id):
         entry = {"id": patient.id, "display_name": patient.display_name, "location": patient.location,
                  "role": access.role.value, "last_report_at": None, "open_alerts": None,
-                 "red_flag": None, "missing_report": None}
+                 "red_flag": None, "missing_report": None, "patient_alarm": None}
         if access.role != Role.patient:
             entry["last_report_at"] = db.scalar(
                 select(func.max(Report.created_at)).where(Report.patient_id == patient.id))
@@ -94,8 +101,23 @@ def get_my_patients(person_id: str = Depends(current_person_id), db: Session = D
                 1 for r in recent if r.latest
                 for a in r.latest.alerts if a.type in _OPEN_ALERT_TYPES
             )
+            if Permission.read_patient_messages in ROLE_PERMISSIONS[access.role]:
+                entry["patient_alarm"] = _patient_alarm(db, patient.id, cutoff)
         out.append(entry)
     return {"patients": out}
+
+
+def _patient_alarm(db: Session, patient_id: str, cutoff: datetime) -> str | None:
+    newest = db.scalars(
+        select(PatientMessage)
+        .where(PatientMessage.patient_id == patient_id, PatientMessage.created_at >= cutoff,
+               (PatientMessage.kind == PatientMessageKind.help) | PatientMessage.red_flag.is_(True))
+        .order_by(PatientMessage.created_at.desc())
+        .limit(1)
+    ).first()
+    if newest is None:
+        return None
+    return "help" if newest.kind is PatientMessageKind.help else "emergency"
 
 
 # --- Invites to the caller's phone --------------------------------------------------------
