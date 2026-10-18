@@ -241,13 +241,6 @@ def test_unsupported_content_type(db, brain):
     assert r.status_code == 415
 
 
-def test_without_process_report_returns_503_not_a_fake_result(db, monkeypatch):
-    monkeypatch.setattr(ingest, "PROCESS_REPORT_MODULE", "app.process_not_deployed")
-    r = client.post(URL, json={"client_id": "w10", "text": "hola"}, headers=AS_CAREGIVER)
-    assert r.status_code == 503
-    assert r.json()["error"]["code"] == "processing_unavailable"
-
-
 def test_client_id_of_another_user_never_reaches_their_report(db, brain):
     # Another caregiver's report stored with raw id "shared".
     db.add(Person(id="other", phone="+15550109998", display_name="other"))

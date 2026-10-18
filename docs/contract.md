@@ -618,7 +618,6 @@ Requires the `send_report` permission for that patient (today only `caregiver`).
 | 415 | `unsupported_audio`, `unsupported_media_type` | Not webm/ogg/m4a/mp3/wav, or neither JSON nor multipart |
 | 422 | `invalid_request` | Invalid body (validation) |
 | 502 | `transcription_failed` | Transcription failed; ask to retry or type |
-| 503 | `processing_unavailable` | `process_report` cannot be imported; nothing was stored (not expected on the current code) |
 
 A repeated `client_id` is not transcribed again; the stored report's result is returned.
 

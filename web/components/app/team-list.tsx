@@ -7,7 +7,7 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemSeparat
 import { ROLE_LABEL } from "@/lib/format";
 import type { Role } from "@/lib/types";
 
-export const ROLE_BADGE: Record<Role, "success" | "health" | "family" | "warning"> = {
+const ROLE_BADGE: Record<Role, "success" | "health" | "family" | "warning"> = {
   caregiver: "success",
   doctor: "health",
   nurse: "health",
