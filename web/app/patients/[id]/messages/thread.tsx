@@ -10,7 +10,6 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Message, MessageContent, MessageFooter, MessageGroup } from "@/components/ui/message";
 import { Spinner } from "@/components/ui/spinner";
-import { USE_FAKE } from "@/lib/api-shared";
 import { fetchMessages, sendMessage } from "@/lib/client-api";
 import { dayTime, ROLE_LABEL } from "@/lib/format";
 import type { Message as MessageT } from "@/lib/types";
@@ -65,7 +64,6 @@ export function MessageThread({ patientId, initial }: { patientId: string; initi
   }, [patientId]);
 
   useEffect(() => {
-    if (USE_FAKE) return; // fixture data (SIMULATED): no backend to poll
     const t = setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
     }, POLL_MS);
@@ -78,14 +76,6 @@ export function MessageThread({ patientId, initial }: { patientId: string; initi
 
   async function deliver(p: Pending) {
     setPending((list) => [...list.filter((x) => x.key !== p.key), { ...p, status: "sending", error: undefined }]);
-    if (USE_FAKE) {
-      // SIMULATED (fake-data demo, no backend): the message is kept on this page only, never stored.
-      const now = new Date().toISOString();
-      const fakeFrom = { user_id: "demo", name: "Vos", role: "family" as const };
-      setMessages((list) => [...list, { id: p.key, from: fakeFrom, text: p.text, created_at: now, read: false, mine: true }]);
-      setPending((list) => list.filter((x) => x.key !== p.key));
-      return;
-    }
     try {
       const sent = await sendMessage(patientId, p.text, p.key);
       applied.current = ++epoch.current; // polls already in flight may predate this message

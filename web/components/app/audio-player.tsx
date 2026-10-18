@@ -7,7 +7,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { PauseIcon, PlayIcon } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
-import { USE_FAKE } from "@/lib/api-shared";
 import { ClientApiError, fetchAudioUrl } from "@/lib/client-api";
 import { duration } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -24,7 +23,6 @@ const URL_TTL_MS = 240_000;
 const LEAD_SEC = 0.25;
 const TAIL_SEC = 0.4;
 const NO_AUDIO = "Este reporte no tiene audio guardado.";
-const FAKE_AUDIO = "Con datos de prueba no hay audio para reproducir.";
 const PLAY_FAILED = "No pudimos reproducir el audio. Probá de nuevo.";
 const TAP_AGAIN = "Tocá de nuevo para escuchar.";
 
@@ -75,7 +73,7 @@ export function AudioPlayer({ audioPaths, children }: { audioPaths: (string | nu
   // Prefetch the signed URL of every report on screen, and refresh it before it expires.
   const pathsKey = audioPaths.filter(Boolean).join("|");
   useEffect(() => {
-    if (USE_FAKE || !pathsKey) return;
+    if (!pathsKey) return;
     const paths = [...new Set(pathsKey.split("|"))];
     const refresh = () => paths.forEach((p) => load(p).catch(() => urls.current.delete(p)));
     refresh();
@@ -125,10 +123,10 @@ export function AudioPlayer({ audioPaths, children }: { audioPaths: (string | nu
       if (!audio) return;
       const tap = ++tapRef.current;
       const latest = () => tap === tapRef.current;
-      if (USE_FAKE || !clip.audioPath) {
+      if (!clip.audioPath) {
         audio.pause();
         dropPending();
-        setActive({ clip, status: "error", message: USE_FAKE ? FAKE_AUDIO : NO_AUDIO });
+        setActive({ clip, status: "error", message: NO_AUDIO });
         return;
       }
       // Same fragment: pause / resume.

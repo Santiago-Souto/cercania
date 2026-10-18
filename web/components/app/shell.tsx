@@ -3,22 +3,15 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { BellIcon, ChevronLeftIcon, HouseIcon, MessageCircleIcon } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { USE_FAKE } from "@/lib/api-shared";
-import { DemoBar } from "./demo-bar";
+import { AccountBar } from "./account-bar";
 import { cn } from "@/lib/utils";
 
-/** Centered 480px column on desktop, full width on phones. */
-export function AppShell({ children, className }: { children: React.ReactNode; className?: string }) {
+/** Centered 480px column on desktop, full width on phones. `publicPage` (login screens) hides the account bar. */
+export function AppShell({ children, className, publicPage }: { children: React.ReactNode; className?: string; publicPage?: boolean }) {
   return (
     <div className={cn("mx-auto flex min-h-dvh w-full max-w-[480px] flex-col bg-background sm:border-x", className)}>
-      {USE_FAKE && (
-        <Badge variant="warning" className="w-full justify-center rounded-none">
-          Datos de prueba ficticios
-        </Badge>
-      )}
-      {!USE_FAKE && <DemoBar />}
+      {!publicPage && <AccountBar />}
       {children}
     </div>
   );

@@ -5,8 +5,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
 import { toast } from "sonner";
-import { fetchNotifications, markNotificationRead, currentPersonId } from "@/lib/client-api";
-import { USE_FAKE } from "@/lib/api-shared";
+import { ClientApiError, fetchNotifications, markNotificationRead } from "@/lib/client-api";
 import type { AppNotification } from "@/lib/types";
 
 const POLL_MS = 5000;
@@ -45,7 +44,21 @@ function save(key: string, value: unknown) {
   }
 }
 
+// Per tab (sessionStorage), cleared on "Salir" so the next person in this tab starts fresh.
+const SEEN_KEY = "cercania:seen";
+const SINCE_KEY = "cercania:since";
+
+export function clearNotificationState() {
+  try {
+    sessionStorage.removeItem(SEEN_KEY);
+    sessionStorage.removeItem(SINCE_KEY);
+  } catch {
+    // storage blocked: nothing stored
+  }
+}
+
 export function NotificationWatcher() {
+
   const router = useRouter();
   const routerRef = useRef(router);
   useEffect(() => {
@@ -53,10 +66,11 @@ export function NotificationWatcher() {
   });
 
   useEffect(() => {
-    if (USE_FAKE) return;
-    const person = currentPersonId();
-    const seenKey = `cercania:seen:${person}`;
-    const sinceKey = `cercania:since:${person}`;
+    // Logged-out screens have no session to poll with. Login and "Salir" are full page loads, so the
+    // path at mount is enough (and usePathname here would block prerendering of every route).
+    if (window.location.pathname.startsWith("/login")) return;
+    const seenKey = SEEN_KEY;
+    const sinceKey = SINCE_KEY;
     const seen = new Set<string>(load<string[]>(seenKey, []));
     let since = load<string | null>(sinceKey, null);
     let stopped = false;
@@ -103,13 +117,18 @@ export function NotificationWatcher() {
         // Only server timestamps: a skewed browser clock must never move the cursor past real notifications.
         if (newest && (!since || newest > since)) since = newest;
         if (since) save(sinceKey, since);
-      } catch {
+      } catch (err) {
+        // Session gone: client-api already sends the browser to /login, stop polling.
+        if (err instanceof ClientApiError && err.code === "unauthenticated") {
+          stopped = true;
+          clearInterval(timer);
+        }
         // offline or backend down: try again on the next tick
       }
     }
 
-    tick();
     const timer = setInterval(tick, POLL_MS);
+    tick();
     return () => {
       stopped = true;
       clearInterval(timer);

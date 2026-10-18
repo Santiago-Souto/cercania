@@ -3,11 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "NEXT_PUBLIC_USE_FAKE_DATA=1 next dev",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "dev:real": "next dev"
+    "lint": "eslint"
   },
   "dependencies": {
     "@shadcn/react": "^0.3.1",

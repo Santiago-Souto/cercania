@@ -182,3 +182,14 @@ export type ProcessResult =
       confirmation_text: string;
     }
   | { status: "needs_retry" | "not_a_report" | "forbidden"; message: string };
+
+export type Membership = { patient_id: string; display_name: string; role: Role };
+
+/** GET /me */
+export type Me = { id: string; display_name: string; phone_last4: string; memberships: Membership[] };
+
+/** POST /auth/signup and /auth/login */
+export type CodeSent = { status: "code_sent"; phone_last4: string; expires_in_sec: number; resend_after_sec: number };
+
+/** POST /auth/verify */
+export type Verified = { user: { id: string; name: string }; memberships: Membership[] };
