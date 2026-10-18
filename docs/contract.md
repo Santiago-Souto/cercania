@@ -675,7 +675,9 @@ Errors: `401`; `404 not_found` (unknown patient or no access); `403 forbidden` (
 
 ### `GET /patients/{patient_id}/patient-messages`
 
-Permission: `read_patient_messages` (caregivers, health team and the patient; not family). Query: `limit` (1-100, default 50). Latest first: `{ "messages": [ { "id", "kind", "text", "red_flag", "created_at", "seen_by": [ { "user_id", "name" } ] } ] }`. `text` is `null` for `help`.
+Permission: `read_patient_messages` (caregivers, health team and the patient; not family). Query: `limit` (1-100, default 50). Latest first: `{ "messages": [ { "id", "kind", "text", "red_flag", "reason", "created_at", "seen_by": [ { "user_id", "name" } ] } ] }`. `text` is `null` for `help`. `reason` is the triage reason when `red_flag` is `true`, else `null`.
+
+The web alerts screen (`/patients/{id}/alerts`) lists the `help` and `red_flag` messages next to the report emergencies, so "Ver" on their notification lands on them.
 
 A caregiver or health-team member listing the messages marks the listed ones as seen by them (`seen_by`, oldest first). The patient listing them does not.
 
