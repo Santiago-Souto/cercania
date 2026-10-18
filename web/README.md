@@ -11,3 +11,7 @@ Next.js 16 (App Router) + shadcn/ui + Tailwind v4. Mobile-first, UI in Spanish.
 npm install
 npm run dev
 ```
+
+## Install on a phone
+
+The app is installable (no app store): open the URL, then **Compartir → Agregar a inicio** on iPhone or **⋮ → Instalar app** on Android. It opens full screen with the CercanIA icon. There is no service worker on purpose: it is online-only, so every screen loads live data from the backend. Manifest: `app/manifest.ts`; icons: `app/icon.tsx`, `app/apple-icon.tsx`.
