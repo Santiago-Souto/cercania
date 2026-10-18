@@ -72,3 +72,7 @@ services:
       # Stays on until the read endpoints land (CIA-14); then set to 0 and redeploy.
       - key: NEXT_PUBLIC_USE_FAKE_DATA
         value: "1"
+      # SIMULATED identity sent as X-Person-Id (e.g. cg_001) until login lands; needs
+      # ALLOW_DEV_IDENTITY_HEADER=1 on the API. Fictional data only.
+      - key: NEXT_PUBLIC_DEV_PERSON_ID
+        sync: false
