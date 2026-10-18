@@ -107,6 +107,7 @@ class Permission(str, enum.Enum):
     raise_emergency = "raise_emergency"  # WhatsApp message that triage flags as an emergency
     send_patient_message = "send_patient_message"  # "how I feel" / "I need help" (AGENTS.md 6)
     read_patient_messages = "read_patient_messages"
+    invite = "invite"  # POST /patients/{id}/invites, by WhatsApp number only
 
 
 # Checked by the API, per patient (a person's role comes from patient_access).
@@ -116,7 +117,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
     Role.caregiver: frozenset({Permission.send_report, Permission.correct_report,
                                Permission.read_reports, Permission.read_care_plan,
                                Permission.raise_emergency, Permission.send_patient_message,
-                               Permission.read_patient_messages}),
+                               Permission.read_patient_messages, Permission.invite}),
     Role.family: frozenset({Permission.read_reports, Permission.read_care_plan,
                             Permission.raise_emergency}),
     Role.doctor: frozenset({Permission.read_reports, Permission.read_care_plan,

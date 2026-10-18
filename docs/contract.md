@@ -496,13 +496,15 @@ Deletes the session server-side and clears the cookie. Returns `{ "status": "log
 }
 ```
 
-`location` is optional free text and is `null` when not set. Returns the patient as in `GET /patients/{patient_id}`. The creator becomes `caregiver` and sets the initial care plan; after that only a `doctor` can edit it. Doses are stored as entered; nothing is computed.
+`location` is optional free text and is `null` when not set. Returns `201` with the patient as in `GET /patients/{patient_id}`. Any signed-in person may add a patient; the creator becomes `caregiver` and sets the initial care plan (version 1); after that only a `doctor` can edit it. Doses are stored as entered; nothing is computed. Each medication needs `name` and `dose` (1-120 characters); `times` are `HH:MM`. `care_plan` may be omitted (empty plan). Errors: `401`; `422 invalid_request` (empty name, bad time, too long).
 
 ### `GET /patients/{patient_id}/members`
 
 ```json
 { "members": [ { "user_id": "usr_001", "name": "Ana Pérez (fictional)", "role": "caregiver" } ], "invites": [ { "id": "inv_001", "contact": "+59899111111", "role": "family", "status": "pending" } ] }
 ```
+
+Permission: `read_reports` (caregiver, family, health team; not the patient). `invites` lists only **pending** invites (accepted ones show up as members) and is filled only for roles that can invite (caregivers); for everyone else it is `[]`, so invited phone numbers are not shown to family or the health team. Errors: `401`, `404`, `403`.
 
 ### `POST /patients/{patient_id}/invites`
 
@@ -511,6 +513,8 @@ Deletes the session server-side and clears the cookie. Returns `{ "status": "log
 ```
 
 `contact` is a WhatsApp number (E.164); emails are rejected with `phone_invalid` because email ownership is never verified. Sends a WhatsApp invite; the membership is created when that person verifies an SMS code (`POST /auth/verify`). Only `caregiver` memberships can invite (`403 forbidden` otherwise), matching `AGENTS.md` section 6. Health-team and family members cannot invite.
+
+Returns the invite (`201`, same shape as in `members.invites`). Re-inviting a number that already has a pending invite for this patient updates its role and returns `200` with the same invite. The WhatsApp message is best effort, sent after the response and only with `NOTIFY_WHATSAPP=1` (otherwise skipped and logged); the invite works without it once that phone logs in. Errors: `400 phone_invalid` (not E.164, or an email); `409 already_member` (that phone already has access to the patient); `422 invalid_request` (unknown role); `401`, `404`, `403`.
 
 ## Reports from the web app
 

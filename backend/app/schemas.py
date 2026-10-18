@@ -216,3 +216,51 @@ class Notification(BaseModel):
 class NotificationsPage(BaseModel):
     notifications: list[Notification]
     unread_count: int
+
+
+# --- Patients and team (POST /patients, members, invites) ----------------------
+
+_Text120 = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
+_Line = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
+_Time = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")]
+
+
+class MedicationIn(BaseModel):
+    name: _Text120
+    dose: _Text120  # stored as written; never computed or validated as a dose (AGENTS.md 7)
+    times: list[_Time] = Field(default_factory=list, max_length=12)
+
+
+class CarePlanIn(BaseModel):
+    medications: list[MedicationIn] = Field(default_factory=list, max_length=50)
+    indications: list[_Line] = Field(default_factory=list, max_length=50)
+    allergies: list[_Line] = Field(default_factory=list, max_length=50)
+
+
+class PatientCreate(BaseModel):
+    display_name: _Text120
+    location: Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)] | None = None
+    care_plan: CarePlanIn = Field(default_factory=CarePlanIn)
+
+
+class Member(BaseModel):
+    user_id: str
+    name: str
+    role: RoleName
+
+
+class Invite(BaseModel):
+    id: str
+    contact: str
+    role: RoleName
+    status: Literal["pending", "accepted"]
+
+
+class Members(BaseModel):
+    members: list[Member]
+    invites: list[Invite]
+
+
+class InviteCreate(BaseModel):
+    contact: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=254)]
+    role: RoleName
