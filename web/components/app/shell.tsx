@@ -5,6 +5,7 @@ import type { Route } from "next";
 import { BellIcon, ChevronLeftIcon, HouseIcon, MessageCircleIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AccountBar } from "./account-bar";
+import { FreshOnEntry } from "./fresh-on-entry";
 import { cn } from "@/lib/utils";
 
 /** Centered 480px column on desktop, full width on phones. `publicPage` (login screens) hides the account bar. */
@@ -12,7 +13,7 @@ export function AppShell({ children, className, publicPage }: { children: React.
   return (
     <div className={cn("mx-auto flex min-h-dvh w-full max-w-[480px] flex-col bg-background sm:border-x", className)}>
       {!publicPage && <AccountBar />}
-      {children}
+      <FreshOnEntry>{children}</FreshOnEntry>
     </div>
   );
 }

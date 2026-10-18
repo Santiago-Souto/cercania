@@ -2,16 +2,19 @@
 
 // Record or type the end-of-shift report and show what the backend recorded (CIA-31).
 // Nothing here interprets the report: the result shown is exactly the ProcessResult from the backend.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { CircleAlertIcon, CircleCheckIcon, KeyboardIcon, MicIcon, SquareIcon, TriangleAlertIcon } from "lucide-react";
+import { AudioPlayer, ClipIcon, PlayClipButton, PlayerBar } from "@/components/app/audio-player";
+import { ReportItemRow } from "@/components/app/report-item-row";
 import { BottomBar } from "@/components/app/shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { ItemGroup } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError, NETWORK_ERROR_MESSAGE } from "@/lib/api-shared";
@@ -40,6 +43,23 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
   const [text, setText] = useState("");
   const [error, setError] = useState<{ message: string; canType: boolean } | null>(null);
   const [result, setResult] = useState<ProcessResult | null>(null);
+  // What the last send carried, so the result can show the note or the typed text next to what was recorded.
+  const [sent, setSent] = useState<ReportInput | null>(null);
+  // Local playback of the note just sent: the server stores the audio after the result returns, so
+  // GET /reports/{id}/audio may not be ready yet. Every object URL created here is revoked.
+  const [noteUrl, setNoteUrlState] = useState<string | null>(null);
+  const noteUrlRef = useRef<string | null>(null);
+  function setNoteUrl(url: string | null) {
+    if (noteUrlRef.current) URL.revokeObjectURL(noteUrlRef.current);
+    noteUrlRef.current = url;
+    setNoteUrlState(url);
+  }
+  useEffect(
+    () => () => {
+      if (noteUrlRef.current) URL.revokeObjectURL(noteUrlRef.current);
+    },
+    [],
+  );
 
   // One client_id per draft (the typed text, the recorded audio): resending the same draft, even after
   // switching modes, reuses it so the backend returns the stored report instead of creating a second one.
@@ -79,7 +99,10 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
     setError(null);
     try {
       const clientId = "audio" in input ? audioClientId.current : textClientId.current;
-      setResult(await sendReport(patientId, clientId, input));
+      const res = await sendReport(patientId, clientId, input);
+      setSent(input);
+      setNoteUrl("audio" in input ? URL.createObjectURL(input.audio) : null);
+      setResult(res);
       setPhase("done");
     } catch (err) {
       // Any failed audio send (transcription, size, format) can fall back to typing.
@@ -123,6 +146,7 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
     textClientId.current = newClientId();
     audioClientId.current = newClientId();
     clearFeedback();
+    setNoteUrl(null);
     setAudio(null);
     setText("");
     recorder.reset();
@@ -136,7 +160,7 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
   }
 
   if (phase === "done" && result)
-    return <ResultView patientId={patientId} result={result} onAnother={another} onRetry={retry} onType={() => switchMode("text")} />;
+    return <ResultView patientId={patientId} result={result} sent={sent} localAudio={noteUrl} onAnother={another} onRetry={retry} onType={() => switchMode("text")} />;
 
   const busy = phase === "sending";
   const canSend =
@@ -262,12 +286,17 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
 function ResultView({
   patientId,
   result,
+  sent,
+  localAudio,
   onAnother,
   onRetry,
   onType,
 }: {
   patientId: string;
   result: ProcessResult;
+  sent: ReportInput | null;
+  /** Object URL of the note just sent (the server may not have stored the audio yet); null for typed reports. */
+  localAudio: string | null;
   onAnother: () => void;
   onRetry: () => void;
   onType: () => void;
@@ -300,10 +329,12 @@ function ResultView({
 
   const reportHref = `/patients/${patientId}/reports/${result.report.id}` as Route;
   const alerts = result.alerts.filter((a) => a.type !== "missing_item");
+  const mentioned = result.items.filter((it) => it.value !== null);
 
   return (
     <>
       <main className="flex flex-1 flex-col gap-4 px-4 pb-4" aria-live="polite">
+        <AudioPlayer audioPaths={[localAudio]}>
         {result.red_flag ? (
           <Alert variant="danger">
             <TriangleAlertIcon />
@@ -319,9 +350,46 @@ function ResultView({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="whitespace-pre-line">{result.confirmation_text}</p>
+              <p className="text-sm text-muted-foreground">Esto es lo que registramos. Revisá que coincida con lo que contaste.</p>
             </CardContent>
           </Card>
+        )}
+
+        {localAudio && (
+          <>
+            <Button asChild size="xl" className="h-14 justify-start rounded-2xl text-left">
+              <PlayClipButton clip={{ key: "note", audioPath: localAudio, start: 0, end: null, label: "tu nota" }}>
+                <span className="flex size-7 items-center justify-center rounded-full border-2 border-current">
+                  <ClipIcon clipKey="note" className="size-3.5" />
+                </span>
+                <span className="flex flex-col">
+                  <span>Escuchar tu nota</span>
+                  <span className="text-[13px] font-normal opacity-90">audio original</span>
+                </span>
+              </PlayClipButton>
+            </Button>
+            <PlayerBar />
+          </>
+        )}
+
+        {sent && "text" in sent && (
+          <Card className="text-base">
+            <CardContent className="flex flex-col gap-1.5">
+              <CardDescription>Lo que escribiste:</CardDescription>
+              <p className="whitespace-pre-line">{sent.text}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {mentioned.length > 0 && (
+          <section className="flex flex-col gap-2.5">
+            <h2 className="font-sans text-[13px] font-bold tracking-wide text-muted-foreground uppercase">Lo que registramos</h2>
+            <ItemGroup aria-label="Temas registrados" className="gap-0 overflow-hidden rounded-xl border bg-card">
+              {mentioned.map((it, i) => (
+                <ReportItemRow key={it.item} item={it} audioPath={localAudio} when="tu nota" first={i === 0} />
+              ))}
+            </ItemGroup>
+          </section>
         )}
 
         {result.triage.status === "failed" && (
@@ -373,6 +441,7 @@ function ResultView({
         <Button asChild variant="outline" size="touch" className="font-bold">
           <Link href={reportHref}>Ver reporte</Link>
         </Button>
+        </AudioPlayer>
       </main>
       <BottomBar>
         <Button size="xl" onClick={onAnother}>

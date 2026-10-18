@@ -112,4 +112,6 @@ App chrome shared by all screens (centered 480px column, top bar, bottom nav, bo
 | `Messages` | `/patients/[id]/messages` | CIA-36 (bonus) | `/patients/{id}/messages` |
 | `Patient` | `/patients/[id]/me` | CIA-35 | `/patients/{id}/patient-messages` |
 
+**`NewReport` result state (CIA-46).** Built from the structured `ProcessResult`, not from `confirmation_text` (which is shown only inside the emergency banner). Top to bottom: emergency banner (`red_flag`) or "Reporte registrado" card; warning if triage failed; for voice reports a "Escuchar tu nota" player that plays the local recording (a `blob:` URL, since the stored audio may not be ready yet), for typed reports the typed text; "Lo que registramos": one row per mentioned item (same row as the `Report` screen) with label, value, level badge, medication dose badges, the verbatim quote (a play button seeking to its fragment when the item has audio times) and its verification (verificada, or "Esta cita no aparece en la transcripción"); "No mencionaste" chips; alerts; "Ver reporte" and "Mandar otra nota".
+
 All screens read data through `web/lib/api.ts`. Until the backend is ready it returns fake data shaped exactly like `docs/contract.md` (`NEXT_PUBLIC_USE_FAKE_DATA=1`); that is declared in README "Simulated".

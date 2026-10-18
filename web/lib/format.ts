@@ -13,6 +13,19 @@ export const CHECKLIST_LABEL: Record<ChecklistItem, string> = {
   incidents: "Incidentes",
 };
 
+/** Spanish label for a coarse `level` code (docs/contract.md); unknown codes are shown as they come. */
+const LEVEL_LABEL: Record<string, string> = {
+  normal: "normal",
+  low: "bajo",
+  none: "ninguno",
+  poor: "malo",
+  agitated: "agitado",
+  confused: "confundido",
+  reduced: "reducida",
+  present: "presente",
+};
+export const levelLabel = (level: string) => LEVEL_LABEL[level] ?? level;
+
 export const ROLE_LABEL: Record<Role, string> = {
   caregiver: "Cuidador/a",
   family: "Familia",

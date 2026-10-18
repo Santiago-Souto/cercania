@@ -27,13 +27,25 @@ export type Patient = {
   care_plan: CarePlan;
 };
 
+export type MedicationDose = {
+  plan_ref: string;
+  time: string;
+  given: boolean | null;
+  quote?: string | null;
+  quote_verified?: boolean | null;
+};
+
 export type ReportItem = {
   item: ChecklistItem;
   value: string | null;
   /** Coarse category code uses to compare over time (e.g. appetite normal / low / none). Optional for display. */
   level?: string | null;
+  /** Extra structure; medication items carry `doses` (docs/contract.md). Null for the rest. */
+  details?: { doses?: MedicationDose[] } | null;
   quote: string | null;
   quote_verified: boolean | null;
+  /** `transcript` (extracted, quote checked by code) or `correction` (typed by a caregiver, no quote). */
+  source?: "transcript" | "correction" | null;
   /** Where the quote is in the voice note (docs/contract.md, "Transcript segments"); null without audio times. */
   audio_start_sec?: number | null;
   audio_end_sec?: number | null;
