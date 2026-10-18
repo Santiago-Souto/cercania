@@ -1,5 +1,6 @@
 // Patient home (artboard "Main"). Ticket: CIA-11.
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { Route } from "next";
 import { ChevronLeftIcon, MicIcon } from "lucide-react";
 import { AppShell, Brand, BottomNav } from "@/components/app/shell";
@@ -9,11 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemSeparator, ItemTitle } from "@/components/ui/item";
 import { Progress } from "@/components/ui/progress";
-import { getPatient, getReports } from "@/lib/api";
+import { getMyPatients, getPatient, getReports } from "@/lib/api";
 import { CHECKLIST_LABEL, dayTime, duration, firstName } from "@/lib/format";
 
 export default async function PatientHome(props: PageProps<"/patients/[id]">) {
   const { id } = await props.params;
+  // The patient never sees reports or alerts about them (the backend also answers 403): send them to their view.
+  if ((await getMyPatients()).find((p) => p.id === id)?.role === "patient") redirect(`/patients/${id}/me` as Route);
   const [patient, reports] = await Promise.all([getPatient(id), getReports(id)]);
   const last = reports[0];
   const plan = patient.care_plan;

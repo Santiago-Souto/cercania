@@ -6,6 +6,7 @@
 export const PERSONAS = [
   { id: "cg_001", name: "Ana", role: "Cuidadora" },
   { id: "fam_001", name: "Carmen", role: "Familia" },
+  { id: "ptl_002", name: "Jorge", role: "Paciente" },
 ] as const;
 
 export const PERSONA_COOKIE = "cercania_person";

@@ -1,27 +1,27 @@
 // Patient's own view (artboard "Patient"). Ticket: CIA-35.
-// Only two actions. "Necesito ayuda" is a fixed rule in the backend (AGENTS.md §7); wiring lands in CIA-35/CIA-29.
-import { CheckIcon, MicIcon, TriangleAlertIcon } from "lucide-react";
+// Only two actions, no other navigation: tell how I feel and "Necesito ayuda" (AGENTS.md §6).
+// Open to the patient role, and to caregivers testing it (they also hold `send_patient_message`).
+import { redirect } from "next/navigation";
+import type { Route } from "next";
+import { CheckIcon } from "lucide-react";
 import { AppShell } from "@/components/app/shell";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription } from "@/components/ui/card";
-import { getPatient, getPatientMessages } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
+import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
+import { getMyPatients, getPatient, getPatientMessages } from "@/lib/api";
 import { dayTime, firstName } from "@/lib/format";
+import { PatientActions } from "./patient-actions";
+
+const SHOWN_MESSAGES = 10;
 
 export default async function PatientSelfPage(props: PageProps<"/patients/[id]/me">) {
   const { id } = await props.params;
+  const mine = await getMyPatients();
+  const role = mine.find((p) => p.id === id)?.role;
+  // Family and health team see the patient's messages from their own screens; this one is for the patient.
+  if (role && role !== "patient" && role !== "caregiver") redirect(`/patients/${id}` as Route);
+
   const [patient, messages] = await Promise.all([getPatient(id), getPatientMessages(id)]);
-  const last = messages[0];
+  const shown = messages.slice(0, SHOWN_MESSAGES);
 
   return (
     <AppShell>
@@ -31,53 +31,39 @@ export default async function PatientSelfPage(props: PageProps<"/patients/[id]/m
           <p className="text-ink-2">¿Cómo te sentís hoy?</p>
         </section>
 
-        <Button className="h-auto min-h-56 flex-col gap-3 rounded-[28px] py-6 whitespace-normal">
-          <span className="flex size-22 items-center justify-center rounded-full bg-card text-primary">
-            <MicIcon className="size-10!" />
-          </span>
-          <span className="font-heading text-2xl font-bold">Contar cómo me siento</span>
-          <span className="text-base font-normal">Tocá y hablá</span>
-        </Button>
+        <PatientActions patientId={id} />
 
-        <Button variant="outline-primary" className="h-16 rounded-2xl text-[19px] font-bold">
-          Prefiero escribir
-        </Button>
-
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="danger" className="h-22 rounded-3xl font-heading text-2xl font-bold [&_svg]:size-8!">
-              <TriangleAlertIcon />
-              Necesito ayuda
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle className="text-2xl">¿Avisamos a tu equipo?</AlertDialogTitle>
-              <AlertDialogDescription className="text-lg">
-                Les llega un mensaje ahora mismo. Si es una emergencia, llamá a emergencias.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel className="h-14 text-lg">No, volver</AlertDialogCancel>
-              <AlertDialogAction className="h-14 bg-danger text-lg text-danger-foreground hover:bg-danger/90">
-                Sí, pedir ayuda
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        {last && (
-          <Card className="gap-1 text-base">
-            <CardContent className="flex flex-col gap-1">
-              <CardDescription className="text-base">Tu último mensaje · {dayTime(last.created_at).toLowerCase()}</CardDescription>
-              {last.text && <em>“{last.text}”</em>}
-              {last.seen_by.length > 0 && (
-                <span className="flex items-center gap-1 font-bold text-primary">
-                  Lo vio {last.seen_by.map((p) => p.name).join(", ")} <CheckIcon className="size-4" />
-                </span>
-              )}
-            </CardContent>
-          </Card>
+        {shown.length > 0 && (
+          <section className="flex flex-col gap-2.5">
+            <h2 className="font-sans text-sm font-bold tracking-wide text-muted-foreground uppercase">Tus mensajes</h2>
+            <ItemGroup className="gap-2.5">
+              {shown.map((m, i) => (
+                <Item key={m.id} variant="outline" className="rounded-xl bg-card px-4 py-3">
+                  <ItemContent className="gap-1">
+                    <ItemDescription className="text-base">
+                      {i === 0 ? "Tu último mensaje" : "Mensaje"} · {dayTime(m.created_at).toLowerCase()}
+                    </ItemDescription>
+                    <ItemTitle className="text-[19px] font-normal">
+                      {m.kind === "help" ? (
+                        <Badge variant="danger" className="text-base">
+                          Pediste ayuda
+                        </Badge>
+                      ) : (
+                        <em>“{m.text}”</em>
+                      )}
+                    </ItemTitle>
+                    {m.seen_by.length > 0 ? (
+                      <span className="flex items-center gap-1 text-base font-bold text-primary">
+                        Lo vio {m.seen_by.map((p) => p.name).join(", ")} <CheckIcon className="size-4" aria-hidden="true" />
+                      </span>
+                    ) : (
+                      <span className="text-base text-muted-foreground">Todavía no lo vio nadie</span>
+                    )}
+                  </ItemContent>
+                </Item>
+              ))}
+            </ItemGroup>
+          </section>
         )}
       </main>
     </AppShell>

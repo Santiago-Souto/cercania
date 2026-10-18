@@ -1,5 +1,6 @@
 // My patients (artboard "Patients"). Ticket: CIA-33.
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { Route } from "next";
 import { PlusIcon, SearchIcon, UsersIcon } from "lucide-react";
 import { AppShell, BottomBar, Brand } from "@/components/app/shell";
@@ -14,6 +15,8 @@ import { dayTime } from "@/lib/format";
 
 export default async function PatientsPage() {
   const patients = await getMyPatients();
+  // A patient's only screen is their own view (CIA-35): no list, no other navigation.
+  if (patients.length === 1 && patients[0].role === "patient") redirect(`/patients/${patients[0].id}/me` as Route);
   // Red flags first, then by open alerts, then missing reports.
   const sorted = [...patients].sort(
     (a, b) =>
@@ -53,7 +56,7 @@ export default async function PatientsPage() {
         <ItemGroup className="gap-2.5">
           {sorted.map((p) => (
             <Item key={p.id} asChild variant="outline" className="rounded-xl bg-card px-4 py-3.5">
-              <Link href={`/patients/${p.id}` as Route}>
+              <Link href={(p.role === "patient" ? `/patients/${p.id}/me` : `/patients/${p.id}`) as Route}>
                 <ItemMedia>
                   <Avatar className="size-11">
                     <AvatarFallback className="bg-secondary font-heading text-lg font-bold text-primary">
