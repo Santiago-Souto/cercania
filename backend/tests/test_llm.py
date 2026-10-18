@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
+from app import llm
 from app.llm import LLMError, complete_json, parse_model
 
 SCHEMA = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"],
@@ -221,6 +222,76 @@ def test_other_400s_are_still_bad_request_without_retry(openai_env):
         call("openai:gpt-x", openai_client(handler))
     assert e.value.kind == "bad_request"
     assert len(calls) == 1
+
+
+@pytest.fixture
+def sleeps(monkeypatch):
+    """Record waits instead of sleeping."""
+    waited = []
+    monkeypatch.setattr(llm.time, "sleep", waited.append)
+    return waited
+
+
+def rate_limited(retry_after=None, message="Rate limit reached. Please try again in 8.385s. Need more tokens?"):
+    headers = {"retry-after": retry_after} if retry_after is not None else {}
+    return httpx.Response(429, headers=headers, json={"error": {"message": message, "code": "rate_limit_exceeded"}})
+
+
+def sequence(*responses):
+    calls = []
+    it = iter(responses)
+
+    def handler(request):
+        calls.append(request)
+        return next(it)
+    return handler, calls
+
+
+def test_429_waits_what_retry_after_says_then_succeeds(openai_env, sleeps):
+    handler, calls = sequence(rate_limited(retry_after="9"), chat_response('{"ok": true}'))
+    assert call("openai:gpt-x", openai_client(handler)) == {"ok": True}
+    assert sleeps == [9.0]
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("message, expected", [
+    ("Please try again in 8.385s. Need more tokens?", 8.4),
+    ("Please try again in 1.2s.", 1.2),
+    ("Please try again in 450ms.", 0.5),  # never below the default short delay
+])
+def test_429_without_header_uses_the_hint_in_the_message(openai_env, sleeps, message, expected):
+    handler, calls = sequence(rate_limited(message=message), chat_response('{"ok": true}'))
+    assert call("openai:gpt-x", openai_client(handler)) == {"ok": True}
+    assert sleeps == [expected]
+
+
+def test_429_asking_to_wait_too_long_fails_at_once(openai_env, sleeps):
+    handler, calls = sequence(rate_limited(retry_after="45"), chat_response('{"ok": true}'))
+    with pytest.raises(LLMError) as e:
+        call("openai:gpt-x", openai_client(handler))
+    assert e.value.kind == "unavailable"
+    assert sleeps == [] and len(calls) == 1
+
+
+def test_429_with_minutes_in_the_hint_is_over_the_cap(openai_env, sleeps):
+    handler, calls = sequence(rate_limited(message="Please try again in 1m2.5s."), chat_response("{}"))
+    with pytest.raises(LLMError):
+        call("openai:gpt-x", openai_client(handler))
+    assert sleeps == [] and len(calls) == 1
+
+
+def test_429_without_any_hint_uses_the_short_delay(openai_env, sleeps):
+    handler, calls = sequence(httpx.Response(429, text="slow down"), chat_response('{"ok": true}'))
+    assert call("openai:gpt-x", openai_client(handler)) == {"ok": True}
+    assert sleeps == [llm.RETRY_DELAY_SEC]
+
+
+def test_second_429_is_not_retried_again(openai_env, sleeps):
+    handler, calls = sequence(rate_limited(retry_after="2"), rate_limited(retry_after="2"))
+    with pytest.raises(LLMError) as e:
+        call("openai:gpt-x", openai_client(handler))
+    assert e.value.kind == "unavailable"
+    assert sleeps == [2.0] and len(calls) == 2
 
 
 def test_openai_network_error_is_unavailable(openai_env):

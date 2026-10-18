@@ -181,3 +181,13 @@ def test_summary_prints_emergency_lines():
 def test_repo_emergency_case_parses_as_expected_emergency():
     cases = {c.case_id: c for c in ev.load_cases(ROOT / "eval" / "cases.csv")}
     assert "emergency:" in cases["c003"].expected_alerts
+
+
+def test_delay_waits_between_cases_not_after_the_last(monkeypatch):
+    waited = []
+    monkeypatch.setattr(ev.time, "sleep", waited.append)
+    monkeypatch.setattr(ev, "caregiver_for", lambda models, patient_id: "cg")
+    ok = {"status": "ok", "items": [], "missing_items": [], "alerts": []}
+    other = ev.Case("c002", "pat_001", "durmio bien", set(), set(), set(), "dev")
+    ev.run([C001, other, C003], lambda *args: ok, models=None, delay=30)
+    assert waited == [30, 30]
