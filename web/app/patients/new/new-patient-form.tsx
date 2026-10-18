@@ -1,5 +1,6 @@
 "use client";
 // Add patient + team form (artboard "AddPatient"). Ticket: CIA-34.
+// The patient joins with the phone set under "Datos"; the team section only queues family invites.
 // Doses are stored exactly as typed; CercanIA never computes or suggests them (AGENTS.md section 7).
 
 import Link from "next/link";
@@ -79,6 +80,7 @@ export function NewPatientForm() {
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
   const [phone, setPhone] = useState<string | undefined>();
+  const patientPhone = phone; // E.164 from PhoneInput; the invite callback below shadows `phone`
   const [ecName, setEcName] = useState("");
   const [ecPhone, setEcPhone] = useState("");
   const [meds, setMeds] = useState<MedRow[]>([]);
@@ -177,6 +179,18 @@ export function NewPatientForm() {
               />
               <FieldError>{errors.name}</FieldError>
             </Field>
+            <Field>
+              <FieldLabel htmlFor="pphone">Celular del paciente (opcional)</FieldLabel>
+              <PhoneInput
+                id="pphone"
+                value={phone}
+                onChange={setPhone}
+                autoComplete="off"
+                placeholder="099 123 456"
+                numberInputProps={{ className: "h-12 text-base" }}
+              />
+              <FieldDescription>Si el paciente se registra con este número, entra directo a su perfil, sin invitación.</FieldDescription>
+            </Field>
             <Field {...fieldProps("location")}>
               <FieldLabel htmlFor="room">Habitación o domicilio</FieldLabel>
               <Input
@@ -192,18 +206,6 @@ export function NewPatientForm() {
                 }}
               />
               <FieldError>{errors.location}</FieldError>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="pphone">Celular del paciente (opcional)</FieldLabel>
-              <PhoneInput
-                id="pphone"
-                value={phone}
-                onChange={setPhone}
-                autoComplete="off"
-                placeholder="099 123 456"
-                numberInputProps={{ className: "h-12 text-base" }}
-              />
-              <FieldDescription>Si el paciente se registra con este número, entra directo a su perfil, sin invitación.</FieldDescription>
             </Field>
             <FieldSet>
               <FieldLegend variant="label">Número de emergencia (opcional)</FieldLegend>
@@ -329,8 +331,11 @@ export function NewPatientForm() {
           />
           {!saved && (
             <InviteForm
+              title="Invitar a un familiar"
               submitLabel="Agregar invitación"
+              roles={["family"]}
               onInvite={(phone, role) => {
+                if (phone === patientPhone) return "Ese es el celular del paciente: ya entra directo con ese número.";
                 if (invites.some((x) => x.phone === phone)) return "Ese número ya está en la lista.";
                 setInvites([...invites, { phone, role }]);
                 return null;
@@ -338,7 +343,7 @@ export function NewPatientForm() {
             />
           )}
           <FieldDescription>
-            Familia: solo lectura. Paciente: solo cuenta cómo se siente o pide ayuda. El equipo de salud lo asigna una persona administradora. La persona entra con su número de celular y acepta la invitación en la app.
+            Familia: solo lectura; entra con su número de celular y acepta la invitación en la app. El paciente entra con el celular cargado arriba. El equipo de salud lo asigna una persona administradora.
           </FieldDescription>
         </CardContent>
       </Card>
