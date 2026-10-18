@@ -203,7 +203,7 @@ class TimestampMixin:
 
 
 class Person(TimestampMixin, Base):
-    """Anyone who logs in or messages the bot, in any role. Phone = identity; email is unverified contact info."""
+    """Anyone who logs in, in any role. Phone = identity; email is unverified contact info."""
 
     __tablename__ = "person"
 
