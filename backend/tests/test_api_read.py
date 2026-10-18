@@ -21,6 +21,8 @@ from app.models import (
     NotificationStatus,
     Patient,
     PatientAccess,
+    PatientMessage,
+    PatientMessageKind,
     Person,
     Report,
     ReportItem,
@@ -209,6 +211,24 @@ def test_my_patients_counts_only_my_unread_notifications(db):
     assert by_id["pat_a"]["unread_notifications"] == 0
 
 
+def test_my_patients_patient_alarm_for_team_only(db):
+    old = PatientMessage(patient_id="pat_a", sender_id="pt", kind=PatientMessageKind.help,
+                         created_at=datetime.now(timezone.utc) - timedelta(hours=30))
+    calm = PatientMessage(patient_id="pat_a", sender_id="pt", kind=PatientMessageKind.feeling, text="bien")
+    db.add_all([old, calm])
+    db.commit()
+    alarm = lambda pid: {p["id"]: p for p in client.get("/me/patients", headers=h(pid)).json()["patients"]}["pat_a"]["patient_alarm"]
+    assert alarm("cg") is None  # older than 24 h, or not a red flag
+    db.add(PatientMessage(patient_id="pat_a", sender_id="pt", kind=PatientMessageKind.feeling, text="me caí",
+                          red_flag=True, created_at=datetime.now(timezone.utc) - timedelta(hours=2)))
+    db.commit()
+    assert alarm("cg") == "emergency" and alarm("doc") == "emergency"
+    db.add(PatientMessage(patient_id="pat_a", sender_id="pt", kind=PatientMessageKind.help))
+    db.commit()
+    assert alarm("cg") == "help"
+    assert alarm("fam") is None and alarm("pt") is None  # family is never told; the patient sees no alerts
+
+
 def test_me_and_my_patients_accept_every_role(db):
     """nurse and institution memberships must serialize (models.Role has six roles)."""
     for i, (pid, role) in enumerate([("nur", Role.nurse), ("inst", Role.institution)]):
@@ -224,5 +244,6 @@ def test_my_patients_nulls_for_patient_role(db):
     body = client.get("/me/patients", headers=h("pt")).json()
     assert body["patients"] == [{"id": "pat_a", "display_name": "Rosa (ficticia)", "location": None,
                                  "role": "patient", "last_report_at": None, "open_alerts": None,
-                                 "red_flag": None, "missing_report": None, "unread_notifications": 0}]
+                                 "red_flag": None, "missing_report": None, "patient_alarm": None,
+                                 "unread_notifications": 0}]
     assert client.get("/me/patients").status_code == 401

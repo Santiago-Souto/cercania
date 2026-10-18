@@ -8,13 +8,14 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { EmergencyCallButton } from "@/components/app/emergency-call";
 import { EmergencyContactCard } from "@/components/app/emergency-contact-card";
 import { MarkPatientSeen } from "@/components/app/mark-patient-seen";
+import { PatientAlarmCard, getPatientMessagesOrNone, isAlarm, isRecent } from "@/components/app/patient-alarm";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemSeparator, ItemTitle } from "@/components/ui/item";
 import { Progress } from "@/components/ui/progress";
-import { getMyPatients, getPatient, getPatientMessages, getReports } from "@/lib/api";
+import { getMyPatients, getPatient, getReports } from "@/lib/api";
 import { CHECKLIST_LABEL, dayTime, duration, firstName } from "@/lib/format";
 
 const SHOWN_PATIENT_MESSAGES = 3;
@@ -26,25 +27,30 @@ export default async function PatientHome(props: PageProps<"/patients/[id]">) {
   const role = mine.find((p) => p.id === id)?.role;
   if (role === "patient") redirect(`/patients/${id}/me` as Route);
   const healthTeam = role === "doctor" || role === "nurse" || role === "institution";
-  // Only caregivers and the health team read the patient's own messages (family gets 403). Listing them
-  // marks them as seen, so the patient sees "Lo vio ..." (CIA-60): fetch only the ones shown.
+  // Only caregivers and the health team read the patient's own messages (family gets 403). One fetch feeds
+  // both the alarm card (help and red flags) and the plain messages list (CIA-60).
   const [patient, reports, patientMessages] = await Promise.all([
     getPatient(id),
     getReports(id),
-    role === "caregiver" || healthTeam ? getPatientMessages(id, SHOWN_PATIENT_MESSAGES) : Promise.resolve([]),
+    role === "caregiver" || healthTeam ? getPatientMessagesOrNone(id) : Promise.resolve([]),
   ]);
-  const recentMessages = patientMessages.slice(0, SHOWN_PATIENT_MESSAGES);
+  const alarms = patientMessages.filter(isAlarm);
+  const recentAlarms = alarms.filter((m) => isRecent(m));
+  const recentMessages = patientMessages.filter((m) => !isAlarm(m)).slice(0, SHOWN_PATIENT_MESSAGES);
   const last = reports[0];
   const plan = patient.care_plan;
   const covered = last ? last.items.filter((i) => i.value !== null).length : 0;
   const total = last ? last.items.length : 0;
   const pct = total ? Math.round((covered / total) * 100) : 0;
 
-  const planRows: [string, string][] = [
-    ...plan.medications.map((m): [string, string] => [m.name, m.times.join(" · ")]),
-    ["Indicaciones", plan.indications.join(" · ") || "Ninguna"],
-    ["Alergias", plan.allergies.join(" · ") || "Ninguna registrada"],
-  ];
+  // `care_plan` is null when the patient has no active plan (e.g. a patient who signed up on their own).
+  const planRows: [string, string][] = plan
+    ? [
+        ...plan.medications.map((m): [string, string] => [m.name, m.times.join(" · ")]),
+        ["Indicaciones", plan.indications.join(" · ") || "Ninguna"],
+        ["Alergias", plan.allergies.join(" · ") || "Ninguna registrada"],
+      ]
+    : [["Plan de cuidado", "Sin plan registrado"]];
 
   return (
     <AppShell>
@@ -59,6 +65,17 @@ export default async function PatientHome(props: PageProps<"/patients/[id]">) {
       </header>
 
       <main className="flex flex-1 flex-col gap-4 px-4 pb-4">
+        {/* First thing on screen: the patient asked for help in the last 24 h. */}
+        {recentAlarms.length > 0 && (
+          <PatientAlarmCard
+            m={recentAlarms[0]}
+            patientName={patient.display_name}
+            contact={patient.emergency_contact}
+            alertsHref={`/patients/${id}/alerts`}
+            more={recentAlarms.length - 1}
+          />
+        )}
+
         <Button asChild size="xl">
           <Link href={`/patients/${id}/reports/new` as Route}>
             <MicIcon />
@@ -91,16 +108,9 @@ export default async function PatientHome(props: PageProps<"/patients/[id]">) {
                         {dayTime(m.created_at)}
                       </ItemDescription>
                       <ItemTitle className="text-base font-normal">
-                        {m.kind === "help" ? <strong>Pidió ayuda</strong> : <em>“{m.text}”</em>}
+                        <em>“{m.text}”</em>
                       </ItemTitle>
                     </ItemContent>
-                    {(m.kind === "help" || m.red_flag) && (
-                      <ItemActions>
-                        <Badge variant="danger" size="lg">
-                          {m.kind === "help" ? "Pedido de ayuda" : "Señal de alarma"}
-                        </Badge>
-                      </ItemActions>
-                    )}
                   </Item>
                 </div>
               ))}

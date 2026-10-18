@@ -27,7 +27,7 @@ export type Patient = {
   display_name: string;
   location?: string;
   emergency_contact: EmergencyContact | null;
-  care_plan: CarePlan;
+  care_plan: CarePlan | null;
 };
 
 export type MedicationDose = {
@@ -171,6 +171,8 @@ export type MyPatient = {
   missing_report: boolean | null;
   /** The caller's unread inbox notifications for this patient: the "Novedades" dot (CIA-60). */
   unread_notifications: number;
+  /** Newest patient help request / red-flag message of the last 24 h; null for family and the patient. */
+  patient_alarm: "help" | "emergency" | null;
 };
 
 export type Member = { user_id: string; name: string; role: Role };

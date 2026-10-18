@@ -18,7 +18,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { logout } from "@/lib/auth";
-import { fetchMe } from "@/lib/client-api";
+import { ClientApiError, fetchMe } from "@/lib/client-api";
 import { GENERIC_NOTIFICATION_TEXT, notificationText } from "./notification-copy";
 import { clearNotificationState, useUnreadCount } from "./notifications";
 
@@ -56,7 +56,8 @@ export function AccountBar() {
     let cancelled = false;
     fetchMe().then(
       (me) => notificationText(me),
-      () => GENERIC_NOTIFICATION_TEXT, // role unknown: ask, but without "tus pacientes"
+      // Logged out (a login screen or its loading state): nothing to ask. Other errors: ask, neutrally.
+      (err: unknown) => (err instanceof ClientApiError && err.code === "unauthenticated" ? null : GENERIC_NOTIFICATION_TEXT),
     ).then((t) => {
       if (cancelled) return;
       setText(t);

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { useState } from "react";
-import { SearchIcon, UsersIcon } from "lucide-react";
+import { HandHelpingIcon, SearchIcon, TriangleAlertIcon, UsersIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -69,7 +69,12 @@ export function PatientList({
 
         <ItemGroup className="gap-2.5">
           {sorted.map((p) => (
-            <Item key={p.id} asChild variant="outline" className="rounded-xl bg-card px-4 py-3.5">
+            <Item
+              key={p.id}
+              asChild
+              variant="outline"
+              className={p.patient_alarm ? "rounded-xl border-2 border-danger bg-danger-soft px-4 py-3.5" : "rounded-xl bg-card px-4 py-3.5"}
+            >
               <Link href={(p.role === "patient" ? `/patients/${p.id}/me` : `/patients/${p.id}`) as Route}>
                 <ItemMedia className="relative">
                   <Avatar className="size-11">
@@ -89,10 +94,16 @@ export function PatientList({
                   <ItemTitle className="text-base font-bold">{p.display_name}</ItemTitle>
                 </ItemContent>
                 <ItemActions className="text-[13px] text-muted-foreground">{p.location}</ItemActions>
-                <ItemFooter className="justify-start gap-1.5 pl-14">
+                <ItemFooter className="flex-wrap justify-start gap-1.5 pl-14">
                   {p.unread_notifications > 0 && (
                     <Badge variant="default">
                       {p.unread_notifications === 1 ? "1 novedad" : `${p.unread_notifications} novedades`}
+                    </Badge>
+                  )}
+                  {p.patient_alarm && (
+                    <Badge variant="danger" size="lg">
+                      {p.patient_alarm === "help" ? <HandHelpingIcon /> : <TriangleAlertIcon />}
+                      {p.patient_alarm === "help" ? "Pidió ayuda" : "Posible emergencia"}
                     </Badge>
                   )}
                   {p.red_flag && <Badge variant="danger">Señal de alarma</Badge>}
@@ -102,7 +113,7 @@ export function PatientList({
                     </Badge>
                   )}
                   {p.missing_report && <Badge variant="missing">Falta el reporte del turno</Badge>}
-                  {p.role !== "patient" && !p.red_flag && !p.open_alerts && !p.missing_report && (
+                  {p.role !== "patient" && !p.patient_alarm && !p.red_flag && !p.open_alerts && !p.missing_report && (
                     <Badge variant="success">Al día{p.last_report_at ? ` · ${dayTime(p.last_report_at).toLowerCase()}` : ""}</Badge>
                   )}
                 </ItemFooter>

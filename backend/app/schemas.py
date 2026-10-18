@@ -200,6 +200,8 @@ class MyPatient(BaseModel):
     red_flag: bool | None = None
     missing_report: bool | None = None
     unread_notifications: int = 0  # the caller's unread inbox rows for this patient ("novedades", CIA-60)
+    # Newest patient help request / red-flag message of the last 24 h; null for family and the patient.
+    patient_alarm: Literal["help", "emergency"] | None = None
 
 
 class MyPatients(BaseModel):
