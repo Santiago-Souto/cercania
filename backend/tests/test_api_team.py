@@ -410,7 +410,8 @@ def test_caregiver_archives_a_patient(db):
     assert r.status_code == 200 and r.json() == {"status": "archived"}
     assert db.get(Patient, "pat_a").archived_at is not None
     for pid in ("cg", "fam", "doc"):
-        assert client.get("/me/patients", headers=h(pid)).json() == {"patients": []}
+        # Left with no membership, main's default rule may give them their own profile; never pat_a.
+        assert "pat_a" not in [p["id"] for p in client.get("/me/patients", headers=h(pid)).json()["patients"]]
         assert client.get("/patients/pat_a", headers=h(pid)).status_code == 404
     assert db.scalars(select(Invite).where(Invite.patient_id == "pat_a")).all() == []
     log = db.scalar(select(RoleChange).where(RoleChange.action == "patient_archived"))
