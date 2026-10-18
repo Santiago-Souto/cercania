@@ -9,6 +9,12 @@ from test_process import (  # noqa: F401  (db is a fixture)
 )
 
 
+@pytest.fixture(autouse=True)
+def fake_extract_vendor(monkeypatch):
+    """The fake clients mimic the Anthropic SDK; the default extraction vendor is Groq (llm.py)."""
+    monkeypatch.setenv("EXTRACT_MODEL", "anthropic:test-model")
+
+
 @pytest.fixture()
 def client(db, monkeypatch):
     monkeypatch.setenv("ALLOW_DEV_IDENTITY_HEADER", "1")

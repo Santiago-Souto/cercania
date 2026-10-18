@@ -100,9 +100,9 @@ export function NotificationWatcher() {
         }
         save(seenKey, [...seen].slice(-100));
         const newest = res.notifications[0]?.created_at;
+        // Only server timestamps: a skewed browser clock must never move the cursor past real notifications.
         if (newest && (!since || newest > since)) since = newest;
-        else if (!since) since = new Date().toISOString();
-        save(sinceKey, since);
+        if (since) save(sinceKey, since);
       } catch {
         // offline or backend down: try again on the next tick
       }

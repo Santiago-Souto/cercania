@@ -22,6 +22,12 @@ CG, FAM, DOC = "cg_001", "fam_001", "doc_001"
 PAT = "pat_001"  # Rosa: enalapril 08:00 + 20:00 (med_001), metformina 08:00 (med_002)
 
 
+@pytest.fixture(autouse=True)
+def fake_extract_vendor(monkeypatch):
+    """The fake clients mimic the Anthropic SDK; the default extraction vendor is Groq (llm.py)."""
+    monkeypatch.setenv("EXTRACT_MODEL", "anthropic:test-model")
+
+
 @pytest.fixture()
 def db(monkeypatch):
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
@@ -147,7 +153,7 @@ def test_shift_report_happy_path(db):
     with db() as s:
         report = s.get(Report, r["report"]["id"])
         assert report.kind == ReportKind.shift and report.channel == "whatsapp" and not report.red_flag
-        assert report.latest.model == extract.DEFAULT_MODEL and report.latest.extraction_raw
+        assert report.latest.model == "anthropic:test-model" and report.latest.extraction_raw
         assert report.latest.created_by == CG and report.triage_status == TriageStatus.ok
 
 
