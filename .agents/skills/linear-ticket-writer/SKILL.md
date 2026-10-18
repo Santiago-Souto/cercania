@@ -10,8 +10,8 @@ A good ticket here answers: what done looks like, which files I touch, what I de
 ## Sources (read before writing)
 
 1. `AGENTS.md` — rules, Definition of Done (§12), safety rules (§7), out of scope (§10), timeline (§14).
-3. `docs/contract.md` — exact data shapes and endpoints. Reference field names, never paraphrase them.
-4. The current ticket description (via whatever Linear access you have: MCP, API or CLI). Keep every fact it already has.
+2. `docs/contract.md` — exact data shapes and endpoints. Reference field names, never paraphrase them.
+3. The current ticket description (via whatever Linear access you have: MCP, API or CLI). Keep every fact it already has.
 
 If a source does not say something, leave it out or write `TBD — ask <owner>`. Never invent requirements, times or numbers.
 
