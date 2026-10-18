@@ -25,7 +25,7 @@ Implemented in `backend/app/process.py` (the entry point is reached through `app
 
 - Idempotent on `message_id`: a repeated delivery returns the stored result and creates nothing.
 - Never raises to the caller for model errors. Caregiver reports that cannot be extracted return `status: "needs_retry"`.
-- `audio_ref` is accepted but not stored yet; channels pass `null`.
+- `audio_ref` is unused; channels pass `null`. The original voice note is stored by the channel after `process_report` returns (`ingest.store_audio`) and served through `GET /reports/{report_id}/audio`.
 - `segments` are the transcript segments from transcription (see Transcript segments); `[]` for typed reports. They are stored on the report.
 
 ### ProcessResult statuses

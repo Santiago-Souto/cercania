@@ -84,7 +84,9 @@ async def create_report(
     transcript = existing.transcript if existing is not None else None
     segments: list[dict] = []
     voice_note: ingest.Audio | None = None
-    if transcript is None and audio is not None:
+    # Read the audio unless the stored report already has it: a retry of a stored report never
+    # transcribes again, but it still attaches a voice note whose first upload failed.
+    if audio is not None and (existing is None or existing.audio is None):
         mime = (audio.content_type or "").split(";")[0].strip()
         if mime not in AUDIO_TYPES:
             return error_response(415, "unsupported_audio", "Formato de audio no soportado. Usá webm, ogg o m4a.")
@@ -93,22 +95,26 @@ async def create_report(
             return error_response(400, "audio_empty", "El audio llegó vacío. Grabalo de nuevo.")
         if len(data) > MAX_AUDIO_BYTES:
             return error_response(413, "audio_too_large", "El audio es demasiado largo. Grabá un reporte más corto.")
-        try:
-            # Blocking network call: run it off the event loop so other requests keep flowing.
-            result = await run_in_threadpool(
-                transcribe,
-                data,
-                filename=AUDIO_TYPES[mime],
-                mime_type=mime,
-                vocabulary=ingest.vocabulary_for(db, patient_id),
-            )
-        except TranscriptionError as exc:
-            log.error("Web report %s: transcription failed: %s", message_id, exc)
-            return error_response(502, "transcription_failed", exc.user_message)
-        transcript = result.text
-        segments = result.segment_dicts()
-        voice_note = ingest.Audio(data, mime, result.duration)
-    elif transcript is None:
+        if transcript is None:
+            try:
+                # Blocking network call: run it off the event loop so other requests keep flowing.
+                result = await run_in_threadpool(
+                    transcribe,
+                    data,
+                    filename=AUDIO_TYPES[mime],
+                    mime_type=mime,
+                    vocabulary=ingest.vocabulary_for(db, patient_id),
+                )
+            except TranscriptionError as exc:
+                log.error("Web report %s: transcription failed: %s", message_id, exc)
+                return error_response(502, "transcription_failed", exc.user_message)
+            transcript = result.text
+            segments = result.segment_dicts()
+            duration = result.duration
+        else:
+            duration = existing.segments[-1].get("end") if existing.segments else None
+        voice_note = ingest.Audio(data, mime, duration)
+    if transcript is None:
         transcript = text.strip()
 
     try:
