@@ -255,6 +255,8 @@ class PatientCreate(BaseModel):
     location: Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)] | None = None
     care_plan: CarePlanIn = Field(default_factory=CarePlanIn)
     emergency_contact: EmergencyContactIn | None = None
+    # The patient's own cell phone: when it signs up, it joins this profile as the patient's login.
+    phone: Annotated[str, StringConstraints(strip_whitespace=True, max_length=40)] | None = None
 
 
 class Member(BaseModel):

@@ -423,3 +423,42 @@ def test_only_caregivers_archive(db, person):
     r = client.delete("/patients/pat_a", headers=h(person))
     assert r.status_code == 403
     assert db.get(Patient, "pat_a").archived_at is None
+
+
+def test_patient_added_with_a_phone_is_joined_on_sign_up_without_invite(db):
+    from app import roles
+    r = client.post("/patients", json={**BODY, "phone": "+598 99 555 111"}, headers=h("cg"))
+    assert r.status_code == 201
+    pid = r.json()["id"]
+    assert db.get(Patient, pid).phone == "+59899555111"
+    assert db.scalars(select(Invite).where(Invite.patient_id == pid)).all() == []  # nobody has that phone yet
+    person = Person(id="elena", phone="+59899555111", display_name="Elena (ficticia)")
+    db.add(person)
+    db.flush()
+    assert roles.on_signup(db, person) == "patient_phone"
+    db.commit()
+    assert [(m["patient_id"], m["role"]) for m in client.get("/me", headers=h("elena")).json()["memberships"]] == [(pid, "patient")]
+
+
+def test_patient_phone_of_an_existing_account_becomes_a_patient_invite(db):
+    r = client.post("/patients", json={**BODY, "phone": "+15550100009"}, headers=h("cg"))
+    pid = r.json()["id"]
+    [inv] = client.get("/me/invites", headers=h("new")).json()["invites"]
+    assert (inv["patient_id"], inv["role"]) == (pid, "patient")
+
+
+@pytest.mark.parametrize("phone, status, code", [
+    ("+15550100001", 422, "patient_phone_self"),  # the caregiver's own number
+    ("hola", 422, "phone_invalid"),
+])
+def test_patient_phone_validation(db, phone, status, code):
+    r = client.post("/patients", json={**BODY, "phone": phone}, headers=h("cg"))
+    assert r.status_code == status and r.json()["error"]["code"] == code
+
+
+def test_patient_phone_is_one_live_patient(db):
+    first = client.post("/patients", json={**BODY, "phone": "+59899555111"}, headers=h("cg")).json()["id"]
+    r = client.post("/patients", json={**BODY, "phone": "+59899555111"}, headers=h("cg"))
+    assert r.status_code == 409 and r.json()["error"]["code"] == "patient_phone_taken"
+    client.delete(f"/patients/{first}", headers=h("cg"))
+    assert client.post("/patients", json={**BODY, "phone": "+59899555111"}, headers=h("cg")).status_code == 201

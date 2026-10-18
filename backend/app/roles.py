@@ -192,11 +192,30 @@ def apply_role(session: Session, person: Person, role: str, patient_id: str | No
     session.flush()
 
 
+def claim_patient_by_phone(session: Session, person: Person) -> Patient | None:
+    """A caregiver added a patient with this person's phone: they become its own login, no invite.
+
+    Only a live patient with no login yet; the phone was proven by the SMS code.
+    """
+    patient = session.scalar(
+        select(Patient).where(Patient.phone == person.phone, Patient.archived_at.is_(None))
+        .order_by(Patient.created_at, Patient.id)
+    )
+    if patient is None or other_patient_login(session, patient.id, person.id):
+        return None
+    set_membership(session, person, patient.id, Role.patient)
+    session.flush()
+    log(session, "patient_phone_claimed", actor_id=None, person_id=person.id, phone=person.phone,
+        patient_id=patient.id, after={"role": Role.patient.value, "patient_id": patient.id})
+    return patient
+
+
 def on_signup(session: Session, person: Person) -> str:
     """Decide a brand-new person's starting role. Returns what was applied (for logs and tests).
 
-    Pre-registration first (it is the admin's explicit decision); a pending family invite
-    stays to be accepted in the app; otherwise the person signed up for themselves: patient.
+    Pre-registration first (it is the admin's explicit decision); then a patient a caregiver
+    added with this phone (they join it as its own login); a pending invite stays to be
+    accepted in the app; otherwise the person signed up for themselves: patient.
     """
     pre = session.scalar(select(PreRegistration).where(PreRegistration.phone == person.phone))
     if pre is not None:
@@ -206,6 +225,8 @@ def on_signup(session: Session, person: Person) -> str:
             after={"role": pre.role, "patient_id": pre.patient_id})
         session.delete(pre)
         return f"pre_registration:{pre.role}"
+    if claim_patient_by_phone(session, person) is not None:
+        return "patient_phone"
     invited = session.scalar(select(Invite.id).where(Invite.phone == person.phone,
                                                      Invite.status == InviteStatus.pending).limit(1))
     if invited is not None:
@@ -231,6 +252,8 @@ def ensure_default_role(session: Session, person: Person) -> bool:
     # My patients) must not each create a profile. Postgres waits here; SQLite has one writer.
     session.execute(select(Person.id).where(Person.id == person.id).with_for_update())
     if _has_membership(session, person):
+        return False
+    if claim_patient_by_phone(session, person) is not None:
         return False
     if session.scalar(select(Invite.id).where(Invite.phone == person.phone,
                                               Invite.status == InviteStatus.pending).limit(1)) is not None:

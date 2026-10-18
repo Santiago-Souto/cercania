@@ -243,6 +243,9 @@ class Patient(TimestampMixin, Base):
     # information only: it has no inbox, so it is not notified; both null = none registered.
     health_provider_name: Mapped[str | None] = mapped_column(String(120))
     health_provider_phone: Mapped[str | None] = mapped_column(String(20))  # E.164
+    # The patient's own cell phone (E.164), set by the caregiver who adds them. When that phone
+    # signs up, the person becomes this patient's own login with no invite (roles.claim_patient_by_phone).
+    phone: Mapped[str | None] = mapped_column(String(20), index=True)
     # Archived by a caregiver (DELETE /patients/{id}): every membership and pending invite is
     # removed, so nobody reaches it; reports and versions stay as the evidence trail.
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

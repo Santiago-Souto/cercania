@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Item, ItemActions, ItemContent } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
 import { checkPhone, MAX_TEXT, parseTimes } from "@/lib/team";
@@ -27,7 +28,7 @@ let nextKey = 1;
 const key = () => nextKey++;
 
 /** Builds the POST /patients body, or the errors to show next to each field. */
-function validate(name: string, location: string, ecName: string, ecPhone: string, meds: MedRow[], indications: TextRow[], allergies: TextRow[]): { body: NewPatient } | { errors: Errors } {
+function validate(name: string, location: string, phone: string | undefined, ecName: string, ecPhone: string, meds: MedRow[], indications: TextRow[], allergies: TextRow[]): { body: NewPatient } | { errors: Errors } {
   const errors: Errors = {};
   const tooLong = `Hasta ${MAX_TEXT} caracteres.`;
   if (!name.trim()) errors.name = "Escribí el nombre del paciente.";
@@ -67,6 +68,7 @@ function validate(name: string, location: string, ecName: string, ecPhone: strin
   const body: NewPatient = {
     display_name: name.trim(),
     location: location.trim() || null,
+    phone: phone || null,
     emergency_contact,
     care_plan: { medications, indications: lines(indications, "ind"), allergies: lines(allergies, "all") },
   };
@@ -76,6 +78,7 @@ function validate(name: string, location: string, ecName: string, ecPhone: strin
 export function NewPatientForm() {
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
+  const [phone, setPhone] = useState<string | undefined>();
   const [ecName, setEcName] = useState("");
   const [ecPhone, setEcPhone] = useState("");
   const [meds, setMeds] = useState<MedRow[]>([]);
@@ -101,7 +104,7 @@ export function NewPatientForm() {
     e.preventDefault();
     if (saved) return;
     setFormError(null);
-    const v = validate(name, location, ecName, ecPhone, meds, indications, allergies);
+    const v = validate(name, location, phone, ecName, ecPhone, meds, indications, allergies);
     if ("errors" in v) {
       setErrors(v.errors);
       setFormError("Revisá los campos marcados.");
@@ -189,6 +192,18 @@ export function NewPatientForm() {
                 }}
               />
               <FieldError>{errors.location}</FieldError>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="pphone">Celular del paciente (opcional)</FieldLabel>
+              <PhoneInput
+                id="pphone"
+                value={phone}
+                onChange={setPhone}
+                autoComplete="off"
+                placeholder="099 123 456"
+                numberInputProps={{ className: "h-12 text-base" }}
+              />
+              <FieldDescription>Si el paciente se registra con este número, entra directo a su perfil, sin invitación.</FieldDescription>
             </Field>
             <FieldSet>
               <FieldLegend variant="label">Número de emergencia (opcional)</FieldLegend>

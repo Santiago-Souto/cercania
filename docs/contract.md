@@ -488,8 +488,9 @@ Only the latest code sent to the phone is valid. Codes are single-use, expire af
 
 **Starting role of a new person** (the sign-up that creates the person; logging in again changes nothing), decided in code (`backend/app/roles.py`):
 1. The phone has an **admin pre-registration**: that role is applied and the pre-registration is consumed. With a patient, that membership; `admin`, `is_admin = true`; a caregiver without a patient, no memberships but `can_add_patients = true`; `patient`, their own new patient profile.
-2. Otherwise, the phone has a **pending invite** (family or patient): nothing is applied; the person accepts it in the app.
-3. Otherwise the person signed up for themselves: they get **their own patient profile** (display name = their name, no care plan) and the `patient` role on it, so `memberships` has that one entry.
+2. Otherwise, a caregiver **added a patient with this phone** (`POST /patients` `phone`) and that patient has no login yet: the person becomes that patient's own login (`patient` role), with no invite. Also checked when a person with no role at all logs in.
+3. Otherwise, the phone has a **pending invite** (family or patient): nothing is applied; the person accepts it in the app.
+4. Otherwise the person signed up for themselves: they get **their own patient profile** (display name = their name, no care plan) and the `patient` role on it, so `memberships` has that one entry.
 
 If a phone has both a pre-registration and an invite, the pre-registration applies and the invite stays pending.
 
@@ -513,7 +514,7 @@ Deletes the session server-side and clears the cookie. Returns `{ "status": "log
 }
 ```
 
-`location` is optional free text and is `null` when not set. `emergency_contact` (`{ name, phone }`) is optional; the phone is normalized to E.164 like other phones. Returns `201` with the patient as in `GET /patients/{patient_id}`. Only caregivers may add a patient (`403 forbidden` otherwise): someone with a caregiver membership, or a caregiver an admin registered before assigning patients (`GET /me` `can_add_patients`). The creator becomes `caregiver` and sets the initial care plan (version 1); after that only a `doctor` can edit it. Doses are stored as entered; nothing is computed. Each medication needs `name` and `dose` (1-120 characters); `times` are `HH:MM`. `care_plan` may be omitted (empty plan). Errors: `401`; `422 invalid_request` (empty name, bad time, too long); `422 phone_invalid` (emergency contact phone without country code).
+`location` is optional free text and is `null` when not set. `emergency_contact` (`{ name, phone }`) is optional; the phone is normalized to E.164 like other phones. Returns `201` with the patient as in `GET /patients/{patient_id}`. Only caregivers may add a patient (`403 forbidden` otherwise): someone with a caregiver membership, or a caregiver an admin registered before assigning patients (`GET /me` `can_add_patients`). The creator becomes `caregiver` and sets the initial care plan (version 1); after that only a `doctor` can edit it. Doses are stored as entered; nothing is computed. Each medication needs `name` and `dose` (1-120 characters); `times` are `HH:MM`. `care_plan` may be omitted (empty plan). `phone` (optional) is the patient's own cell, normalized to E.164: when that phone signs up, the person joins this patient as its own login with no invite (see "Starting role" under Auth). If the phone already has an account, a pending `patient` invite is created for it instead (same response either way). One live patient per phone. Errors: `401`; `422 invalid_request` (empty name, bad time, too long); `422 phone_invalid` (emergency contact or patient phone without country code); `422 patient_phone_self` (the caregiver's own number); `409 patient_phone_taken` (another live patient has that phone).
 
 ### `PATCH /patients/{patient_id}/emergency-contact`
 
