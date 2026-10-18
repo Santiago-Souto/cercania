@@ -30,3 +30,7 @@ def fake_env(request, monkeypatch):
     # Never reach the real Supabase bucket from a test; storage tests set fake values.
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
+    # A developer's .env (loaded by models.py) must not change auth behavior under test;
+    # tests that need these set them themselves.
+    for var in ("AUTH_DEV_LOG_CODES", "SESSION_COOKIE_SECURE", "SESSION_COOKIE_SAMESITE"):
+        monkeypatch.delenv(var, raising=False)

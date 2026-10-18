@@ -1,3 +1,4 @@
+import subprocess
 import sys
 from pathlib import Path
 
@@ -191,3 +192,15 @@ def test_delay_waits_between_cases_not_after_the_last(monkeypatch):
     other = ev.Case("c002", "pat_001", "durmio bien", set(), set(), set(), "dev")
     ev.run([C001, other, C003], lambda *args: ok, models=None, delay=30)
     assert waited == [30, 30]
+
+
+def test_prepare_backend_returns_the_ingest_entry_point(tmp_path):
+    """The eval must reach app.ingest.process_report. Runs in its own process because
+    prepare_backend points DATABASE_URL at a new file before the app is imported."""
+    code = (
+        "import sys; from pathlib import Path; sys.path.insert(0, 'eval'); import run_eval as ev; "
+        f"pr, models, reset = ev.prepare_backend(Path(r'{tmp_path / 'eval.db'}')); "
+        "assert callable(pr) and pr.__module__ == 'app.ingest', pr; reset()"
+    )
+    out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
