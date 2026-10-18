@@ -260,3 +260,4 @@ Problem: the shift handoff gets lost. Live demo: a juror dictates a report, sees
 - "Health provider" contact: who it is (residential center, emergency service, doctor) and where it lives (field on `patient` vs a contact table). Demo uses a fictional team phone.
 - WhatsApp emergency notifications: template approval / sandbox join for recipients (section 4.2). If not ready, list as Pending and keep only the web alert.
 - Messages from family/doctor/patient that are not emergencies only get a link for now; revisit (e.g. family questions answered with `query.py`).
+- Invite roles (CIA-34): today a caregiver can invite a WhatsApp number with any of the six roles, including `doctor`, which carries `edit_care_plan`. There is no check that the invited person is a doctor. Options: keep it (caregivers set up the team), drop `doctor` from caregiver invites (then who adds doctors?), or have the doctor role confirmed by someone else.
