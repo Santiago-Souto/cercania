@@ -1,15 +1,17 @@
-# Demo script (backup video and live demo)
+# Live demo script
 
-For whoever records the backup video (CIA-21) or runs the live demo. It follows AGENTS.md §15: a report goes in, the record and an omission alert come out, then a question gets an answer cited from the voice note. **3 minutes.** Everything shown is fictional seed data.
+For whoever runs the live demo. There is no backup video (team decision, Oct 18), so the fallbacks below are the safety net. It follows AGENTS.md §15: a report goes in, the record and an omission alert come out, then a question gets an answer cited from the voice note. **3 minutes.** Everything shown is fictional seed data.
 
-## Before recording
+## Before the demo
 
 - **Wake both services** a minute before: open https://cercania-api.onrender.com/health and https://cercania-web.onrender.com. The free plan sleeps after ~15 min; the first request takes about a minute.
 - **Log in** at https://cercania-web.onrender.com/login with a team phone that is linked to the caregiver Ana (`cg_001`) and verified in the Twilio trial (see CIA-42). The seed phones are fictional and cannot receive the SMS code.
 - **Rosa's history must be clean:** only the 3 seed reports (Oct 15–17). Every rehearsal adds a real report, and the next "change" alert counts it ("4 turnos seguidos" instead of "3"). After rehearsing, ask Dev C to delete the rehearsal reports.
-- Phone screen recording, or a desktop browser narrowed to about 480 px. A quiet room for the voice note.
+- Show it from a phone (screen mirrored) or a desktop browser narrowed to about 480 px.
+- **Have the note copied to the clipboard** on the demo device, ready for "Escribir" if the microphone or the venue noise fails.
+- Have a second device already logged in as Ana, in case the first one loses its session or connection (the session lasts 30 days on each device).
 
-## The take
+## The demo
 
 | Time | On screen | What happens / what to say |
 |---|---|---|
@@ -35,6 +37,6 @@ For whoever records the backup video (CIA-21) or runs the live demo. It follows 
 - **"Why is the 08:00 dose flagged on an evening shift?"** The comparison checks every time in the care plan; it does not know shift hours yet. It flags what was not mentioned, never what was given.
 - **"How do you know the AI is right?"** Every value carries a verbatim quote that code checks against the transcript. On 20 fictional eval cases (6 never used for tuning): fields 98%, omissions 100%, emergencies 4/4 with no false alarms (`eval/RESULTS.md`).
 
-## Optional extra shot (if there is time)
+## Optional extra (if there is time)
 
 The patient view: log in as a patient and tap "Necesito ayuda". The team's inbox gets the alert immediately, with no model involved. It needs a phone linked to the patient Jorge (`ptl_002`).
