@@ -351,11 +351,11 @@ Any authenticated person. Errors: `401 unauthenticated`.
 }
 ```
 
-`is_admin`: global admin (see Admin). `can_add_patients`: the caller may use `POST /patients` (caregivers only).
+`is_admin`: global admin (see Admin). `can_add_patients`: the caller may use `POST /patients` (the person's role is `caregiver`, see Admin).
 
 ### `GET /me/patients`
 
-Any authenticated person. One entry per membership, for the dashboard. A person with no role at all (no membership, not admin, not caregiver, no pending invite) first gets their own patient profile with the `patient` role, as at sign-up; `POST /auth/verify` does the same for an existing account. Status fields come from reports:
+Any authenticated person. One entry per membership, for the dashboard. A person with no role at all (no `person.role`, no membership, not admin, no pending invite) first gets their own patient profile with the `patient` role, as at sign-up; `POST /auth/verify` does the same for an existing account. Status fields come from reports:
 
 - `last_report_at`: `created_at` of the patient's newest report, or `null`.
 - `red_flag`: some report from the last 24 h has `red_flag`.
@@ -487,7 +487,7 @@ Anti-enumeration: before the code is verified, nothing reveals whether a phone i
 Only the latest code sent to the phone is valid. Codes are single-use, expire after `LOGIN_CODE_TTL_MINUTES` (default 10), are stored as salted hashes, and lock after 5 wrong attempts. Errors: `code_invalid` (400), `code_expired` (400), `too_many_attempts` (429; ask for a new code). A code that is not 6 digits, or a blank `name`, is `422 invalid_request`. Invites are matched only on the phone proven by the code, never on email, and stay pending until accepted in the app (`POST /me/invites/{invite_id}/accept`).
 
 **Starting role of a new person** (the sign-up that creates the person; logging in again changes nothing), decided in code (`backend/app/roles.py`):
-1. The phone has an **admin pre-registration**: that role is applied and the pre-registration is consumed. With a patient, that membership; `admin`, `is_admin = true`; a caregiver without a patient, no memberships but `can_add_patients = true`; `patient`, their own new patient profile.
+1. The phone has an **admin pre-registration**: that role is applied and the pre-registration is consumed. It sets the person's role and never a link to a patient (CIA-58): `admin`, `is_admin = true`; `patient`, their own new patient profile; `caregiver`, no memberships but `can_add_patients = true`; family, doctor, nurse or institution, no memberships until a caregiver invites them (family) or later (health team, see README "Pending").
 2. Otherwise, a caregiver **added a patient with this phone** (`POST /patients` `phone`) and that patient has no login yet: the person becomes that patient's own login (`patient` role), with no invite. Also checked when a person with no role at all logs in.
 3. Otherwise, the phone has a **pending invite** (family or patient): nothing is applied; the person accepts it in the app.
 4. Otherwise the person signed up for themselves: they get **their own patient profile** (display name = their name, no care plan) and the `patient` role on it, so `memberships` has that one entry.
@@ -566,7 +566,7 @@ Deletes the invite, so the caregiver can invite the number again. Returns `{ "st
 
 ## Admin
 
-A global admin (`person.is_admin`) lists people and assigns roles, **nothing else**: being admin opens no patient, report, alert, care-plan or message route (those still need a membership). Admins are set by hand in the database, from an `admin` pre-registration at sign-up, or by **another admin on an existing person** (`PUT /admin/people/{id}/admin`, or a confirmed `admin` pre-registration of a registered phone). Every admin route answers `403 forbidden` to non-admins, and every change is written to `role_change` (who, when, before, after). Implemented in `backend/app/api/admin.py` and `backend/app/roles.py`.
+A global admin (`person.is_admin`) lists people and sets **each person's role** (`person.role`), **nothing else** (CIA-58): an admin never links people to patients (that comes from caregivers: creating a patient, inviting family or a patient's own login), and being admin opens no patient, report, alert, care-plan or message route (those still need a membership). Admins are set by hand in the database, from an `admin` pre-registration at sign-up, or by **another admin on an existing person** (`PUT /admin/people/{id}/admin`, or a confirmed `admin` pre-registration of a registered phone). Every admin route answers `403 forbidden` to non-admins, and every change is written to `role_change` (who, when, before, after). Implemented in `backend/app/api/admin.py` and `backend/app/roles.py`.
 
 **Overwrite warning:** a change that would replace something that exists answers `409 overwrite_required` with the current state in `error.current`, and is applied only when the same request is sent again with `"confirm_overwrite": true`.
 
@@ -575,43 +575,42 @@ A global admin (`person.is_admin`) lists people and assigns roles, **nothing els
 ```json
 {
   "people": [
-    { "id": "cg_001", "name": "Ana (fictional)", "phone": "+15550100001", "is_admin": false, "is_caregiver": false,
-      "memberships": [ { "patient_id": "pat_001", "patient_name": "Rosa (fictional)", "role": "caregiver" } ] }
+    { "id": "cg_001", "name": "Ana (fictional)", "phone": "+15550100001", "is_admin": false, "role": "caregiver" }
   ],
   "pre_registrations": [
-    { "id": "pre_1", "phone": "+15550100099", "role": "caregiver", "patient_id": null, "patient_name": null, "created_at": "2026-10-18T08:00:00Z" }
-  ],
-  "patients": [ { "id": "pat_001", "display_name": "Rosa (fictional)" } ]
+    { "id": "pre_1", "phone": "+15550100099", "role": "caregiver", "created_at": "2026-10-18T08:00:00Z" }
+  ]
 }
 ```
 
-`patients` is names only, to pick from when assigning a role. `is_caregiver` = a caregiver registered before any patient was assigned.
+`role` is one of `caregiver`, `family`, `patient`, `doctor`, `nurse`, `institution`, or `null`. Accounts from before CIA-58 have no stored role and read as: `caregiver` if an admin registered them as one, else their strongest membership role (caregiver > doctor > nurse > institution > family > patient), else `null`. No memberships and no patient list: the admin view shows no links to patients.
 
-### `PUT /admin/people/{person_id}/memberships/{patient_id}`
+### `PUT /admin/people/{person_id}/role`
 
-`{ "role": "nurse", "confirm_overwrite": false }`. Adds the membership, or changes it. Replacing a **different** role the person already has on that patient is a `409` whose `error.current` is the person (as in `people`). Returns the person. Errors: `404` (unknown person or patient), `409`, `422` (`admin` is not a membership role).
+`{ "role": "caregiver", "confirm_overwrite": false }`. Sets the person's role. Changing a **different** role they already have is a `409` whose `error.current` is the person (as in `people`); a person with no role gets it directly. The same role again: `200`, nothing changes. Effects, never a link to someone else's patient:
+- `patient`: their own patient profile, created if they have none.
+- Any other role: their `patient` memberships (their login to their own profile) are removed. The profile and its records stay. Other memberships stay.
+- `caregiver` can add patients (`GET /me` `can_add_patients`); no other role can.
+
+Logged in `role_change` as `role_set` (`after.patient_logins_removed` lists the profiles they left). Returns the person. Errors: `404`, `409`, `422` (unknown role; `admin` uses the route below).
 
 ### `PUT /admin/people/{person_id}/admin`
 
-`{ "confirm_overwrite": false }`. Another admin makes an existing person an admin. Always a `409` first, with the person in `error.current` (name and current roles); applied with `confirm_overwrite: true`. Their memberships do not change. Already admin: `200`, nothing changes. Returns the person. Errors: `404`, `409`. Removing admin is done by hand in the database.
-
-### `DELETE /admin/people/{person_id}/memberships/{patient_id}`
-
-Removes it. Returns the person. Errors: `404`.
+`{ "confirm_overwrite": false }`. Another admin makes an existing person an admin. Always a `409` first, with the person in `error.current` (name and current roles); applied with `confirm_overwrite: true`. Their role and memberships do not change. Already admin: `200`, nothing changes. Returns the person. Errors: `404`, `409`. Removing admin is done by hand in the database.
 
 ### `POST /admin/pre-registrations`
 
-`{ "phone": "+15550100099", "role": "caregiver", "patient_id": null, "confirm_overwrite": false }`. A role for a phone that has not signed up. **Nothing is sent**: the person signs up on their own and starts with this role (see `POST /auth/verify`). `role` is a membership role or `admin`. `patient_id` is **required** for family, doctor, nurse and institution (`422 patient_required`), **optional** for caregiver, and **not used** for `admin` and `patient` (`422 patient_not_used`).
+`{ "phone": "+15550100099", "role": "caregiver", "confirm_overwrite": false }`. A role for a phone that has not signed up. **Nothing is sent**: the person signs up on their own and starts with this role (see `POST /auth/verify`). `role` is a person role or `admin`. No patient (CIA-58; a `patient_id` sent by an older client is ignored).
 
-- Phone of a **registered person**: `409` with `error.current.person`. Confirmed, the role is applied to that person now and the answer is `200 { "applied_to": <person> }` (`admin` makes them an admin; their memberships stay).
+- Phone of a **registered person**: `409` with `error.current.person`. Confirmed, the role is applied to that person now, as in `PUT /admin/people/{person_id}/role`, and the answer is `200 { "applied_to": <person> }` (`admin` makes them an admin; their role stays).
 - Phone with a **pending pre-registration**: `409` with `error.current.pre_registration`. Confirmed, it is replaced (`200`).
 - Otherwise: `201 { "pre_registration": {...} }`.
 
-Errors also: `400 phone_invalid`, `404` (unknown patient).
+Errors also: `400 phone_invalid`.
 
 ### `PATCH /admin/pre-registrations/{id}` and `DELETE /admin/pre-registrations/{id}`
 
-PATCH `{ "role": "...", "patient_id": ... }` edits a pending one (same patient rules); DELETE removes it. Errors: `404`.
+PATCH `{ "role": "..." }` edits a pending one; DELETE removes it. Errors: `404`.
 
 ## Reports from the web app
 

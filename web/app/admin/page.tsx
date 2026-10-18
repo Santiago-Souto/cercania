@@ -1,5 +1,5 @@
-// Users and roles (CIA-48). Admins only: list people, assign roles, pre-register phones.
-// No clinical data here, by design: an admin sees names, phones and roles, nothing else.
+// Users and roles (CIA-48, CIA-58). Admins only: list people, set each person's role, pre-register phones.
+// No clinical data and no links to patients here, by design: an admin sees names, phones and roles, nothing else.
 import Link from "next/link";
 import { ShieldIcon } from "lucide-react";
 import { AppShell, Brand } from "@/components/app/shell";
@@ -9,8 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
 import { getAdminPeople, getMe } from "@/lib/api";
-import { AssignRole, DeletePreRegistration, MakeAdmin, PreRegisterForm, RemoveRole } from "./admin-forms";
-import { ADMIN_ROLE_LABEL, membershipLabel } from "./labels";
+import { DeletePreRegistration, MakeAdmin, PersonRole, PreRegisterForm } from "./admin-forms";
+import { ADMIN_ROLE_LABEL } from "./labels";
 
 export default async function AdminPage() {
   const me = await getMe();
@@ -34,7 +34,7 @@ export default async function AdminPage() {
       </AppShell>
     );
   }
-  const { people, pre_registrations: pending, patients } = await getAdminPeople();
+  const { people, pre_registrations: pending } = await getAdminPeople();
 
   return (
     <AppShell>
@@ -45,8 +45,8 @@ export default async function AdminPage() {
         <div className="flex flex-col gap-1">
           <h1 className="text-[28px] font-bold">Usuarios y roles</h1>
           <p className="text-[13px] text-muted-foreground">
-            Asignás roles; no ves reportes, alertas ni mensajes. Las familias entran por invitación de quien cuida, y quien se
-            registra por su cuenta entra como paciente.
+            Elegís el rol de cada persona; no ves reportes, alertas ni mensajes, y no vinculás personas con pacientes: eso lo
+            hace quien cuida, al invitar. Quien se registra por su cuenta entra como paciente.
           </p>
         </div>
 
@@ -55,7 +55,7 @@ export default async function AdminPage() {
             <CardTitle className="text-base font-bold">Registrar un número con su rol</CardTitle>
           </CardHeader>
           <CardContent>
-            <PreRegisterForm patients={patients} />
+            <PreRegisterForm />
           </CardContent>
         </Card>
 
@@ -67,10 +67,7 @@ export default async function AdminPage() {
                 <Item key={p.id} className="rounded-none border-b px-4 py-3 last:border-b-0">
                   <ItemContent>
                     <ItemTitle className="text-base">{p.phone}</ItemTitle>
-                    <ItemDescription className="text-sm">
-                      {ADMIN_ROLE_LABEL[p.role]}
-                      {p.patient_name ? ` de ${p.patient_name}` : p.role === "caregiver" ? ", sin pacientes" : ""}
-                    </ItemDescription>
+                    <ItemDescription className="text-sm">{ADMIN_ROLE_LABEL[p.role]}</ItemDescription>
                   </ItemContent>
                   <ItemActions>
                     <Badge variant="warning">pendiente de registro</Badge>
@@ -94,31 +91,7 @@ export default async function AdminPage() {
                 <p className="text-[13px] text-muted-foreground">{person.phone}</p>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
-                {person.memberships.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    {person.is_caregiver ? "Cuidador/a, sin pacientes asignados." : "Sin roles con pacientes."}
-                  </p>
-                )}
-                {person.memberships.length > 0 && (
-                  <ItemGroup className="gap-1">
-                    {person.memberships.map((m) => {
-                      const label = membershipLabel(m, person.name);
-                      return (
-                        <Item key={m.patient_id} variant="muted" size="sm" className="rounded-lg">
-                          <ItemContent>
-                            <ItemTitle className="text-sm font-normal">
-                              <span className="font-bold">{label.role}</span> {label.detail}
-                            </ItemTitle>
-                          </ItemContent>
-                          <ItemActions>
-                            <RemoveRole person={person} membership={m} />
-                          </ItemActions>
-                        </Item>
-                      );
-                    })}
-                  </ItemGroup>
-                )}
-                <AssignRole person={person} patients={patients} />
+                <PersonRole person={person} />
                 {!person.is_admin && <MakeAdmin person={person} />}
               </CardContent>
             </Card>

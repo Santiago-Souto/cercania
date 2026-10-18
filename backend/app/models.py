@@ -219,8 +219,10 @@ class Person(TimestampMixin, Base):
     # database, from an admin pre-registration at sign-up, or by another admin (confirmed).
     # Nullable so init_db can add it to an existing table; NULL = false.
     is_admin: Mapped[bool | None] = mapped_column(default=False)
-    # Caregiver granted by an admin before any patient is assigned (pre-registered without a
-    # patient). Lets them create patients and keeps sign-up from making them a patient.
+    # The person's role (CIA-58), a Role value set by an admin or by a pre-registration. Admins set
+    # only this, never links to patients. NULL on older accounts: read through roles.person_role.
+    role: Mapped[str | None] = mapped_column(String(20))
+    # Legacy (CIA-48): caregiver granted by an admin before `role` existed. Read only when `role` is NULL.
     is_caregiver: Mapped[bool | None] = mapped_column(default=False)
 
     access: Mapped[list[PatientAccess]] = relationship(back_populates="person")
@@ -310,9 +312,9 @@ class PreRegistration(TimestampMixin, Base):
     """A role an admin assigned to a phone that has not signed up yet (CIA-48).
 
     Nothing is sent. When that phone verifies its sign-up code, the role is applied and the
-    row is deleted (the role_change log keeps the history). `role` is a Role value or "admin";
-    `patient_id` is required for family/doctor/nurse/institution, optional for caregiver,
-    unused for admin and patient.
+    row is deleted (the role_change log keeps the history). `role` is a Role value or "admin".
+    `patient_id` is legacy (CIA-48): since CIA-58 admins never link people to patients, so it is
+    no longer written or read.
     """
 
     __tablename__ = "pre_registration"
