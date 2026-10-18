@@ -173,6 +173,56 @@ def test_openai_retries_only_transient_statuses(openai_env, status, attempts):
     assert len(calls) == attempts
 
 
+def schema_rejected():
+    """Groq's answer when the generated JSON misses a required field (seen live)."""
+    return httpx.Response(400, json={"error": {
+        "message": "Generated JSON does not match the expected schema. Error: jsonschema: '/medication' "
+                   "does not validate with /properties/medication/required: missing properties: 'value', 'quote'",
+        "type": "invalid_request_error",
+        "code": "json_validate_failed",
+        "failed_generation": "{}",
+    }})
+
+
+def test_schema_rejection_is_sampled_again(openai_env):
+    responses = iter([schema_rejected(), chat_response('{"ok": true}')])
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return next(responses)
+
+    assert call("openai:gpt-x", openai_client(handler)) == {"ok": True}
+    assert len(calls) == 2
+
+
+def test_repeated_schema_rejection_is_bad_output_not_bad_request(openai_env):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return schema_rejected()
+
+    with pytest.raises(LLMError) as e:
+        call("openai:gpt-x", openai_client(handler))
+    assert e.value.kind == "bad_output"  # retryable for the caregiver, unlike bad_request
+    assert "missing properties" in e.value.detail
+    assert len(calls) == 2
+
+
+def test_other_400s_are_still_bad_request_without_retry(openai_env):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(400, json={"error": {"code": "invalid_value", "message": "bad model"}})
+
+    with pytest.raises(LLMError) as e:
+        call("openai:gpt-x", openai_client(handler))
+    assert e.value.kind == "bad_request"
+    assert len(calls) == 1
+
+
 def test_openai_network_error_is_unavailable(openai_env):
     def handler(request):
         raise httpx.ConnectError("refused", request=request)
