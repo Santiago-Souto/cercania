@@ -159,6 +159,15 @@ export type PatientMessage = {
   seen_by: { user_id: string; name: string }[];
 };
 
+/** What `POST /patients/{id}/patient-messages` returns. `message_for_patient` is fixed text written by code. */
+export type PatientMessageResult = {
+  id: string;
+  kind: "feeling" | "help";
+  notified: string[];
+  red_flag: boolean;
+  message_for_patient: string;
+};
+
 export type Message = {
   id: string;
   from: { user_id: string; name: string; role: Role };

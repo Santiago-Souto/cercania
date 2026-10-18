@@ -1,5 +1,7 @@
 // My patients (artboard "Patients"). Ticket: CIA-33.
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import type { Route } from "next";
 import { PlusIcon } from "lucide-react";
 import { AppShell, BottomBar, Brand } from "@/components/app/shell";
 import { Button } from "@/components/ui/button";
@@ -11,6 +13,8 @@ const ADDERS = new Set<Role>(["caregiver", "doctor", "nurse", "institution"]);
 
 export default async function PatientsPage() {
   const patients = await getMyPatients();
+  // A patient's only screen is their own view (CIA-35): no list, no other navigation.
+  if (patients.length === 1 && patients[0].role === "patient") redirect(`/patients/${patients[0].id}/me` as Route);
   // Red flags first, then by open alerts, then missing reports.
   const sorted = [...patients].sort(
     (a, b) =>

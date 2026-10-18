@@ -59,7 +59,7 @@ export function PatientList({ patients }: { patients: MyPatient[] }) {
         <ItemGroup className="gap-2.5">
           {sorted.map((p) => (
             <Item key={p.id} asChild variant="outline" className="rounded-xl bg-card px-4 py-3.5">
-              <Link href={`/patients/${p.id}` as Route}>
+              <Link href={(p.role === "patient" ? `/patients/${p.id}/me` : `/patients/${p.id}`) as Route}>
                 <ItemMedia>
                   <Avatar className="size-11">
                     <AvatarFallback className="bg-secondary font-heading text-lg font-bold text-primary">

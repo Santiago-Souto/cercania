@@ -2,7 +2,7 @@
 
 // Record or type the end-of-shift report and show what the backend recorded (CIA-31).
 // Nothing here interprets the report: the result shown is exactly the ProcessResult from the backend.
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { CircleAlertIcon, CircleCheckIcon, KeyboardIcon, MicIcon, SquareIcon, TriangleAlertIcon } from "lucide-react";
@@ -17,12 +17,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { ApiError, NETWORK_ERROR_MESSAGE } from "@/lib/api-shared";
 import { CHECKLIST_LABEL, duration } from "@/lib/format";
 import { newClientId, sendReport, type ReportInput } from "@/lib/send-report";
+import { recorderErrorMessage, useRecorder } from "@/lib/use-recorder";
 import type { Alert as AlertT, ProcessResult } from "@/lib/types";
 
 const ITEMS = Object.keys(CHECKLIST_LABEL) as (keyof typeof CHECKLIST_LABEL)[];
-// Keeps uploads well under the backend's 4 MB limit at the bitrate below (~1.2 MB).
-const MAX_RECORDING_SEC = 5 * 60;
-const AUDIO_BITS_PER_SEC = 32_000;
 
 const ALERT_LABEL: Record<AlertT["type"], string> = {
   omission: "Omisión · plan de cuidado",
@@ -32,28 +30,12 @@ const ALERT_LABEL: Record<AlertT["type"], string> = {
 };
 
 type Mode = "voice" | "text";
-type Phase = "idle" | "starting" | "recording" | "sending" | "done";
-
-/** First MIME type this browser can record that the backend accepts (Safari only records mp4). */
-function recordingType(): string | undefined {
-  return ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"].find((t) =>
-    MediaRecorder.isTypeSupported(t),
-  );
-}
-
-function micErrorMessage(err: unknown): string {
-  const name = err instanceof DOMException ? err.name : "";
-  if (name === "NotAllowedError" || name === "SecurityError")
-    return "No tenemos permiso para usar el micrófono. Habilitalo en el navegador o escribí el reporte.";
-  if (name === "NotFoundError") return "No encontramos un micrófono en este dispositivo. Podés escribir el reporte.";
-  return "No pudimos empezar a grabar. Probá de nuevo o escribí el reporte.";
-}
+type Phase = "idle" | "sending" | "done";
 
 export function ReportComposer({ patientId, children }: { patientId: string; children?: React.ReactNode }) {
   // `children`: static notes rendered below the checklist reminder.
   const [mode, setMode] = useState<Mode>("voice");
   const [phase, setPhase] = useState<Phase>("idle");
-  const [seconds, setSeconds] = useState(0);
   const [audio, setAudio] = useState<Blob | null>(null);
   const [text, setText] = useState("");
   const [error, setError] = useState<{ message: string; canType: boolean } | null>(null);
@@ -63,22 +45,27 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
   // switching modes, reuses it so the backend returns the stored report instead of creating a second one.
   const textClientId = useRef(newClientId());
   const audioClientId = useRef(newClientId());
-  // Bumped whenever a pending microphone request becomes obsolete (mode change, unmount).
-  const startToken = useRef(0);
   const sending = useRef(false);
-  const recorder = useRef<MediaRecorder | null>(null);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   // Set when "Enviar reporte" is tapped mid-recording: send as soon as the recorder hands over the audio.
   const sendOnStop = useRef(false);
 
-  useEffect(
-    () => () => {
-      startToken.current++;
-      if (timer.current) clearInterval(timer.current);
-      recorder.current?.stream.getTracks().forEach((t) => t.stop());
+  const recorder = useRecorder({
+    onRecorded(blob) {
+      // A new recording is a new draft, so it gets its own client_id.
+      audioClientId.current = newClientId();
+      setAudio(blob);
+      if (sendOnStop.current) {
+        sendOnStop.current = false;
+        void send({ audio: blob });
+      }
     },
-    [],
-  );
+    onError(err) {
+      sendOnStop.current = false;
+      setError({ message: recorderErrorMessage(err, "escribí el reporte"), canType: true });
+    },
+  });
+  const recState = recorder.state;
+  const seconds = recorder.seconds;
 
   function clearFeedback() {
     setResult(null);
@@ -103,83 +90,31 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
     }
   }
 
-  async function startRecording() {
+  function startRecording() {
     if (phase !== "idle") return;
     clearFeedback();
-    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-      setError({ message: "Este navegador no puede grabar audio. Escribí el reporte.", canType: true });
-      return;
-    }
-    const token = ++startToken.current;
-    setPhase("starting");
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch (err) {
-      if (token !== startToken.current) return;
-      setPhase("idle");
-      setError({ message: micErrorMessage(err), canType: true });
-      return;
-    }
-    if (token !== startToken.current) {
-      // The caregiver switched to typing or left while the permission prompt was open.
-      stream.getTracks().forEach((t) => t.stop());
-      return;
-    }
-    const mimeType = recordingType();
-    const rec = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: AUDIO_BITS_PER_SEC });
-    const chunks: Blob[] = [];
-    rec.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data);
-    rec.onstop = () => {
-      stream.getTracks().forEach((t) => t.stop());
-      if (timer.current) clearInterval(timer.current);
-      const blob = new Blob(chunks, { type: rec.mimeType || mimeType || "audio/webm" });
-      recorder.current = null;
-      if (blob.size === 0) {
-        setPhase("idle");
-        setError({ message: "La grabación quedó vacía. Grabala de nuevo.", canType: true });
-        return;
-      }
-      // A new recording is a new draft, so it gets its own client_id.
-      audioClientId.current = newClientId();
-      setAudio(blob);
-      setPhase("idle");
-      if (sendOnStop.current) {
-        sendOnStop.current = false;
-        void send({ audio: blob });
-      }
-    };
-    recorder.current = rec;
-    rec.start();
-    setSeconds(0);
-    setPhase("recording");
-    const started = Date.now();
-    timer.current = setInterval(() => {
-      const s = Math.floor((Date.now() - started) / 1000);
-      setSeconds(s);
-      if (s >= MAX_RECORDING_SEC) rec.stop();
-    }, 250);
+    void recorder.start();
   }
 
   function stopRecording(thenSend = false) {
     sendOnStop.current = thenSend;
-    if (recorder.current?.state === "recording") recorder.current.stop();
+    recorder.stop();
   }
 
   // Switching modes keeps both drafts and their client_ids.
   function switchMode(next: Mode) {
-    startToken.current++;
-    if (phase === "recording") {
+    recorder.cancelStart();
+    if (recState === "recording") {
       sendOnStop.current = false;
-      recorder.current?.stop();
+      recorder.stop();
     }
-    if (phase === "done" || phase === "starting") setPhase("idle");
+    if (phase === "done") setPhase("idle");
     clearFeedback();
     setMode(next);
   }
 
   function onSend() {
-    if (phase === "recording") return stopRecording(true);
+    if (recState === "recording") return stopRecording(true);
     if (mode === "text") return void send({ text: text.trim() });
     if (audio) void send({ audio });
   }
@@ -190,7 +125,7 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
     clearFeedback();
     setAudio(null);
     setText("");
-    setSeconds(0);
+    recorder.reset();
     setPhase("idle");
   }
 
@@ -205,7 +140,7 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
 
   const busy = phase === "sending";
   const canSend =
-    !busy && phase !== "starting" && (phase === "recording" || (mode === "voice" ? audio !== null : text.trim().length > 0));
+    !busy && recState !== "starting" && (recState === "recording" || (mode === "voice" ? audio !== null : text.trim().length > 0));
 
   return (
     <>
@@ -213,7 +148,7 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
         {mode === "voice" ? (
           <Card className="text-base">
             <CardContent className="flex flex-col items-center gap-3 py-2">
-              {phase === "recording" ? (
+              {recState === "recording" ? (
                 <Button
                   variant="danger"
                   aria-label="Detener grabación"
@@ -227,7 +162,7 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
                   variant="danger"
                   aria-label={audio ? "Grabar de nuevo" : "Empezar a grabar"}
                   onClick={startRecording}
-                  disabled={busy || phase === "starting"}
+                  disabled={busy || recState === "starting"}
                   className="size-28 rounded-full border-8 border-danger-ring [&_svg]:size-9!"
                 >
                   <MicIcon />
@@ -237,9 +172,9 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
                 {duration(seconds)}
               </span>
               <p className="text-center text-sm text-muted-foreground">
-                {phase === "starting"
+                {recState === "starting"
                   ? "Esperando permiso para usar el micrófono…"
-                  : phase === "recording"
+                  : recState === "recording"
                   ? "Grabando… Contá cómo fue el turno con tus palabras. Tocá para terminar."
                   : audio
                     ? "Nota grabada. Enviala o tocá el micrófono para grabar de nuevo."
