@@ -3,7 +3,7 @@
 // Same-origin through the /api rewrite, so the session cookie goes along; a 401 sends the browser to /login.
 
 import { BROWSER_API, onUnauthorized } from "./api-shared";
-import type { AppNotification, ChecklistItem, Message, MyInvite, Report } from "./types";
+import type { AppNotification, ChecklistItem, Me, Message, MyInvite, Report } from "./types";
 
 export class ClientApiError extends Error {
   constructor(
@@ -37,6 +37,11 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
   return res.json() as Promise<T>;
+}
+
+/** GET /me: who is logged in and their roles (memberships). */
+export function fetchMe() {
+  return call<Me>(`/me`);
 }
 
 export function fetchNotifications(opts: { since?: string; unreadOnly?: boolean }) {
