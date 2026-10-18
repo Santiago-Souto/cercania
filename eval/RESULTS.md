@@ -8,6 +8,8 @@ text transcripts (`eval/cases.csv`); audio recordings are not part of these runs
 
 CIA-52 added six unseen cases (c021-c026): three emergencies (collapse, stroke-like signs in a long report, seizure) and three look-alikes (past fall seen by the doctor, past chest pain seen by the doctor, negated fall/choking/breathing). They were written before reading `triage.py` and no prompt changed. **Not run yet**: run `python eval/run_eval.py --delay 30` with a `GROQ_API_KEY` and paste the summary here, unseen split separate. The entry below covers only the original 20 cases.
 
+Attempted Oct 18 (base `ed20d53`): the run hit Groq's daily token cap (TPD 200,000 on `openai/gpt-oss-120b`, free tier) after 13 cases, so 13 of 26 failed with a 429 and the numbers are invalid. Not repeated on the day, to keep the budget for the live demo; to be rerun after the pitch.
+
 ## 2026-10-18 — 20 cases (14 dev, 6 unseen)
 
 - Base commit: `555ab33` + CIA-24 changes (20 cases, database reset per case)
