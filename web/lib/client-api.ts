@@ -3,13 +3,14 @@
 // Logged in: the session cookie identifies the caller (same-origin /api proxy). Otherwise SIMULATED X-Person-Id
 // from the persona cookie (lib/persona.ts).
 
-import { BROWSER_API_URL, identityHeaders, isLoggedIn } from "./api-shared";
+import { BROWSER_API_URL, identityHeaders, loggedInUserId } from "./api-shared";
 import { DEFAULT_PERSONA_ID, PERSONA_COOKIE } from "./persona";
 import type { AppNotification } from "./types";
 
-/** Key for per-person browser state (seen notifications). "session" when logged in for real. */
+/** Key for per-person browser state (seen notifications, cursor): the verified user id when logged in. */
 export function currentPersonId(): string {
-  if (isLoggedIn()) return "session";
+  const userId = loggedInUserId();
+  if (userId) return `user:${userId}`;
   const match = document.cookie.split("; ").find((c) => c.startsWith(`${PERSONA_COOKIE}=`));
   return match ? decodeURIComponent(match.split("=")[1]) : DEFAULT_PERSONA_ID;
 }

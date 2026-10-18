@@ -14,7 +14,8 @@ export const BROWSER_API_URL = "/api";
 
 /** HttpOnly session cookie set by the backend (backend/app/deps.py). */
 export const SESSION_COOKIE = "cercania_session";
-/** Readable "logged in" marker set by lib/auth.ts next to the session (which JS cannot read). */
+/** Readable marker set by lib/auth.ts next to the session (which JS cannot read): the verified user's id.
+ *  Never authoritative (the API trusts only the session); it keys per-user browser state and drops X-Person-Id. */
 export const AUTH_FLAG_COOKIE = "cercania_auth";
 
 // SIMULATED dev identity, used only when nobody is logged in: sent as `X-Person-Id`.
@@ -26,9 +27,13 @@ function readCookie(name: string): string | undefined {
   return m ? decodeURIComponent(m.slice(name.length + 1)) : undefined;
 }
 
-/** Browser only: true once the 6-digit code was verified in this browser (lib/auth.ts). */
+/** Browser only: the user id verified in this browser (lib/auth.ts), or undefined when nobody is logged in. */
+export function loggedInUserId(): string | undefined {
+  return typeof document === "undefined" ? undefined : readCookie(AUTH_FLAG_COOKIE) || undefined;
+}
+
 export function isLoggedIn(): boolean {
-  return typeof document !== "undefined" && readCookie(AUTH_FLAG_COOKIE) === "1";
+  return loggedInUserId() !== undefined;
 }
 
 // Browser identity headers. Logged in: none, the session cookie identifies the caller.

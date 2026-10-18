@@ -72,7 +72,8 @@ export default function CodePage() {
       try {
         const result = await verify(login_.phone, value);
         clearPending();
-        router.replace(homeFor(result.memberships) as Route);
+        // Full load, not router.replace: the layout's notification watcher must restart as the verified user.
+        window.location.replace(homeFor(result.memberships));
       } catch (err) {
         const code = err instanceof ApiError ? err.code : "";
         if (DEAD_CODE.has(code)) setDead(authErrorMessage(err));
@@ -81,7 +82,7 @@ export default function CodePage() {
         setBusy(null);
       }
     },
-    [login_, busy, router],
+    [login_, busy],
   );
 
   async function resend() {

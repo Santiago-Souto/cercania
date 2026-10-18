@@ -3,11 +3,12 @@
 // Logged in (CIA-32): a "Salir" button (POST /auth/logout). Otherwise the SIMULATED persona picker (sent as X-Person-Id).
 import { useEffect, useState } from "react";
 import { BellIcon, BellRingIcon, LogOutIcon } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { isLoggedIn } from "@/lib/api-shared";
-import { logout } from "@/lib/auth";
+import { authErrorMessage, logout } from "@/lib/auth";
 import { currentPersonId, switchPerson } from "@/lib/client-api";
 import { PERSONAS } from "@/lib/persona";
 import { useUnreadCount } from "./notifications";
@@ -36,11 +37,18 @@ export function DemoBar() {
     setLeaving(true);
     try {
       await logout();
-    } finally {
-      // Full load: drop server-rendered data and stop the notification poller.
-      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-      window.location.href = "/login?mode=login&notice=logged_out";
+    } catch (err) {
+      // The session may still be valid: stay logged in and let the user retry.
+      toast.error("No pudimos cerrar la sesión", {
+        description: authErrorMessage(err),
+        action: { label: "Reintentar", onClick: () => void signOut() },
+      });
+      setLeaving(false);
+      return;
     }
+    // Full load: drop server-rendered data and stop the notification poller.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.href = "/login?mode=login&notice=logged_out";
   }
 
   if (loggedIn) {

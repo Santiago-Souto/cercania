@@ -15,7 +15,6 @@ export type SignupInput = { name: string; email?: string; phone: string };
 /** Our own Spanish copy per contract error code, so the screen never depends on the backend's wording. */
 const AUTH_ERRORS: Record<string, string> = {
   phone_invalid: "Revisá el número: tiene que incluir el código de país, por ejemplo +598 99 123 456.",
-  too_many_requests: "Pediste un código hace poco. Esperá un minuto y probá de nuevo.",
   sms_unreachable: "No pudimos mandar el SMS a ese número. Revisalo y probá de nuevo en un minuto.",
   code_invalid: "El código no es correcto. Revisalo y probá de nuevo.",
   code_expired: "El código venció. Pedí uno nuevo.",
@@ -25,6 +24,8 @@ const AUTH_ERRORS: Record<string, string> = {
 };
 
 export function authErrorMessage(err: unknown): string {
+  // too_many_requests keeps the backend's text: it says whether to wait a minute or an hour.
+  if (err instanceof ApiError && err.code === "too_many_requests") return err.message;
   if (err instanceof ApiError) return AUTH_ERRORS[err.code] ?? err.message;
   return NETWORK_ERROR_MESSAGE;
 }
@@ -68,16 +69,14 @@ export async function verify(phone: string, code: string): Promise<VerifyResult>
   const result: VerifyResult = USE_FAKE
     ? { user: { id: "usr_fake", name: "Ana (ficticia)" }, memberships: [] }
     : await post("/auth/verify", { phone, code });
-  setLoggedInFlag(true);
+  setLoggedInFlag(result.user.id);
   return result;
 }
 
+/** Clears the browser marker only once the backend revoked the session; throws (ApiError) otherwise. */
 export async function logout(): Promise<void> {
-  try {
-    if (!USE_FAKE) await post("/auth/logout");
-  } finally {
-    setLoggedInFlag(false);
-  }
+  if (!USE_FAKE) await post("/auth/logout");
+  setLoggedInFlag(null);
 }
 
 /** Where to land after verify: a single membership as `patient` goes to the patient view, anyone else to My patients. */
@@ -90,11 +89,11 @@ export function homeFor(memberships: Membership[]): string {
  * Readable marker (not the session: that cookie is HttpOnly) telling browser code a real session exists,
  * so it stops sending the simulated X-Person-Id. The persona cookie is dropped for the same reason.
  */
-function setLoggedInFlag(on: boolean) {
-  document.cookie = on
-    ? `${AUTH_FLAG_COOKIE}=1; path=/; max-age=${30 * 24 * 3600}; samesite=lax`
+function setLoggedInFlag(userId: string | null) {
+  document.cookie = userId
+    ? `${AUTH_FLAG_COOKIE}=${encodeURIComponent(userId)}; path=/; max-age=${30 * 24 * 3600}; samesite=lax`
     : `${AUTH_FLAG_COOKIE}=; path=/; max-age=0; samesite=lax`;
-  if (on) document.cookie = `${PERSONA_COOKIE}=; path=/; max-age=0; samesite=lax`;
+  if (userId) document.cookie = `${PERSONA_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 // The phone travels from /login to /login/code in sessionStorage, never in the URL.
