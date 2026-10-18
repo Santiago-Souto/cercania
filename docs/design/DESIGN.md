@@ -6,6 +6,17 @@ Source of truth for the web app's look and screens. Build every screen from this
 - Mobile-first: designed at 390×844. On desktop the app is the same layout in a centered column, max 480px wide.
 - UI copy in Spanish (Río de la Plata: "vos", "contá", "acordate"). All names and data shown are fictional.
 
+## Marca
+
+Logo: **Cercanía**. Dos puntos superpuestos: el verde forma una C que sostiene al punto ámbar (la persona cuidada). La C de Cercanía, y la cercanía como gesto. Mock aprobado: "Logo v8" en el canvas de diseño.
+
+- **Símbolo:** `BrandMark` en `web/components/app/shell.tsx` (círculo verde r26, aro del color de fondo r17, punto ámbar r13, centros a 18 de distancia; viewBox `14 20 72 64`). No deformar, no rotar, no cambiar las proporciones.
+- **Logotipo:** "Cercan" en tinta + "ía" en ámbar, Bricolage Grotesque 800, tracking −0.035em. Siempre con tilde.
+- **Colores:** verde `#0E5A55` (`--primary`), ámbar `#E39B35` (`--brand-amber`) para el punto y sobre fondo verde. Para el texto "ía" sobre fondos claros, `#B87418` (`--brand-amber-ink`), porque el ámbar claro no llega a 3:1 sobre blanco.
+- **Sobre fondo verde:** el círculo pasa a blanco, el aro toma el verde y el punto queda ámbar. Así son los íconos de la app (`app/icon.tsx`, `app/apple-icon.tsx`).
+- **Tamaño mínimo:** símbolo de 20 px; logotipo completo de 18 px de alto.
+- **Nombre:** el logo dice "Cercanía". En textos de la app y en la documentación el producto sigue figurando como "CercanIA" hasta que el equipo decida unificarlo.
+
 ## Tokens
 
 Defined once as CSS variables in `web/app/globals.css`, under shadcn's names where one exists (`--ground` → `--background`, `--ink` → `--foreground`, `--muted` → `--muted-foreground`, `--line` → `--border`, `--field` → `--input`, `--warn-bg` → `--warning`, `--warn-ink` → `--warning-foreground`, `--danger` → `--danger`/`--destructive`). Use them through Tailwind classes (`bg-warning`, `text-muted-foreground`…). Never hardcode a hex in a component.
