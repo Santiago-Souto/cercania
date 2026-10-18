@@ -2,7 +2,8 @@
 // Works without JS: the composer is a GET form, the answer renders on the server.
 import Link from "next/link";
 import type { Route } from "next";
-import { ArrowRightIcon, PlayIcon } from "lucide-react";
+import { ArrowRightIcon } from "lucide-react";
+import { AudioPlayer, ClipIcon, PlayClipButton, PlayerBar } from "@/components/app/audio-player";
 import { AppShell, BottomNav, ScreenHeader } from "@/components/app/shell";
 import { Badge } from "@/components/ui/badge";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
@@ -40,28 +41,39 @@ export default async function AskPage(props: PageProps<"/patients/[id]/ask">) {
                 )}
                 <p className="text-[17px]">{result.answer}</p>
                 {result.note && <p className="text-[13px] text-muted-foreground">{result.note}</p>}
-                <ItemGroup className="gap-2">
-                  {result.citations.map((c, i) => {
-                    const r = byId.get(c.report_id);
-                    return (
-                      // Seeking to audio_start_sec is wired in CIA-13.
-                      <Item key={i} asChild variant="muted" className="min-h-11 items-start rounded-xl border">
-                        <button type="button">
-                          <ItemMedia className="size-9 rounded-full bg-primary text-primary-foreground">
-                            <PlayIcon className="size-4 fill-current" />
-                          </ItemMedia>
-                          <ItemContent>
-                            <ItemTitle className="text-sm font-normal italic">“{c.quote}”</ItemTitle>
-                            <ItemDescription className="text-[13px]">
-                              {r ? `${dayTime(r.created_at)} · ${firstName(r.caregiver.display_name)} · ` : ""}
-                              {duration(c.audio_start_sec)}–{duration(c.audio_end_sec)}
-                            </ItemDescription>
-                          </ItemContent>
-                        </button>
-                      </Item>
-                    );
-                  })}
-                </ItemGroup>
+                <AudioPlayer audioPaths={result.citations.map((c) => byId.get(c.report_id)?.audio_url ?? null)}>
+                  <ItemGroup className="gap-2">
+                    {result.citations.map((c, i) => {
+                      const r = byId.get(c.report_id);
+                      const timed = c.audio_start_sec !== null && c.audio_end_sec !== null;
+                      // Tapping plays the cited fragment; without segment times, the whole note.
+                      const clip = {
+                        key: `${c.report_id}:${i}`,
+                        audioPath: r?.audio_url ?? null,
+                        start: c.audio_start_sec ?? 0,
+                        end: timed ? c.audio_end_sec : null,
+                        label: r ? dayTime(r.created_at) : "reporte",
+                      };
+                      return (
+                        <Item key={clip.key} asChild variant="muted" className="min-h-11 items-start rounded-xl border">
+                          <PlayClipButton clip={clip}>
+                            <ItemMedia className="size-9 rounded-full bg-primary text-primary-foreground">
+                              <ClipIcon clipKey={clip.key} className="size-4" />
+                            </ItemMedia>
+                            <ItemContent>
+                              <ItemTitle className="text-sm font-normal italic">“{c.quote}”</ItemTitle>
+                              <ItemDescription className="text-[13px]">
+                                {r ? `${dayTime(r.created_at)} · ${firstName(r.caregiver.display_name)}` : ""}
+                                {timed ? ` · ${duration(c.audio_start_sec!)}–${duration(c.audio_end_sec!)}` : ""}
+                              </ItemDescription>
+                            </ItemContent>
+                          </PlayClipButton>
+                        </Item>
+                      );
+                    })}
+                  </ItemGroup>
+                  <PlayerBar />
+                </AudioPlayer>
               </BubbleContent>
             </Bubble>
           </>
