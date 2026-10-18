@@ -212,7 +212,7 @@ def _process(session: Session, patient_id: str, sender_id: str, transcript: str,
     report_id = models.new_id("rep")
     report = Report(
         id=report_id, patient_id=patient_id, sender_id=sender_id, kind=kind, message_id=message_id,
-        channel="web" if message_id.startswith("web:") else "whatsapp",
+        channel="web",
         transcript=transcript, segments=segments, red_flag=emergency,
         triage_status=triage.status, triage_reason=triage.reason, triage_quote=triage.quote,
         triage_quote_verified=triage.quote_verified, triage_model=triage.model,

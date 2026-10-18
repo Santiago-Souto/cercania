@@ -1,8 +1,7 @@
 """POST /patients/{patient_id}/reports: an end-of-shift report from the web app.
 
 Accepts JSON `{client_id, text}` or multipart `client_id` + `audio`. Audio goes
-through the same transcription step as WhatsApp; then both go through
-`ingest.process_report`, the same path every channel uses.
+through the transcription step; then both go through `ingest.process_report`.
 """
 
 from __future__ import annotations

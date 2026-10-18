@@ -174,11 +174,11 @@ def make_session(provider_phone: str | None) -> Session:
     return s
 
 
-def test_recipients_are_provider_caregivers_and_family_minus_sender():
+def test_recipients_are_caregivers_and_family_minus_sender():
     s = make_session("+15550100041")
     got = emergency_recipients(s, "pat_x", sender_id="cg1")
     assert [(r["to"], r["person_id"]) for r in got] == [
-        ("health_provider", None), ("caregiver", "cg2"), ("family", "fam")]
+        ("caregiver", "cg2"), ("family", "fam")]
 
 
 def test_recipients_never_include_patient_or_doctor_and_skip_missing_provider():

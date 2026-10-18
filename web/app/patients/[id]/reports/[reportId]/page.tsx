@@ -10,7 +10,7 @@ import { AppShell, TopBar } from "@/components/app/shell";
 import { Button } from "@/components/ui/button";
 import { Item, ItemContent, ItemGroup } from "@/components/ui/item";
 import { getReport } from "@/lib/api";
-import { dayTime, duration, firstName } from "@/lib/format";
+import { dayTime, duration } from "@/lib/format";
 
 export default async function ReportPage(props: PageProps<"/patients/[id]/reports/[reportId]">) {
   const { id, reportId } = await props.params;
@@ -73,8 +73,7 @@ export default async function ReportPage(props: PageProps<"/patients/[id]/report
         )}
 
         <p className="text-[13px] text-muted-foreground">
-          Las correcciones se mandan por WhatsApp a {firstName(report.caregiver.display_name)} y crean una versión nueva. Las
-          anteriores quedan visibles.
+          Cada corrección crea una versión nueva. Las anteriores quedan visibles.
         </p>
         </AudioPlayer>
       </main>

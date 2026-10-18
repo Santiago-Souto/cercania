@@ -36,7 +36,7 @@ from app.models import (
     Person,
     utcnow,
 )
-from app.whatsapp import mask
+from app.sms import mask
 
 log = logging.getLogger(__name__)
 

@@ -1,23 +1,19 @@
 """Emergency notifications (AGENTS.md 4.2, step 3) and patient help / red-flag messages (AGENTS.md 7).
 
 Who is notified comes from `models.emergency_recipients` (code, never the model).
-Primary channel: the in-app inbox (`notification` rows with channel `web`, polled by
-the web). WhatsApp is best-effort behind NOTIFY_WHATSAPP=1: every attempt is recorded
-as sent/failed/skipped, on the `notification` table and in `alert.notifications`
-so a failure is visible on the alert, never silent.
+The only channel is the in-app inbox (`notification` rows with channel `web`, polled by
+the web). Every notification is recorded on the `notification` table and in
+`alert.notifications`, so the alert shows who was notified.
 """
 
 from __future__ import annotations
 
 import logging
-import os
-import re
 from datetime import timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import whatsapp
 from app.query import _local_tz
 from app.models import (
     Alert,
@@ -38,15 +34,8 @@ from app.models import (
 
 log = logging.getLogger(__name__)
 
-WHATSAPP_DISABLED = "WhatsApp desactivado (NOTIFY_WHATSAPP=0)"
-
-
-def whatsapp_enabled() -> bool:
-    return os.environ.get("NOTIFY_WHATSAPP") == "1"
-
-
 def _summary(n: Notification) -> dict:
-    return {"to": n.recipient, "person_id": n.person_id, "channel": n.channel.value,
+    return {"to": n.recipient, "person_id": n.person_id, "channel": n.channel,
             "status": n.status.value, "error": n.error}
 
 
@@ -80,41 +69,19 @@ def _emergency_alert(session: Session, report_id: str) -> Alert | None:
     ).first()
 
 
-def _send_whatsapp(sender, phone: str, text: str) -> tuple[NotificationStatus, str | None]:
-    to = re.sub(r"\D", "", phone or "")
-    if not to:
-        return NotificationStatus.failed, "Sin número de teléfono registrado."
-    try:
-        res = sender.send_text_result(to, text)
-        template = os.environ.get("WHATSAPP_EMERGENCY_TEMPLATE")
-        if not res.ok and res.error_code == whatsapp.OUTSIDE_WINDOW and template:
-            res = sender.send_template(to, template, os.environ.get("WHATSAPP_TEMPLATE_LANG", "es"))
-    except Exception as exc:  # noqa: BLE001 - a failed send must be recorded, not raised
-        log.exception("WhatsApp notification crashed")
-        return NotificationStatus.failed, f"Error inesperado: {exc.__class__.__name__}"
-    if res.ok:
-        return NotificationStatus.sent, None
-    detail = res.error or "Error desconocido"
-    if res.error_code == whatsapp.OUTSIDE_WINDOW:
-        detail += " (fuera de la ventana de 24 h; requiere plantilla aprobada)"
-    return NotificationStatus.failed, f"[{res.error_code}] {detail}" if res.error_code else detail
-
-
-def dispatch_emergency(report_id: str, *, session_factory=SessionLocal, whatsapp_sender=None) -> list[dict]:
+def dispatch_emergency(report_id: str, *, session_factory=SessionLocal) -> list[dict]:
     """Notify everyone who must know about an emergency report. Never raises.
 
-    Idempotent per recipient and channel: rows that already exist are never sent again.
-    `whatsapp_sender` needs `send_text_result(to, text)` and `send_template(to, name, lang)`;
-    defaults to the `whatsapp` module.
+    Idempotent per recipient: people who already have a notification row are not notified again.
     """
     try:
-        return _dispatch(report_id, session_factory, whatsapp_sender or whatsapp)
+        return _dispatch(report_id, session_factory)
     except Exception:  # noqa: BLE001
         log.exception("Emergency notification dispatch failed for report %s", report_id)
         return []
 
 
-def _dispatch(report_id: str, session_factory, sender) -> list[dict]:
+def _dispatch(report_id: str, session_factory) -> list[dict]:
     with session_factory() as session:
         report = session.get(Report, report_id)
         if report is None:
@@ -127,41 +94,20 @@ def _dispatch(report_id: str, session_factory, sender) -> list[dict]:
             select(Notification).where(Notification.alert_id == alert.id)
             .order_by(Notification.created_at, Notification.id)
         ).all())
-        # Idempotent per (recipient, channel): a dispatch that died between the web
-        # commit and the WhatsApp commit still sends the missing WhatsApp rows on retry.
-        done = {(n.recipient, n.person_id, n.channel) for n in rows}
+        done = {(n.recipient, n.person_id) for n in rows}
         recipients = emergency_recipients(session, report.patient_id, report.sender_id)
-        todo_web = [r for r in recipients if r["person_id"]
-                    and (r["to"], r["person_id"], NotificationChannel.web) not in done]
-        todo_whatsapp = [r for r in recipients
-                         if (r["to"], r["person_id"], NotificationChannel.whatsapp) not in done]
-        if not todo_web and not todo_whatsapp:
+        todo = [r for r in recipients if (r["to"], r["person_id"]) not in done]
+        if not todo:
             return [_summary(n) for n in rows]
 
         patient = session.get(Patient, report.patient_id)
         title, body = build_message(session, report, patient, alert)
-
-        def row(r: dict, channel: NotificationChannel, status: NotificationStatus,
-                error: str | None) -> Notification:
+        for r in todo:
             n = Notification(alert_id=alert.id, report_id=report_id, patient_id=report.patient_id,
-                             person_id=r["person_id"], recipient=r["to"], channel=channel,
-                             status=status, error=error, title=title, body=body)
+                             person_id=r["person_id"], recipient=r["to"], channel=NotificationChannel.web.value,
+                             status=NotificationStatus.sent, error=None, title=title, body=body)
             session.add(n)
-            return n
-
-        rows += [row(r, NotificationChannel.web, NotificationStatus.sent, None) for r in todo_web]
-        alert.notifications = [_summary(n) for n in rows]
-        session.commit()  # the web inbox is complete before any slow Meta call
-
-        enabled = whatsapp_enabled()
-        for r in todo_whatsapp:
-            if enabled:
-                status, error = _send_whatsapp(sender, r["phone"], f"{title}\n{body}")
-            else:
-                status, error = NotificationStatus.skipped, WHATSAPP_DISABLED
-            rows.append(row(r, NotificationChannel.whatsapp, status, error))
-            if status is NotificationStatus.failed:
-                log.error("Emergency WhatsApp to %s failed: %s", r["to"], error)
+            rows.append(n)
         summaries = [_summary(n) for n in rows]
         alert.notifications = summaries
         session.commit()
@@ -189,45 +135,12 @@ def notify_patient_team(session: Session, message: PatientMessage) -> list[str]:
     """Web inbox rows for every caregiver and health-team member; returns their person ids.
 
     Committed by the caller together with the message, so the response's `notified` is true.
-    WhatsApp goes out afterwards (send_patient_message_whatsapp), never before the inbox.
     """
     patient = session.get(Patient, message.patient_id)
     title, body = patient_message_text(patient, message)
     recipients = patient_team(session, message.patient_id, message.sender_id)
     for r in recipients:
         session.add(Notification(patient_message_id=message.id, patient_id=message.patient_id,
-                                 person_id=r["person_id"], recipient=r["to"], channel=NotificationChannel.web,
+                                 person_id=r["person_id"], recipient=r["to"], channel=NotificationChannel.web.value,
                                  status=NotificationStatus.sent, title=title, body=body))
     return [r["person_id"] for r in recipients]
-
-
-def send_patient_message_whatsapp(message_id: str, *, session_factory=SessionLocal, whatsapp_sender=None) -> None:
-    """Best effort, like emergencies: one recorded row per recipient (sent/failed/skipped). Never raises."""
-    try:
-        with session_factory() as session:
-            message = session.get(PatientMessage, message_id)
-            if message is None:
-                return
-            done = set(session.scalars(
-                select(Notification.person_id).where(Notification.patient_message_id == message_id,
-                                                     Notification.channel == NotificationChannel.whatsapp)
-            ).all())
-            patient = session.get(Patient, message.patient_id)
-            title, body = patient_message_text(patient, message)
-            enabled = whatsapp_enabled()
-            for r in patient_team(session, message.patient_id, message.sender_id):
-                if r["person_id"] in done:
-                    continue
-                if enabled:
-                    status, error = _send_whatsapp(whatsapp_sender or whatsapp, r["phone"], f"{title}\n{body}")
-                else:
-                    status, error = NotificationStatus.skipped, WHATSAPP_DISABLED
-                session.add(Notification(patient_message_id=message_id, patient_id=message.patient_id,
-                                         person_id=r["person_id"], recipient=r["to"],
-                                         channel=NotificationChannel.whatsapp, status=status, error=error,
-                                         title=title, body=body))
-                if status is NotificationStatus.failed:
-                    log.error("Patient message WhatsApp to %s failed: %s", r["to"], error)
-            session.commit()
-    except Exception:  # noqa: BLE001
-        log.exception("Patient message WhatsApp dispatch failed for %s", message_id)

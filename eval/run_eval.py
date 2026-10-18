@@ -237,7 +237,7 @@ def prepare_backend(db_path: Path):
     reset() puts the database back to the seeded state (used before each case).
 
     Goes through app.ingest.process_report, the same single entry point the
-    WhatsApp and web channels use, so the eval measures exactly that path.
+    web app uses, so the eval measures exactly that path.
     """
     os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"  # before app.models creates its engine
     sys.path.insert(0, str(ROOT / "backend"))

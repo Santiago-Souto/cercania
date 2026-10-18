@@ -21,8 +21,8 @@ const PHONE_RE = /^\+[1-9]\d{7,14}$/;
 /** E.164 number or an error message (same rule as the backend's `phone_invalid`). */
 export function checkPhone(raw: string): { phone: string } | { error: string } {
   const value = raw.trim();
-  if (!value) return { error: "Escribí el número de WhatsApp." };
-  if (value.includes("@")) return { error: "Invitá por número de WhatsApp, no por email: el email no se puede verificar." };
+  if (!value) return { error: "Escribí el número de celular." };
+  if (value.includes("@")) return { error: "Invitá por número de celular, no por email: el email no se puede verificar." };
   const phone = value.replace(/[\s\-().]/g, "");
   if (!PHONE_RE.test(phone)) return { error: "Revisá el número: tiene que incluir el código de país, por ejemplo +598 99 123 456." };
   return { phone };

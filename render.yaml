@@ -42,14 +42,6 @@ services:
         sync: false
       - key: SUPABASE_BUCKET
         value: media
-      - key: WHATSAPP_TOKEN
-        sync: false
-      - key: WHATSAPP_PHONE_NUMBER_ID
-        sync: false
-      - key: WHATSAPP_APP_SECRET
-        sync: false
-      - key: WHATSAPP_VERIFY_TOKEN
-        sync: false
       # Browser origins allowed by CORS (comma-separated; credentials on, so never "*").
       # Unset = no browser can call the API.
       - key: WEB_ORIGINS

@@ -105,10 +105,10 @@ class Permission(str, enum.Enum):
     read_reports = "read_reports"  # reports, items, alerts, cited query
     read_care_plan = "read_care_plan"
     edit_care_plan = "edit_care_plan"  # creates a new care_plan version
-    raise_emergency = "raise_emergency"  # WhatsApp message that triage flags as an emergency
+    raise_emergency = "raise_emergency"  # message that triage flags as an emergency
     send_patient_message = "send_patient_message"  # "how I feel" / "I need help" (AGENTS.md 6)
     read_patient_messages = "read_patient_messages"
-    invite = "invite"  # POST /patients/{id}/invites, by WhatsApp number only
+    invite = "invite"  # POST /patients/{id}/invites, by phone number only
     team_messages = "team_messages"  # family <-> health team thread, human to human (CIA-36)
 
 
@@ -161,14 +161,13 @@ class TriageStatus(str, enum.Enum):
 
 
 class NotificationChannel(str, enum.Enum):
-    web = "web"  # in-app inbox (polled by the web)
-    whatsapp = "whatsapp"
+    web = "web"  # in-app inbox (polled by the web); the only channel
 
 
 class NotificationStatus(str, enum.Enum):
     sent = "sent"
     failed = "failed"
-    skipped = "skipped"  # channel disabled (e.g. NOTIFY_WHATSAPP=0)
+    skipped = "skipped"  # legacy rows only; nothing writes it now
 
 
 class FileKind(str, enum.Enum):
@@ -204,7 +203,7 @@ class TimestampMixin:
 
 
 class Person(TimestampMixin, Base):
-    """Anyone who logs in or messages the bot, in any role. Phone = identity; email is unverified contact info."""
+    """Anyone who logs in, in any role. Phone = identity; email is unverified contact info."""
 
     __tablename__ = "person"
 
@@ -229,8 +228,8 @@ class Patient(TimestampMixin, Base):
     # Extra words for the transcription hint (names, local terms). Medication
     # names are added automatically from the active care plan.
     vocabulary: Mapped[list] = mapped_column(default=list, nullable=False)
-    # Registered health provider (not the doctor role). Used only to notify an
-    # emergency over WhatsApp; both null = no provider registered.
+    # Registered health provider contact (not the doctor role). Shown as contact
+    # information only: it has no inbox, so it is not notified; both null = none registered.
     health_provider_name: Mapped[str | None] = mapped_column(String(120))
     health_provider_phone: Mapped[str | None] = mapped_column(String(20))  # E.164
 
@@ -403,11 +402,10 @@ class Report(TimestampMixin, Base):
     kind: Mapped[ReportKind] = mapped_column(
         enum_column(ReportKind), default=ReportKind.shift, nullable=False
     )
-    # Provider message id (WhatsApp/Telegram). UNIQUE makes reprocessing a
+    # Client message id (`web:<person>:<client_id>`). UNIQUE makes reprocessing a
     # duplicate delivery fail at the database instead of creating a second report.
-    # NULL for reports typed in the web fallback.
     message_id: Mapped[str | None] = mapped_column(String(128), unique=True)
-    channel: Mapped[str] = mapped_column(String(20), default="whatsapp", nullable=False)
+    channel: Mapped[str] = mapped_column(String(20), default="web", nullable=False)
     transcript: Mapped[str] = mapped_column(Text, nullable=False)
     # Timestamped transcript segments: [{"start": 0.0, "end": 3.2, "text": "..."}].
     # Used to locate a quote inside the audio for citations.
@@ -520,8 +518,8 @@ class Alert(TimestampMixin, Base):
     evidence_quote: Mapped[str | None] = mapped_column(Text)
     evidence_verified: Mapped[bool | None] = mapped_column()
     report_refs: Mapped[list] = mapped_column(default=list, nullable=False)  # ["rep_121", ...]
-    # `emergency` alerts only: one entry per WhatsApp notification attempted,
-    # [{"to": "health_provider"|"caregiver"|"family", "person_id": str|None,
+    # `emergency` alerts only: one entry per web inbox notification,
+    # [{"to": "caregiver"|"family", "person_id": str|None,
     #   "status": "sent"|"failed", "error": str|None}].
     notifications: Mapped[list] = mapped_column(default=list, nullable=False)
 
@@ -599,14 +597,13 @@ class MessageRead(Base):
 
 
 class Notification(TimestampMixin, Base):
-    """One delivery of an alert to one recipient on one channel (web inbox or WhatsApp).
+    """One delivery of an alert to one recipient on one channel (the web inbox).
 
     `alert.notifications` keeps the summary the contract exposes; this table is the inbox.
     """
 
     __tablename__ = "notification"
-    # Makes dispatch idempotent. person_id is NULL for the health provider; NULLs are
-    # distinct in SQL, so dispatch code also checks for existing rows itself.
+    # Makes dispatch idempotent; dispatch code also checks for existing rows itself.
     __table_args__ = (UniqueConstraint("alert_id", "recipient", "person_id", "channel"),)
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("ntf"))
@@ -615,10 +612,12 @@ class Notification(TimestampMixin, Base):
     report_id: Mapped[str | None] = mapped_column(ForeignKey("report.id"))
     patient_message_id: Mapped[str | None] = mapped_column(ForeignKey("patient_message.id"), index=True)
     patient_id: Mapped[str] = mapped_column(ForeignKey("patient.id"), nullable=False, index=True)
-    person_id: Mapped[str | None] = mapped_column(ForeignKey("person.id"), index=True)  # null = health provider
-    # health_provider | caregiver | family (emergencies); caregiver | doctor | nurse | institution (patient messages)
+    person_id: Mapped[str | None] = mapped_column(ForeignKey("person.id"), index=True)  # null on legacy rows only
+    # caregiver | family (emergencies); caregiver | doctor | nurse | institution (patient messages)
     recipient: Mapped[str] = mapped_column(String(20), nullable=False)
-    channel: Mapped[NotificationChannel] = mapped_column(enum_column(NotificationChannel), nullable=False)
+    # Plain string, not an enum: databases created while other channels existed still hold rows
+    # (and a CHECK) with retired values, and those rows must keep loading. New rows are "web".
+    channel: Mapped[str] = mapped_column(String(32), default=NotificationChannel.web.value, nullable=False)
     status: Mapped[NotificationStatus] = mapped_column(enum_column(NotificationStatus), nullable=False)
     error: Mapped[str | None] = mapped_column(Text)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -728,18 +727,13 @@ def active_care_plan(session: Session, patient_id: str) -> CarePlan | None:
 
 
 def emergency_recipients(session: Session, patient_id: str, sender_id: str) -> list[dict]:
-    """Who gets a WhatsApp notification when an emergency is raised (AGENTS.md 4.2).
+    """Who gets a web inbox notification when an emergency is raised (AGENTS.md 4.2).
 
-    The patient's registered health provider (if any), then every caregiver and
-    family member with access to the patient. Never the patient themself, the
-    doctor role, or the sender (who already got the reply). Decided by code only.
+    Every caregiver and family member with access to the patient. Never the patient
+    themself, the doctor role, or the sender (who already got the reply). Decided by
+    code only. The registered health provider contact has no inbox, so it is not here.
     """
-    patient = session.get(Patient, patient_id)
     recipients: list[dict] = []
-    if patient is not None and patient.health_provider_phone:
-        recipients.append({"to": "health_provider", "person_id": None,
-                           "name": patient.health_provider_name,
-                           "phone": patient.health_provider_phone})
     rows = session.execute(
         select(PatientAccess.role, Person)
         .join(Person, Person.id == PatientAccess.person_id)

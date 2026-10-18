@@ -15,15 +15,14 @@ import { CHECKLIST_LABEL, ROLE_LABEL, dayTime, firstName } from "@/lib/format";
 import type { Alert as AlertT, AlertNotification } from "@/lib/types";
 
 const RECIPIENT_LABEL: Record<AlertNotification["to"], string> = {
-  health_provider: "Contacto de salud",
   caregiver: ROLE_LABEL.caregiver,
   family: ROLE_LABEL.family,
 };
 
 function deliveryStatus(n: AlertNotification): { label: string; variant: "success" | "missing" | "danger" } {
   if (n.status === "sent") return { label: "Enviado", variant: "success" };
-  // "skipped" means the channel is switched off, not that something broke.
-  if (n.status === "skipped") return { label: n.channel === "whatsapp" ? "WhatsApp no activo" : "No activo", variant: "missing" };
+  // "skipped" only appears on old rows; it means the channel was off, not that something broke.
+  if (n.status === "skipped") return { label: "No activo", variant: "missing" };
   return { label: "No se pudo enviar", variant: "danger" };
 }
 
@@ -67,7 +66,7 @@ export default async function AlertsPage(props: PageProps<"/patients/[id]/alerts
                       <li key={i} className="flex flex-col gap-0.5 text-[14px]">
                         <span className="flex items-center justify-between gap-2">
                           <span>
-                            {RECIPIENT_LABEL[n.to]} · {n.channel === "web" ? "App" : "WhatsApp"}
+                            {RECIPIENT_LABEL[n.to]} · App
                           </span>
                           <Badge variant={st.variant}>{st.label}</Badge>
                         </span>
@@ -136,7 +135,7 @@ export default async function AlertsPage(props: PageProps<"/patients/[id]/alerts
                   ))}
                 </div>
                 <CardDescription className="text-[13px]">
-                  El bot le pregunta a {firstName(last.caregiver.display_name)} por WhatsApp.
+                  Podés pedirle a {firstName(last.caregiver.display_name)} que mande otro reporte con esos temas.
                 </CardDescription>
               </CardContent>
             </Card>

@@ -160,7 +160,7 @@ def test_shift_report_happy_path(db):
     assert rows(db, Report) == n_before + 1
     with db() as s:
         report = s.get(Report, r["report"]["id"])
-        assert report.kind == ReportKind.shift and report.channel == "whatsapp" and not report.red_flag
+        assert report.kind == ReportKind.shift and report.channel == "web" and not report.red_flag
         assert report.latest.model == "anthropic:test-model" and report.latest.extraction_raw
         assert report.latest.created_by == CG and report.triage_status == TriageStatus.ok
 

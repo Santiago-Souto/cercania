@@ -55,7 +55,7 @@ export function LoginForm({ mode, next }: { mode: "signup" | "login"; next?: str
         <Field>
           <FieldLabel htmlFor="phone">Celular</FieldLabel>
           <Input id="phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" placeholder="+598 9X XXX XXX" required className="h-12 bg-card text-base" />
-          <FieldDescription>Ahí te llega el código por SMS. Con este mismo número mandás los reportes por WhatsApp.</FieldDescription>
+          <FieldDescription>Ahí te llega el código por SMS. Con este mismo número te pueden invitar a un paciente.</FieldDescription>
         </Field>
       </FieldGroup>
 
@@ -71,7 +71,7 @@ export function LoginForm({ mode, next }: { mode: "signup" | "login"; next?: str
           {sending && <Spinner />}
           {sending ? "Enviando código…" : "Enviar código por SMS"}
         </Button>
-        <p className="text-center text-[13px] text-muted-foreground">Al continuar aceptás recibir el código por SMS y mensajes de CercanIA por WhatsApp.</p>
+        <p className="text-center text-[13px] text-muted-foreground">Al continuar aceptás recibir el código por SMS.</p>
       </div>
     </form>
   );

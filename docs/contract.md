@@ -132,8 +132,7 @@ Alert JSON (also inside every report and version):
   "evidence_verified": true,
   "report_refs": ["rep_124"],
   "notifications": [
-    { "to": "family", "person_id": "fam_001", "channel": "web", "status": "sent", "error": null },
-    { "to": "family", "person_id": "fam_001", "channel": "whatsapp", "status": "skipped", "error": "WhatsApp desactivado (NOTIFY_WHATSAPP=0)" }
+    { "to": "family", "person_id": "fam_001", "channel": "web", "status": "sent", "error": null }
   ],
   "report_id": "rep_124",
   "report_version": 1,
@@ -153,7 +152,7 @@ Used by `GET /patients/{id}/reports`, `GET /reports/{id}` and the corrections re
   "version": 1,
   "created_at": "2026-10-18T00:05:00Z",
   "kind": "shift",
-  "channel": "whatsapp",
+  "channel": "web",
   "sender": { "id": "cg_001", "display_name": "Ana (fictional)", "role": "caregiver" },
   "caregiver": { "id": "cg_001", "display_name": "Ana (fictional)", "role": "caregiver" },
   "transcript": "…",
@@ -170,7 +169,7 @@ Used by `GET /patients/{id}/reports`, `GET /reports/{id}` and the corrections re
 ```
 
 - `kind` is `shift` (caregiver report, has items) or `emergency` (raised by another role, `items` and `missing_items` are empty).
-- `channel` is `whatsapp`, `web`, or `seed` (fixtures).
+- `channel` is `web` or `seed` (fixtures). Older rows may hold a retired value.
 - `sender.role` is the sender's role for this patient. `caregiver` is a compatibility alias of `sender` for the web (`web/lib/types.ts`). Both are additive.
 - `red_flag_quote` is the same value as `triage.quote`.
 - `audio_url`: `/reports/{id}/audio` when the original voice note is stored, else `null` (typed reports, storage not configured, or a failed upload). It is an API path, not the file: call it (with the usual identity) to get a short-lived signed URL, then play that. `audio_duration_sec` is the voice note's length in seconds from transcription, or `null` (when a retry with the same `client_id` re-attaches the audio of a report whose first upload failed, it is the end of the report's last transcript segment). A retry never attaches audio to a typed report.
@@ -190,7 +189,7 @@ Timestamped pieces of the transcript, used to play the audio fragment behind a q
 
 - `start` / `end`: seconds (float) from the start of the audio file. `text` is trimmed. Pieces are in audio order.
 - **Granularity:** one piece per **word** when the provider returns word timestamps (Groq Whisper `verbose_json`; the backend sends `timestamp_granularities[]` = `word` and `segment`, the default), otherwise the provider's segments. Whisper often returns a whole voice note as a single segment, so words are what let a citation play just the quoted words. Same shape and same rule either way.
-- Typed reports (WhatsApp text or web text) have `[]`.
+- Typed reports have `[]`.
 - **Quote -> audio times** (code only, `backend/app/segments.py`, same for items and citations): the shortest run of consecutive segments whose joined text contains the quote, with the same normalization as quote verification (case, accents, punctuation, whitespace; whole words). `audio_start_sec` is the first segment's `start`, `audio_end_sec` the last segment's `end`. If two runs are equally short, the first one wins. No match or no segments: both `null`.
 - Example: with the segments above, `"comió poco en la cena"` -> `3.5`-`6.0`; `"las ocho. Comió poco"` -> `0.0`-`6.0`.
 - The model never sees or returns times.
@@ -251,7 +250,7 @@ Permission: `read_reports` on the report's patient. Returns a signed URL for the
 { "url": "https://<project>.supabase.co/storage/v1/object/sign/media/reports/pat_001/rep_123.webm?token=…", "expires_in_sec": 300 }
 ```
 
-- Voice notes are stored after the report (web: after the response; WhatsApp: after the reply), so `audio_url` can stay `null` for a moment after `POST /patients/{id}/reports` returns.
+- Voice notes are stored after the report (after the response), so `audio_url` can stay `null` for a moment after `POST /patients/{id}/reports` returns.
 - Play a citation: fetch `url`, set it as the player's source, seek to `audio_start_sec`, stop at `audio_end_sec`.
 
 Errors: `401`; `404 not_found` (unknown report, no access, or the report has no stored audio); `403 forbidden` (patient role); `502 audio_unavailable` (storage did not answer or is not configured; the message is safe to show and asks to retry).
@@ -418,18 +417,13 @@ Marks all of the caller's unread web notifications as read. Returns `{ "updated"
 
 Triggered when triage says emergency (AGENTS.md 4.2), from any registered sender. Dispatch is in `backend/app/notify.py`.
 
-- **Reply first**: the sender gets the fixed emergency text (no checklist questions). Dispatch runs after the reply: as a background task for the web endpoint, right after the send for WhatsApp.
-- **Recipients are decided in code** (`models.emergency_recipients`): the patient's registered health provider (if a phone is set; no web row), then every caregiver and family member with access to the patient. **Never** the patient, the doctor role, or the sender.
-- **Channels**:
-  - `web` is the primary channel: a `sent` row per recipient with a `person_id`, shown in the inbox (`GET /me/notifications`) and polled by the web.
-  - `whatsapp` is attempted for every recipient only when `NOTIFY_WHATSAPP=1`. Otherwise each attempt is recorded as `skipped` with the error `WhatsApp desactivado (NOTIFY_WHATSAPP=0)`. A failed send is `failed` with the error text; never silent.
-  - **Template fallback**: if Meta answers error `131047` (outside the 24 h window), and `WHATSAPP_EMERGENCY_TEMPLATE` is set, the same recipient gets that approved template (no parameters, language `WHATSAPP_TEMPLATE_LANG`, default `es`). If that also fails, the row is `failed`.
+- **Reply first**: the sender gets the fixed emergency text (no checklist questions). Dispatch runs after the reply, as a background task of the web endpoint.
+- **Recipients are decided in code** (`models.emergency_recipients`): every caregiver and family member with access to the patient. **Never** the patient, the doctor role, or the sender. The patient's registered health provider contact is stored as contact information only; it has no inbox, so it is not notified.
+- **Channel**: `web` only. A `sent` row per recipient, shown in the inbox (`GET /me/notifications`) and polled by the web. `failed` and `skipped` statuses exist for old rows; nothing writes them now.
 - **Message**: title `Emergencia: <patient>`; body with the sender's name, the local time and the triage reason. No transcript and no clinical advice.
-- **Idempotent**: if the alert already has notification rows, dispatch sends nothing and returns them. Dispatch never raises.
-- **Status meaning**: `sent` for WhatsApp means Meta accepted the request. Delivery receipts are not tracked yet.
+- **Idempotent**: recipients that already have a row for the alert are not notified again; dispatch returns all rows. Dispatch never raises.
+- **Status meaning**: `sent` means the inbox row was written. Read receipts are `read_at` on the row.
 - `alert.notifications` on the alert carries the summary `{ to, person_id, channel, status, error }` of all rows.
-
-The signature check runs before the ack and before anything is processed; the sender phone is trusted only after it passes. The payload's `metadata.phone_number_id` must also equal `WHATSAPP_PHONE_NUMBER_ID`; other numbers are acked and ignored (pending in code).
 
 ## Roles (fixed enum)
 
@@ -437,9 +431,9 @@ The signature check runs before the ack and before anything is processed; the se
 
 ## Auth (6-digit code by SMS)
 
-No passwords. The code goes out **by SMS** (Twilio, `backend/app/sms.py`); the bot and emergency notifications stay on WhatsApp; invites are seen and accepted in the app. The phone number is the identity either way.
+No passwords. The code goes out **by SMS** (Twilio, `backend/app/sms.py`); invites are seen and accepted in the app, and emergency notifications go to the web inbox. The phone number is the identity.
 
-The web app keeps the session in a cookie (`cercania_session`) set by `POST /auth/verify` (`HttpOnly`; `Secure` and `SameSite` from `SESSION_COOKIE_SECURE` / `SESSION_COOKIE_SAMESITE`). The web and the API are on different sites (`onrender.com` is a public suffix), and browsers block cross-site cookies, so **the browser never calls the API host directly**: it calls `/api/*` on the web origin, which Next.js rewrites to the API (`web/next.config.ts`). The cookie is therefore first-party on the web origin, and the deploy uses `SameSite=Lax`. Server components read the cookie and forward it to the API as a `Cookie` header (`web/lib/api.ts`). The web sends people with no cookie, or whose call returns `401`, to `/login`. The cookie is persistent (`Max-Age` = `SESSION_TTL_DAYS`), so the same device stays logged in: `/` and `/login` check `GET /me` and send a logged-in person straight to their home; a cookie the API no longer accepts shows the login form. Sessions last `SESSION_TTL_DAYS` (default 30) and are stored hashed server-side. Every endpoint below except `/auth/*` and `/webhook/*` requires the cookie and returns `401 { "error": { "code": "unauthenticated" } }` without it. (Local dev only: `ALLOW_DEV_IDENTITY_HEADER=1` also accepts an `X-Person-Id` header; simulated identity, never in a real deploy.)
+The web app keeps the session in a cookie (`cercania_session`) set by `POST /auth/verify` (`HttpOnly`; `Secure` and `SameSite` from `SESSION_COOKIE_SECURE` / `SESSION_COOKIE_SAMESITE`). The web and the API are on different sites (`onrender.com` is a public suffix), and browsers block cross-site cookies, so **the browser never calls the API host directly**: it calls `/api/*` on the web origin, which Next.js rewrites to the API (`web/next.config.ts`). The cookie is therefore first-party on the web origin, and the deploy uses `SameSite=Lax`. Server components read the cookie and forward it to the API as a `Cookie` header (`web/lib/api.ts`). The web sends people with no cookie, or whose call returns `401`, to `/login`. The cookie is persistent (`Max-Age` = `SESSION_TTL_DAYS`), so the same device stays logged in: `/` and `/login` check `GET /me` and send a logged-in person straight to their home; a cookie the API no longer accepts shows the login form. Sessions last `SESSION_TTL_DAYS` (default 30) and are stored hashed server-side. Every endpoint below except `/auth/*` requires the cookie and returns `401 { "error": { "code": "unauthenticated" } }` without it. (Local dev only: `ALLOW_DEV_IDENTITY_HEADER=1` also accepts an `X-Person-Id` header; simulated identity, never in a real deploy.)
 
 ### `POST /auth/signup`
 
@@ -513,9 +507,9 @@ Permission: `read_reports` (caregiver, family, health team; not the patient). `i
 { "contact": "+59899111111", "role": "family" }
 ```
 
-`contact` is a WhatsApp number (E.164); emails are rejected with `phone_invalid` because email ownership is never verified. The invited person sees the invite in the app (`GET /me/invites`) once they sign in with that phone, and the membership is created only when they accept it. Only `caregiver` memberships can invite (`403 forbidden` otherwise), matching `AGENTS.md` section 6. Health-team and family members cannot invite.
+`contact` is a phone number (E.164); emails are rejected with `phone_invalid` because email ownership is never verified. The invited person sees the invite in the app (`GET /me/invites`) once they sign in with that phone, and the membership is created only when they accept it. Only `caregiver` memberships can invite (`403 forbidden` otherwise), matching `AGENTS.md` section 6. Health-team and family members cannot invite.
 
-Returns the invite (`201`, same shape as in `members.invites`). Re-inviting a number that already has a pending invite for this patient updates its role and returns `200` with the same invite. The WhatsApp message is best effort, sent after the response and only with `NOTIFY_WHATSAPP=1` (otherwise skipped and logged); the invite is seen in the app without it. Errors: `400 phone_invalid` (not E.164, or an email); `409 already_member` (that phone already has access to the patient); `422 invalid_request` (unknown role); `401`, `404`, `403`.
+Returns the invite (`201`, same shape as in `members.invites`). Re-inviting a number that already has a pending invite for this patient updates its role and returns `200` with the same invite. Nothing is sent outside the app: the invited person sees the invite when they sign in. Errors: `400 phone_invalid` (not E.164, or an email); `409 already_member` (that phone already has access to the patient); `422 invalid_request` (unknown role); `401`, `404`, `403`.
 
 ### `GET /me/invites`
 
@@ -537,13 +531,13 @@ Deletes the invite, so the caregiver can invite the number again. Returns `{ "st
 
 ### `POST /patients/{patient_id}/reports`
 
-Same report a caregiver can send by WhatsApp. Either JSON text or multipart audio:
+The caregiver's report. Either JSON text or multipart audio:
 
 ```json
 { "client_id": "web_7f3c", "text": "Casi no comió nada en la cena…" }
 ```
 
-Multipart: `client_id` + `audio` file (webm/ogg/m4a). Audio goes through the same transcription step. Returns `ProcessResult` exactly as `process_report`. Idempotent on `client_id`: the `message_id` passed to `process_report` is `web:<person_id>:<client_id>`, so one user's id can never match another user's report or a WhatsApp message. If the result is an emergency (`red_flag: true`), dispatch of the emergency notifications is scheduled after the response.
+Multipart: `client_id` + `audio` file (webm/ogg/m4a). Audio goes through the same transcription step. Returns `ProcessResult` exactly as `process_report`. Idempotent on `client_id`: the `message_id` passed to `process_report` is `web:<person_id>:<client_id>`, so one user's id can never match another user's report. If the result is an emergency (`red_flag: true`), dispatch of the emergency notifications is scheduled after the response.
 
 Requires the `send_report` permission for that patient (today only `caregiver`). Errors, all as `{ "error": { "code", "message" } }` with a message the UI can show as is:
 
@@ -561,30 +555,6 @@ Requires the `send_report` permission for that patient (today only `caregiver`).
 | 503 | `processing_unavailable` | `process_report` cannot be imported; nothing was stored (not expected on the current code) |
 
 A repeated `client_id` is not transcribed again; the stored report's result is returned.
-
-## Webhook and WhatsApp
-
-### `GET /webhook/whatsapp`
-
-Meta Cloud API verification handshake. Query `hub.mode=subscribe`, `hub.verify_token`, `hub.challenge`. Returns the challenge as plain text when the token matches `WHATSAPP_VERIFY_TOKEN`, else 403 `verification_failed`.
-
-### `POST /webhook/whatsapp`
-
-Meta Cloud API webhook (JSON). Requests without a valid `X-Hub-Signature-256` (HMAC-SHA256 of the body with `WHATSAPP_APP_SECRET`) get 403 `invalid_signature`. Response on success: `{ "status": "received" }`. Status updates (delivered/read) are acked and ignored. Voice notes are transcribed; text messages are treated as a typed report; other types get a reply asking for a voice note.
-
-The handler acknowledges immediately (HTTP 200) and processes each new message in the background. Duplicate deliveries are ignored by message id (in memory). The sender is identified by phone number and routed by role (AGENTS.md §4.1).
-
-**Routing, as the code does it today:**
-- Caregivers' messages go through `process_report` (triage and extraction). The emergency reply goes out after `process_report` returns, not before extraction.
-- Family, doctor and patient messages do **not** reach triage yet. The bot only looks at patients where the sender has `send_report` (caregiver only), so a registered non-caregiver with no caregiver assignment gets the "no patients assigned" reply and nothing is stored. The `process_report` branches for non-caregivers (`not_a_report`, emergency report) exist but are not reachable from WhatsApp yet. Target (AGENTS.md 4.1): every registered sender's message goes through triage, with the emergency reply first.
-
-Bot behavior (all replies are WhatsApp text):
-- Sender phone not in `person.phone` → "number not registered" message, which always includes the fixed emergency line; nothing processed, no model call.
-- No patient where the sender has `send_report` → "no patients assigned" message. This is where family, doctor and patient messages stop today.
-- Several patients → numbered "¿De qué paciente es el reporte?" question; the report is kept (in memory, 30 min) and processed once the caregiver answers with the number or part of the name. `message_id` is the report's id, not the answer's.
-- Reports sent while a choice is pending (voice, or typed text of 4+ words) are queued, never dropped: the bot says it kept them and asks about each in arrival order. Reports that expire without a choice are announced on the caregiver's next message so they can resend them.
-- After `process_report`: `confirmation_text` (or the result's `message` for `needs_retry` / `not_a_report` / `forbidden`). When `red_flag` is true, a fixed line written in code is prepended: "⚠️ Si es una emergencia, llamá a emergencias o al médico ahora." Then the emergency notifications are dispatched.
-- If `process_report` cannot be imported, the caregiver is told nothing was stored.
 
 ## Patient messages
 
@@ -606,9 +576,9 @@ Permission: `send_patient_message` (the `patient` role, and caregivers testing t
 { "id": "pm_001", "kind": "help", "notified": ["usr_001", "usr_004"], "red_flag": false, "message_for_patient": "Ya avisamos a tu equipo. Si es una emergencia, llamá a emergencias." }
 ```
 
-`help` is a fixed rule: notify every caregiver and health-team member (doctor, nurse, institution) of the patient immediately; the model is never involved. Never family, never the patient, never the sender (a caregiver testing). `notified` lists the person ids that got a web inbox notification (`GET /me/notifications`, with `patient_message_id` set and `alert_id` / `report_id` `null`), written before the response. WhatsApp follows after the response, best effort like emergencies (`skipped` unless `NOTIFY_WHATSAPP=1`). Notification text is written by code and never includes the patient's words.
+`help` is a fixed rule: notify every caregiver and health-team member (doctor, nurse, institution) of the patient immediately; the model is never involved. Never family, never the patient, never the sender (a caregiver testing). `notified` lists the person ids that got a web inbox notification (`GET /me/notifications`, with `patient_message_id` set and `alert_id` / `report_id` `null`), written before the response. Notification text is written by code and never includes the patient's words.
 
-`feeling` goes through the same triage step as WhatsApp messages (`triage.py`, model decides `red_flag`): the `text` field, or for `audio` the transcript, before replying. Audio must never skip triage; if triage fails, the reply still includes the fixed emergency line; if transcription fails, return `transcription_failed` and the UI asks the patient to retry or type, always showing "si es una emergencia, llamá a emergencias". When `red_flag` is `true`, the team is notified as for `help` and `message_for_patient` is this fixed text written in code (the model only decides `red_flag`, never the wording):
+`feeling` goes through the same triage step as reports (`triage.py`, model decides `red_flag`): the `text` field, or for `audio` the transcript, before replying. Audio must never skip triage; if triage fails, the reply still includes the fixed emergency line; if transcription fails, return `transcription_failed` and the UI asks the patient to retry or type, always showing "si es una emergencia, llamá a emergencias". When `red_flag` is `true`, the team is notified as for `help` and `message_for_patient` is this fixed text written in code (the model only decides `red_flag`, never the wording):
 
 ```json
 { "id": "pm_002", "kind": "feeling", "notified": ["usr_001", "usr_004"], "red_flag": true, "message_for_patient": "Avisamos a tu equipo. Si es una emergencia, llamá a emergencias o a tu médico ahora." }
