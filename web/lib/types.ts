@@ -42,6 +42,8 @@ export type Alert = {
   plan_ref?: string;
   report_refs?: string[];
   evidence_quote?: string | null;
+  /** False when code could not find `evidence_quote` in the transcript. */
+  evidence_verified?: boolean | null;
 };
 
 export type Report = {

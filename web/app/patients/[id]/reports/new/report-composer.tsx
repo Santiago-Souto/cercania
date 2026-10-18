@@ -25,14 +25,14 @@ const MAX_RECORDING_SEC = 5 * 60;
 const AUDIO_BITS_PER_SEC = 32_000;
 
 const ALERT_LABEL: Record<AlertT["type"], string> = {
-  omission: "Falta en el plan",
-  change: "Cambio",
-  missing_item: "Tema faltante",
+  omission: "Omisión · plan de cuidado",
+  change: "Cambio · respecto a lo habitual",
+  missing_item: "Checklist incompleto",
   emergency: "Emergencia",
 };
 
 type Mode = "voice" | "text";
-type Phase = "idle" | "recording" | "sending" | "done";
+type Phase = "idle" | "starting" | "recording" | "sending" | "done";
 
 /** First MIME type this browser can record that the backend accepts (Safari only records mp4). */
 function recordingType(): string | undefined {
@@ -59,8 +59,12 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
   const [error, setError] = useState<{ message: string; canType: boolean } | null>(null);
   const [result, setResult] = useState<ProcessResult | null>(null);
 
-  // One client_id per report attempt: retries and double taps reuse it, so the backend stores one report.
-  const clientId = useRef(newClientId());
+  // One client_id per draft (the typed text, the recorded audio): resending the same draft, even after
+  // switching modes, reuses it so the backend returns the stored report instead of creating a second one.
+  const textClientId = useRef(newClientId());
+  const audioClientId = useRef(newClientId());
+  // Bumped whenever a pending microphone request becomes obsolete (mode change, unmount).
+  const startToken = useRef(0);
   const sending = useRef(false);
   const recorder = useRef<MediaRecorder | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -69,14 +73,14 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
 
   useEffect(
     () => () => {
+      startToken.current++;
       if (timer.current) clearInterval(timer.current);
       recorder.current?.stream.getTracks().forEach((t) => t.stop());
     },
     [],
   );
 
-  function freshAttempt() {
-    clientId.current = newClientId();
+  function clearFeedback() {
     setResult(null);
     setError(null);
   }
@@ -87,7 +91,8 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
     setPhase("sending");
     setError(null);
     try {
-      setResult(await sendReport(patientId, clientId.current, input));
+      const clientId = "audio" in input ? audioClientId.current : textClientId.current;
+      setResult(await sendReport(patientId, clientId, input));
       setPhase("done");
     } catch (err) {
       // Any failed audio send (transcription, size, format) can fall back to typing.
@@ -99,17 +104,26 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
   }
 
   async function startRecording() {
-    freshAttempt();
-    setAudio(null);
+    if (phase !== "idle") return;
+    clearFeedback();
     if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
       setError({ message: "Este navegador no puede grabar audio. Escribí el reporte.", canType: true });
       return;
     }
+    const token = ++startToken.current;
+    setPhase("starting");
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
+      if (token !== startToken.current) return;
+      setPhase("idle");
       setError({ message: micErrorMessage(err), canType: true });
+      return;
+    }
+    if (token !== startToken.current) {
+      // The caregiver switched to typing or left while the permission prompt was open.
+      stream.getTracks().forEach((t) => t.stop());
       return;
     }
     const mimeType = recordingType();
@@ -126,6 +140,8 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
         setError({ message: "La grabación quedó vacía. Grabala de nuevo.", canType: true });
         return;
       }
+      // A new recording is a new draft, so it gets its own client_id.
+      audioClientId.current = newClientId();
       setAudio(blob);
       setPhase("idle");
       if (sendOnStop.current) {
@@ -150,13 +166,15 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
     if (recorder.current?.state === "recording") recorder.current.stop();
   }
 
+  // Switching modes keeps both drafts and their client_ids.
   function switchMode(next: Mode) {
+    startToken.current++;
     if (phase === "recording") {
       sendOnStop.current = false;
       recorder.current?.stop();
     }
-    if (phase === "done") setPhase("idle");
-    freshAttempt();
+    if (phase === "done" || phase === "starting") setPhase("idle");
+    clearFeedback();
     setMode(next);
   }
 
@@ -167,7 +185,9 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
   }
 
   function another() {
-    freshAttempt();
+    textClientId.current = newClientId();
+    audioClientId.current = newClientId();
+    clearFeedback();
     setAudio(null);
     setText("");
     setSeconds(0);
@@ -185,7 +205,7 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
 
   const busy = phase === "sending";
   const canSend =
-    !busy && (phase === "recording" || (mode === "voice" ? audio !== null : text.trim().length > 0));
+    !busy && phase !== "starting" && (phase === "recording" || (mode === "voice" ? audio !== null : text.trim().length > 0));
 
   return (
     <>
@@ -207,7 +227,7 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
                   variant="danger"
                   aria-label={audio ? "Grabar de nuevo" : "Empezar a grabar"}
                   onClick={startRecording}
-                  disabled={busy}
+                  disabled={busy || phase === "starting"}
                   className="size-28 rounded-full border-8 border-danger-ring [&_svg]:size-9!"
                 >
                   <MicIcon />
@@ -217,10 +237,12 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
                 {duration(seconds)}
               </span>
               <p className="text-center text-sm text-muted-foreground">
-                {phase === "recording"
+                {phase === "starting"
+                  ? "Esperando permiso para usar el micrófono…"
+                  : phase === "recording"
                   ? "Grabando… Contá cómo fue el turno con tus palabras. Tocá para terminar."
                   : audio
-                    ? "Nota grabada. Enviala, o tocá el micrófono para grabar de nuevo."
+                    ? "Nota grabada. Enviala o tocá el micrófono para grabar de nuevo."
                     : "Tocá para grabar. Contá cómo fue el turno con tus palabras."}
               </p>
               <Button variant="outline" size="touch" className="font-bold" onClick={() => switchMode("text")} disabled={busy}>
@@ -241,8 +263,9 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
                   disabled={busy}
                   onChange={(e) => {
                     setText(e.target.value);
-                    // New content is a new report: a previous attempt's id must not return the old result.
-                    if (error) freshAttempt();
+                    // Edited text is a new draft: the previous id must not return the old result.
+                    textClientId.current = newClientId();
+                    setError(null);
                   }}
                   placeholder="Ej.: Cenó poco, durmió bien, tomó la medicación de las 20…"
                   className="min-h-40 text-base"
@@ -402,6 +425,10 @@ function ResultView({
                 <CardContent>
                   <p>{a.detail}</p>
                   {a.evidence_quote && <p className="text-sm text-muted-foreground italic">“{a.evidence_quote}”</p>}
+                  {a.evidence_quote && a.evidence_verified === false && (
+                    // Shown, never hidden: an unverified quote does not turn an emergency off (docs/contract.md).
+                    <p className="text-sm text-warning-foreground">Esta cita no aparece en la transcripción.</p>
+                  )}
                 </CardContent>
               </Card>
             ))}
