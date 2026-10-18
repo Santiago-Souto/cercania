@@ -7,6 +7,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { CircleAlertIcon, CircleCheckIcon, KeyboardIcon, MicIcon, SquareIcon, TriangleAlertIcon } from "lucide-react";
 import { AudioPlayer, ClipIcon, PlayClipButton, PlayerBar } from "@/components/app/audio-player";
+import { EmergencyCallButton } from "@/components/app/emergency-call";
 import { ReportItemRow } from "@/components/app/report-item-row";
 import { BottomBar } from "@/components/app/shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -21,7 +22,7 @@ import { ApiError, NETWORK_ERROR_MESSAGE } from "@/lib/api-shared";
 import { CHECKLIST_LABEL, duration } from "@/lib/format";
 import { newClientId, sendReport, type ReportInput } from "@/lib/send-report";
 import { recorderErrorMessage, useRecorder } from "@/lib/use-recorder";
-import type { Alert as AlertT, ProcessResult } from "@/lib/types";
+import type { Alert as AlertT, EmergencyContact, ProcessResult } from "@/lib/types";
 
 const ITEMS = Object.keys(CHECKLIST_LABEL) as (keyof typeof CHECKLIST_LABEL)[];
 
@@ -35,7 +36,7 @@ const ALERT_LABEL: Record<AlertT["type"], string> = {
 type Mode = "voice" | "text";
 type Phase = "idle" | "sending" | "done";
 
-export function ReportComposer({ patientId, children }: { patientId: string; children?: React.ReactNode }) {
+export function ReportComposer({ patientId, emergencyContact, children }: { patientId: string; emergencyContact: EmergencyContact | null; children?: React.ReactNode }) {
   // `children`: static notes rendered below the checklist reminder.
   const [mode, setMode] = useState<Mode>("voice");
   const [phase, setPhase] = useState<Phase>("idle");
@@ -160,7 +161,7 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
   }
 
   if (phase === "done" && result)
-    return <ResultView patientId={patientId} result={result} sent={sent} localAudio={noteUrl} onAnother={another} onRetry={retry} onType={() => switchMode("text")} />;
+    return <ResultView patientId={patientId} emergencyContact={emergencyContact} result={result} sent={sent} localAudio={noteUrl} onAnother={another} onRetry={retry} onType={() => switchMode("text")} />;
 
   const busy = phase === "sending";
   const canSend =
@@ -285,6 +286,7 @@ export function ReportComposer({ patientId, children }: { patientId: string; chi
 
 function ResultView({
   patientId,
+  emergencyContact,
   result,
   sent,
   localAudio,
@@ -293,6 +295,7 @@ function ResultView({
   onType,
 }: {
   patientId: string;
+  emergencyContact: EmergencyContact | null;
   result: ProcessResult;
   sent: ReportInput | null;
   /** Object URL of the note just sent (the server may not have stored the audio yet); null for typed reports. */
@@ -339,7 +342,10 @@ function ResultView({
           <Alert variant="danger">
             <TriangleAlertIcon />
             <AlertTitle className="font-bold">Posible emergencia</AlertTitle>
-            <AlertDescription className="whitespace-pre-line">{result.confirmation_text}</AlertDescription>
+            <AlertDescription className="flex flex-col gap-3">
+              <span className="whitespace-pre-line">{result.confirmation_text}</span>
+              <EmergencyCallButton contact={emergencyContact} className="self-start" />
+            </AlertDescription>
           </Alert>
         ) : (
           <Card className="text-base">
@@ -395,8 +401,9 @@ function ResultView({
         {result.triage.status === "failed" && (
           <Alert variant="warning">
             <TriangleAlertIcon />
-            <AlertDescription>
-              No pudimos revisar si hay una emergencia. Si es una emergencia, llamá a emergencias o al médico ahora.
+            <AlertDescription className="flex flex-col gap-3">
+              <span>No pudimos revisar si hay una emergencia. Si es una emergencia, llamá a emergencias o al médico ahora.</span>
+              <EmergencyCallButton contact={emergencyContact} className="self-start" />
             </AlertDescription>
           </Alert>
         )}

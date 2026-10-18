@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { BellOffIcon, CircleAlertIcon, ListChecksIcon, TrendingDownIcon, TriangleAlertIcon } from "lucide-react";
+import { EmergencyCallButton } from "@/components/app/emergency-call";
 import { AppShell, BottomNav, ScreenHeader } from "@/components/app/shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +59,7 @@ export default async function AlertsPage(props: PageProps<"/patients/[id]/alerts
                 <span className="text-[13px]">La cita no pudo verificarse en el reporte original.</span>
               )}
               <strong>Contactá a emergencias o al médico.</strong>
+              <EmergencyCallButton contact={patient.emergency_contact} className="self-start" />
               {(emergencyOf(r)?.notifications?.length ?? 0) > 0 && (
                 <ul className="mt-2 flex flex-col gap-1.5 rounded-lg bg-card p-3 text-card-foreground" aria-label="Avisos enviados">
                   {emergencyOf(r)!.notifications!.map((n, i) => {

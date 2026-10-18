@@ -102,8 +102,8 @@ App chrome shared by all screens (centered 480px column, top bar, bottom nav, bo
 | `SignIn` | `/login` | CIA-32 | `POST /auth/signup`, `/auth/login` |
 | `Code` (+ `Link` as the expired state) | `/login/code` | CIA-32 | `POST /auth/verify` |
 | `Patients` | `/patients` | CIA-33 | `GET /me/patients` |
-| `AddPatient` | `/patients/new` | CIA-34 | `POST /patients`, members, invites |
-| `Main` | `/patients/[id]` | CIA-11 | `GET /patients/{id}`, `/reports` |
+| `AddPatient` | `/patients/new` | CIA-34, CIA-51 | `POST /patients` (optional emergency number), members, invites |
+| `Main` | `/patients/[id]` | CIA-11, CIA-51 | `GET /patients/{id}`, `/reports`; "Número de emergencia" card + call banner (no artboard snapshot yet) |
 | `Report` | `/patients/[id]/reports/[reportId]` | CIA-11, CIA-50 | `GET /patients/{id}/reports`, `GET /reports/{id}/versions`, `POST /reports/{id}/corrections` |
 | `NewReport` | `/patients/[id]/reports/new` | CIA-31 | `POST /patients/{id}/reports` |
 | `Alerts` | `/patients/[id]/alerts` | CIA-12 | reports' `alerts`, `red_flag` |
