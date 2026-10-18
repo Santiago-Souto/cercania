@@ -19,8 +19,8 @@ export function PendingInvites({ invites }: { invites: MyInvite[] }) {
     try {
       const res = await answerInviteAction(inv.id, accept);
       if ("error" in res) toast.error(res.error.message);
-      else if (accept) toast.success(`Ya podés acompañar a ${inv.patient_display_name}`);
-      else toast(`Rechazaste la invitación para ${inv.patient_display_name}`);
+      else if (accept) toast.success(inv.role === "patient" ? "Listo: ya podés usar tu vista de paciente" : `Ya podés acompañar a ${inv.patient_display_name}`);
+      else toast(inv.patient_display_name ? `Rechazaste la invitación para ${inv.patient_display_name}` : "Rechazaste la invitación");
     } catch {
       toast.error("No pudimos responder la invitación. Probá de nuevo.");
     } finally {
@@ -36,7 +36,7 @@ export function PendingInvites({ invites }: { invites: MyInvite[] }) {
         {invites.map((inv) => (
           <Item key={inv.id} variant="outline" className="rounded-xl bg-card px-4 py-3.5">
             <ItemContent>
-              <ItemTitle className="text-base font-bold">{inv.patient_display_name}</ItemTitle>
+              <ItemTitle className="text-base font-bold">{inv.patient_display_name ?? "Tu perfil de paciente"}</ItemTitle>
               <ItemDescription>{inv.invited_by ? `Te invitó ${inv.invited_by}` : "Te invitaron"}</ItemDescription>
             </ItemContent>
             <ItemActions>

@@ -92,6 +92,11 @@ export async function createPatient(body: NewPatient): Promise<Patient> {
   return request<Patient>(`/patients`, { method: "POST", body: JSON.stringify(body) });
 }
 
+/** POST /invites (CIA-48): a caregiver invites a patient who has no profile yet. */
+export async function invitePatientWithoutProfile(contact: string): Promise<Invite> {
+  return request<Invite>(`/invites`, { method: "POST", body: JSON.stringify({ contact, role: "patient" }) });
+}
+
 export async function createInvite(patientId: string, contact: string, role: Role): Promise<Invite> {
   return request<Invite>(`/patients/${patientId}/invites`, {
     method: "POST",

@@ -254,3 +254,15 @@ def test_help_with_an_empty_team_says_nobody_was_notified(db, signup):
     assert r.json()["notified"] == []
     assert r.json()["message_for_patient"] == patient_messages.NO_TEAM_MESSAGE
     assert "emergencias" in r.json()["message_for_patient"]
+
+
+
+def test_signup_with_a_new_patient_invite_waits_for_the_accept(db, signup):
+    client.post("/invites", json={"contact": NEW, "role": "patient"}, headers=h("cg"))
+    c, verified = signup()
+    assert verified["memberships"] == []  # no automatic profile: the invite creates it
+    [inv] = c.get("/me/invites").json()["invites"]
+    r = c.post(f"/me/invites/{inv['id']}/accept")
+    assert r.json()["role"] == "patient"
+    members = {m["user_id"]: m["role"] for m in client.get(f"/patients/{r.json()['patient_id']}/members", headers=h("cg")).json()["members"]}
+    assert members[person(db, NEW).id] == "patient" and members["cg"] == "caregiver"

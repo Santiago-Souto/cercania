@@ -119,13 +119,14 @@ def list_my_invites(person_id: str = Depends(current_person_id), db: Session = D
     person = _me(db, person_id)
     rows = db.execute(
         select(Invite, Patient, Person)
-        .join(Patient, Invite.patient_id == Patient.id)
+        .outerjoin(Patient, Invite.patient_id == Patient.id)  # NULL for a new-patient invite
         .outerjoin(Person, Invite.invited_by == Person.id)
         .where(Invite.phone == person.phone, Invite.status == InviteStatus.pending)
         .order_by(Invite.created_at.desc(), Invite.id)
     )
     return {"invites": [
-        {"id": i.id, "patient_id": p.id, "patient_display_name": p.display_name, "role": i.role.value,
+        {"id": i.id, "patient_id": p.id if p else None, "patient_display_name": p.display_name if p else None,
+         "role": i.role.value,
          "invited_by": inviter.display_name if inviter else None, "created_at": i.created_at}
         for i, p, inviter in rows
     ]}
@@ -133,15 +134,23 @@ def list_my_invites(person_id: str = Depends(current_person_id), db: Session = D
 
 @router.post("/me/invites/{invite_id}/accept", response_model=schemas.Membership)
 def accept_invite(invite_id: str, person_id: str = Depends(current_person_id), db: Session = Depends(get_db)) -> dict:
-    """Creates a `family` membership (invites are family only, CIA-48). If the caller is already a member
+    """Creates the membership: family, or the patient's own login (CIA-48). If the caller is already a member
     (e.g. added another way), their current role is kept."""
     person = _me(db, person_id)
     invite = _my_pending_invite(db, person, invite_id)
+    if invite.patient_id is None:
+        # Patient invite with no profile yet (CIA-48): their own profile, the inviter as its caregiver.
+        patient = roles.own_patient_profile(db, person)
+        if invite.invited_by and invite.invited_by != person.id:
+            roles.set_membership(db, db.get(Person, invite.invited_by), patient.id, Role.caregiver)
+        invite.patient_id = patient.id
+        db.flush()
     access = db.scalar(select(PatientAccess).where(PatientAccess.person_id == person.id,
                                                    PatientAccess.patient_id == invite.patient_id))
     if access is None:
-        # Invites are family only (CIA-48), whatever an older invite row says.
-        access = PatientAccess(person_id=person.id, patient_id=invite.patient_id, role=Role.family)
+        # Family or the patient's own login (CIA-48); older rows with another role join as family.
+        role = invite.role if invite.role in (Role.family, Role.patient) else Role.family
+        access = PatientAccess(person_id=person.id, patient_id=invite.patient_id, role=role)
         db.add(access)
     invite.status = InviteStatus.accepted
     invite.accepted_at = utcnow()

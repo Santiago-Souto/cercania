@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { PlusIcon, UsersRoundIcon } from "lucide-react";
+import { MailPlusIcon, PlusIcon, UsersRoundIcon } from "lucide-react";
 import { AppShell, BottomBar, Brand } from "@/components/app/shell";
 import { Button } from "@/components/ui/button";
 import { getMe, getMyInvites, getMyPatients } from "@/lib/api";
@@ -50,6 +50,15 @@ export default async function PatientsPage() {
               : undefined
           }
         />
+
+        {canAdd && (
+          <Button asChild variant="outline" size="touch">
+            <Link href="/patients/invite">
+              <MailPlusIcon />
+              Invitar a un paciente
+            </Link>
+          </Button>
+        )}
 
         <p className="px-1 text-[13px] text-muted-foreground">Enfermería y médicos ven esta misma lista con sus pacientes asignados.</p>
       </main>

@@ -477,7 +477,7 @@ Only the latest code sent to the phone is valid. Codes are single-use, expire af
 
 **Starting role of a new person** (the sign-up that creates the person; logging in again changes nothing), decided in code (`backend/app/roles.py`):
 1. The phone has an **admin pre-registration**: that role is applied and the pre-registration is consumed. With a patient, that membership; `admin`, `is_admin = true`; a caregiver without a patient, no memberships but `can_add_patients = true`; `patient`, their own new patient profile.
-2. Otherwise, the phone has a **pending family invite**: nothing is applied; the person accepts the invite in the app.
+2. Otherwise, the phone has a **pending invite** (family or patient): nothing is applied; the person accepts it in the app.
 3. Otherwise the person signed up for themselves: they get **their own patient profile** (display name = their name, no care plan) and the `patient` role on it, so `memberships` has that one entry.
 
 If a phone has both a pre-registration and an invite, the pre-registration applies and the invite stays pending.
@@ -518,9 +518,13 @@ Permission: `read_reports` (caregiver, family, health team; not the patient). `i
 { "contact": "+59899111111", "role": "family" }
 ```
 
-Invites are **family only**: `role` may be omitted (it is `family`), and any other role is `422 family_only`; every other role is assigned by an admin. `contact` is a phone number (E.164); emails are rejected with `phone_invalid` because email ownership is never verified. The invited person sees the invite in the app (`GET /me/invites`) once they sign in with that phone, and the membership is created only when they accept it. Only `caregiver` memberships can invite (`403 forbidden` otherwise), matching `AGENTS.md` section 6. Health-team and family members cannot invite.
+Invites are **family or patient** (`role`, default `family`); any other role is `422 invite_role`, because every other role is assigned by an admin. `patient` makes the invited person this patient's own login (one per patient: `409 patient_has_login` if it already has one). `contact` is a phone number (E.164); emails are rejected with `phone_invalid` because email ownership is never verified. The invited person sees the invite in the app (`GET /me/invites`) once they sign in with that phone, and the membership is created only when they accept it. Only `caregiver` memberships can invite (`403 forbidden` otherwise), matching `AGENTS.md` section 6. Health-team and family members cannot invite.
 
-Returns the invite (`201`, same shape as in `members.invites`). Re-inviting a number that already has a pending invite for this patient returns `200` with the same invite. Nothing is sent outside the app: the invited person sees the invite when they sign in. Errors: `400 phone_invalid` (not E.164, or an email); `409 already_member` (that phone already has access to the patient); `422 family_only` (a role other than `family`); `401`, `404`, `403`.
+Returns the invite (`201`, same shape as in `members.invites`). Re-inviting a number that already has a pending invite for this patient returns `200` with the same invite. Nothing is sent outside the app: the invited person sees the invite when they sign in. Errors: `400 phone_invalid` (not E.164, or an email); `409 already_member` (that phone already has access to the patient); `409 patient_has_login`; `422 invite_role` (a role other than `family` or `patient`); `401`, `404`, `403`.
+
+### `POST /invites`
+
+Same invite with the patient in the body: `{ "contact": "+59899111111", "role": "patient", "patient_id": null }`. `family` **needs** a patient (`422 patient_required`), and the caller must be able to invite to it (caregiver of that patient). `patient` with a `patient_id` is the patient's own login, as above. **`patient` without a `patient_id`** invites someone who has no profile yet: only caregivers may send it (`403 forbidden`), and accepting it creates the person's patient profile with the inviting caregiver as its caregiver. Returns the invite (`201`, or `200` for a re-invite).
 
 ### `GET /me/invites`
 
@@ -530,9 +534,11 @@ Any authenticated person. Pending invites addressed to the caller's own phone (t
 { "invites": [ { "id": "inv_001", "patient_id": "pat_001", "patient_display_name": "Rosa (fictional)", "role": "family", "invited_by": "Ana Pérez (fictional)", "created_at": "2026-10-18T00:05:00Z" } ] }
 ```
 
+`patient_id` and `patient_display_name` are `null` for a `patient` invite without a profile yet.
+
 ### `POST /me/invites/{invite_id}/accept`
 
-Creates a `family` membership (invites are family only; if the caller is already a member, their current role is kept) and marks the invite `accepted`. Returns the membership: `{ "patient_id": "pat_001", "display_name": "Rosa (fictional)", "role": "family" }`. Errors: `401`; `404 not_found` (unknown, addressed to another phone, or no longer pending).
+Creates the membership with the invite's role, family or patient (if the caller is already a member, their current role is kept). For a `patient` invite without a patient, it first creates the caller's own patient profile and makes the inviting caregiver its caregiver; `patient_id` in the answer is that new profile and marks the invite `accepted`. Returns the membership: `{ "patient_id": "pat_001", "display_name": "Rosa (fictional)", "role": "family" }`. Errors: `401`; `404 not_found` (unknown, addressed to another phone, or no longer pending).
 
 ### `POST /me/invites/{invite_id}/decline`
 

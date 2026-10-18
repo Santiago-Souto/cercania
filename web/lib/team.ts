@@ -16,6 +16,13 @@ export const ROLE_HELP: Record<Role, string> = {
 
 export const ROLES: Role[] = ["caregiver", "family", "patient", "doctor", "nurse", "institution"];
 
+/** Caregivers invite family or the patient themself (CIA-48); every other role comes from an admin. */
+export const INVITE_ROLES: Role[] = ["family", "patient"];
+export const INVITE_ROLE_HELP: Partial<Record<Role, string>> = {
+  family: "Familiar de este paciente: solo lectura, ve el resumen y las alertas.",
+  patient: "El propio paciente: solo cuenta cómo se siente o pide ayuda. No ve reportes ni alertas.",
+};
+
 const PHONE_RE = /^\+[1-9]\d{7,14}$/;
 
 /** E.164 number or an error message (same rule as the backend's `phone_invalid`). */

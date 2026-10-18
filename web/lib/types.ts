@@ -216,8 +216,9 @@ export type Membership = { patient_id: string; display_name: string; role: Role 
 /** GET /me/invites: invites addressed to the caller's own phone, accepted or declined in the app. */
 export type MyInvite = {
   id: string;
-  patient_id: string;
-  patient_display_name: string;
+  /** null for a `patient` invite without a profile yet: accepting creates it (CIA-48). */
+  patient_id: string | null;
+  patient_display_name: string | null;
   role: Role;
   invited_by: string | null;
   created_at: string;

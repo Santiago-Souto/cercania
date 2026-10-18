@@ -348,9 +348,11 @@ class Invite(TimestampMixin, Base):
     )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("inv"))
-    patient_id: Mapped[str] = mapped_column(ForeignKey("patient.id"), nullable=False)
+    # NULL only for a `patient` invite to someone without a profile yet (CIA-48): accepting it
+    # creates their patient profile and makes `invited_by` its caregiver.
+    patient_id: Mapped[str | None] = mapped_column(ForeignKey("patient.id"))
     phone: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # E.164
-    role: Mapped[Role] = mapped_column(enum_column(Role), nullable=False)
+    role: Mapped[Role] = mapped_column(enum_column(Role), nullable=False)  # family or patient (CIA-48)
     invited_by: Mapped[str | None] = mapped_column(ForeignKey("person.id"))
     status: Mapped[InviteStatus] = mapped_column(
         enum_column(InviteStatus), default=InviteStatus.pending, nullable=False
