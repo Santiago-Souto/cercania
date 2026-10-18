@@ -1,0 +1,78 @@
+"use client";
+// Sign-up / login form: POST /auth/signup or /auth/login, then the code screen (CIA-32).
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { AlertCircleIcon } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import { authErrorMessage, requestCode, safeNext, savePending } from "@/lib/auth";
+
+export function LoginForm({ mode, next }: { mode: "signup" | "login"; next?: string }) {
+  const router = useRouter();
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isLogin = mode === "login";
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    const phone = String(form.get("phone") ?? "").trim();
+    const name = String(form.get("name") ?? "").trim();
+    const email = String(form.get("email") ?? "").trim();
+    if (!isLogin && !name) return setError("Escribí tu nombre.");
+    if (!phone) return setError("Escribí tu celular con el código de país, por ejemplo +598 99 123 456.");
+
+    setSending(true);
+    setError(null);
+    try {
+      const sent = await requestCode({ mode, phone, name, email });
+      savePending({ mode, phone, name, email, next: safeNext(next), sent, sentAt: Date.now() });
+      router.push("/login/code");
+    } catch (err) {
+      setError(authErrorMessage(err));
+      setSending(false);
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="flex flex-1 flex-col gap-7" noValidate>
+      <FieldGroup>
+        {!isLogin && (
+          <Field>
+            <FieldLabel htmlFor="name">Nombre</FieldLabel>
+            <Input id="name" name="name" autoComplete="name" placeholder="Ana Pérez" required className="h-12 bg-card text-base" />
+          </Field>
+        )}
+        {!isLogin && (
+          <Field>
+            <FieldLabel htmlFor="email">Email</FieldLabel>
+            <Input id="email" name="email" type="email" autoComplete="email" placeholder="ana@ejemplo.com" className="h-12 bg-card text-base" />
+          </Field>
+        )}
+        <Field>
+          <FieldLabel htmlFor="phone">Celular</FieldLabel>
+          <Input id="phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" placeholder="+598 9X XXX XXX" required className="h-12 bg-card text-base" />
+          <FieldDescription>Ahí te llega el código por SMS. Con este mismo número mandás los reportes por WhatsApp.</FieldDescription>
+        </Field>
+      </FieldGroup>
+
+      {error && (
+        <Alert variant="destructive" role="alert">
+          <AlertCircleIcon />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      <div className="mt-auto flex flex-col gap-3">
+        <Button type="submit" size="xl" disabled={sending}>
+          {sending && <Spinner />}
+          {sending ? "Enviando código…" : "Enviar código por SMS"}
+        </Button>
+        <p className="text-center text-[13px] text-muted-foreground">Al continuar aceptás recibir el código por SMS y mensajes de CercanIA por WhatsApp.</p>
+      </div>
+    </form>
+  );
+}

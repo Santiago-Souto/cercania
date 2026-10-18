@@ -3,7 +3,8 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Route } from "next";
-import { CheckIcon, ChevronRightIcon, CirclePlayIcon } from "lucide-react";
+import { CheckIcon, ChevronRightIcon } from "lucide-react";
+import { AudioPlayer, ClipIcon, PlayClipButton, PlayerBar } from "@/components/app/audio-player";
 import { AppShell, TopBar } from "@/components/app/shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ export default async function ReportPage(props: PageProps<"/patients/[id]/report
 
   // Mentioned items first, then the ones nobody talked about.
   const items = [...report.items].sort((a, b) => Number(a.value === null) - Number(b.value === null));
+  const when = dayTime(report.created_at);
 
   return (
     <AppShell>
@@ -28,16 +30,29 @@ export default async function ReportPage(props: PageProps<"/patients/[id]/report
         subtitle={`${report.caregiver.display_name} · versión ${report.version}`}
       />
       <main className="flex flex-1 flex-col gap-3 px-4 pb-4">
-        {/* Playback is wired in CIA-13 together with the segment format (CIA-23). */}
-        <Button size="xl" className="h-14 justify-start rounded-2xl text-left">
-          <CirclePlayIcon className="size-7!" />
-          <span className="flex flex-col">
-            <span>Escuchar nota de voz</span>
-            <span className="text-[13px] font-normal opacity-90">
-              {report.audio_duration_sec ? `${duration(report.audio_duration_sec)} · ` : ""}audio original
-            </span>
-          </span>
-        </Button>
+        <AudioPlayer audioPaths={[report.audio_url]}>
+        {report.audio_url ? (
+          <>
+            <Button asChild size="xl" className="h-14 justify-start rounded-2xl text-left">
+              <PlayClipButton clip={{ key: "note", audioPath: report.audio_url, start: 0, end: null, label: when }}>
+                <span className="flex size-7 items-center justify-center rounded-full border-2 border-current">
+                  <ClipIcon clipKey="note" className="size-3.5" />
+                </span>
+                <span className="flex flex-col">
+                  <span>Escuchar nota de voz</span>
+                  <span className="text-[13px] font-normal opacity-90">
+                    {report.audio_duration_sec ? `${duration(report.audio_duration_sec)} · ` : ""}audio original
+                  </span>
+                </span>
+              </PlayClipButton>
+            </Button>
+            <PlayerBar />
+          </>
+        ) : (
+          <p className="rounded-2xl border bg-card px-4 py-3 text-[13px] text-muted-foreground">
+            Este reporte no tiene nota de voz guardada (se escribió, o el audio no se pudo guardar).
+          </p>
+        )}
 
         <p className="text-[13px] text-muted-foreground">Cada dato muestra lo que se dijo, palabra por palabra.</p>
 
@@ -52,8 +67,24 @@ export default async function ReportPage(props: PageProps<"/patients/[id]/report
                   <ItemContent>
                     <span className="text-[13px] font-bold tracking-wide text-muted-foreground uppercase">{label}</span>
                     {it.value !== null && <ItemTitle className="text-base font-bold">{it.value}</ItemTitle>}
-                    {it.value !== null && !unverified && (
-                      <ItemDescription className="line-clamp-none text-sm italic">“{it.quote}”</ItemDescription>
+                    {it.value !== null && !unverified && report.audio_url && it.audio_start_sec != null && it.audio_end_sec != null ? (
+                      // Tapping the quote plays exactly that fragment of the voice note.
+                      <PlayClipButton
+                        clip={{
+                          key: it.item,
+                          audioPath: report.audio_url,
+                          start: it.audio_start_sec,
+                          end: it.audio_end_sec,
+                          label: `${label.toLowerCase()} · ${when}`,
+                        }}
+                        className="-mx-1 flex min-h-11 items-center gap-2 rounded-lg px-1 text-left text-sm text-muted-foreground italic hover:bg-muted"
+                      >
+                        <ClipIcon clipKey={it.item} className="size-3.5 shrink-0 text-primary" />
+                        <span>“{it.quote}”</span>
+                      </PlayClipButton>
+                    ) : (
+                      it.value !== null &&
+                      !unverified && <ItemDescription className="line-clamp-none text-sm italic">“{it.quote}”</ItemDescription>
                     )}
                     {unverified && (
                       <ItemDescription className="line-clamp-none text-sm text-warning-foreground">
@@ -96,6 +127,7 @@ export default async function ReportPage(props: PageProps<"/patients/[id]/report
           Las correcciones se mandan por WhatsApp a {firstName(report.caregiver.display_name)} y crean una versión nueva. Las
           anteriores quedan visibles.
         </p>
+        </AudioPlayer>
       </main>
     </AppShell>
   );

@@ -249,6 +249,12 @@ class Member(BaseModel):
     role: RoleName
 
 
+class MessageSender(BaseModel):
+    user_id: str
+    name: str
+    role: RoleName
+
+
 class Invite(BaseModel):
     id: str
     contact: str
@@ -264,3 +270,23 @@ class Members(BaseModel):
 class InviteCreate(BaseModel):
     contact: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=254)]
     role: RoleName
+
+
+class Message(BaseModel):
+    id: str
+    from_: MessageSender = Field(alias="from")
+    text: str
+    created_at: datetime
+    read: bool
+    mine: bool  # sent by the caller
+
+    model_config = {"populate_by_name": True, "serialize_by_alias": True}
+
+
+class Messages(BaseModel):
+    messages: list[Message]
+
+
+class MessageRequest(BaseModel):
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+    client_id: Annotated[str, StringConstraints(min_length=1, max_length=64)] | None = None
