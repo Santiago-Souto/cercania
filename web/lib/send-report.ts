@@ -67,6 +67,10 @@ export async function sendPatientMessage(
   patientId: string,
   input: { kind: "help" } | ({ kind: "feeling" } & ReportInput),
 ): Promise<PatientMessageResult> {
+  if (USE_FAKE) {
+    // Fake data has no real team to notify: refuse plainly instead of pretending the message was sent.
+    throw new ApiError("fake_data", "Con datos de prueba no se envían mensajes. Si es una emergencia, llamá a emergencias.", 0);
+  }
   const path = `/patients/${patientId}/patient-messages`;
   if (input.kind === "help") {
     return post<PatientMessageResult>(path, JSON.stringify({ kind: "help" }), {

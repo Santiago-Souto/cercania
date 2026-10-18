@@ -72,7 +72,14 @@ export function useRecorder({
     () => () => {
       startToken.current++;
       if (timer.current) clearInterval(timer.current);
-      recorder.current?.stream.getTracks().forEach((t) => t.stop());
+      // Leaving mid-recording discards it: detach the handlers first so the final stop event never sends it.
+      const rec = recorder.current;
+      if (rec) {
+        rec.ondataavailable = null;
+        rec.onstop = null;
+        if (rec.state !== "inactive") rec.stop();
+        rec.stream.getTracks().forEach((t) => t.stop());
+      }
     },
     [],
   );
