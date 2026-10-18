@@ -1,13 +1,15 @@
 "use client";
 // Browser-side calls (polling, form submits). Server components use lib/api.ts.
-// SIMULATED auth: sends X-Person-Id from the persona cookie (lib/persona.ts).
+// Logged in: the session cookie identifies the caller (same-origin /api proxy). Otherwise SIMULATED X-Person-Id
+// from the persona cookie (lib/persona.ts).
 
+import { BROWSER_API_URL, identityHeaders, isLoggedIn } from "./api-shared";
 import { DEFAULT_PERSONA_ID, PERSONA_COOKIE } from "./persona";
 import type { AppNotification } from "./types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
-
+/** Key for per-person browser state (seen notifications). "session" when logged in for real. */
 export function currentPersonId(): string {
+  if (isLoggedIn()) return "session";
   const match = document.cookie.split("; ").find((c) => c.startsWith(`${PERSONA_COOKIE}=`));
   return match ? decodeURIComponent(match.split("=")[1]) : DEFAULT_PERSONA_ID;
 }
@@ -31,10 +33,11 @@ export class ClientApiError extends Error {
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, {
+    res = await fetch(`${BROWSER_API_URL}${path}`, {
       ...init,
+      credentials: "include",
       cache: "no-store",
-      headers: { "Content-Type": "application/json", "X-Person-Id": currentPersonId(), ...init?.headers },
+      headers: { "Content-Type": "application/json", ...identityHeaders(), ...init?.headers },
     });
   } catch {
     throw new ClientApiError("network", "No pudimos conectar con el servidor. Probá de nuevo.");

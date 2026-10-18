@@ -1,11 +1,12 @@
 // Single entry point for data. Screens never fetch directly.
 // NEXT_PUBLIC_USE_FAKE_DATA=1 -> contract-shaped fake data (SIMULATED, see lib/fake.ts). Opt-in only:
 // a deploy that forgets the variable must hit the real API and fail loudly, never show fabricated patients.
-// Otherwise -> the backend at NEXT_PUBLIC_API_URL (CIA-14 finishes this switch, incl. session cookies).
+// Otherwise -> the backend at NEXT_PUBLIC_API_URL, as the logged-in person (session cookie forwarded, CIA-32).
 
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { connection } from "next/server";
-import { API_URL, ApiError, errorFrom, identityHeaders, USE_FAKE } from "./api-shared";
+import { API_URL, ApiError, errorFrom, SESSION_COOKIE, USE_FAKE } from "./api-shared";
 import * as fake from "./fake";
 import { DEFAULT_PERSONA_ID, PERSONA_COOKIE } from "./persona";
 import type {
@@ -21,15 +22,22 @@ import type {
 
 export { ApiError, USE_FAKE };
 
+/** Logged in: forward the session cookie. Otherwise the SIMULATED persona (lib/persona.ts) as X-Person-Id. */
+async function identity(): Promise<Record<string, string>> {
+  const jar = await cookies();
+  const session = jar.get(SESSION_COOKIE)?.value;
+  if (session) return { Cookie: `${SESSION_COOKIE}=${session}` };
+  const personId = jar.get(PERSONA_COOKIE)?.value || process.env.NEXT_PUBLIC_DEV_PERSON_ID || DEFAULT_PERSONA_ID;
+  return { "X-Person-Id": personId };
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const personId = (await cookies()).get(PERSONA_COOKIE)?.value ?? DEFAULT_PERSONA_ID;
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
-    credentials: "include",
     cache: "no-store",
-    // SIMULATED persona (cookie) wins over NEXT_PUBLIC_DEV_PERSON_ID: see lib/persona.ts.
-    headers: { "Content-Type": "application/json", ...identityHeaders(), "X-Person-Id": personId, ...init?.headers },
+    headers: { "Content-Type": "application/json", ...(await identity()), ...init?.headers },
   });
+  if (res.status === 401) redirect("/login?mode=login&notice=expired"); // no session (or it expired): log in again
   if (!res.ok) throw await errorFrom(res);
   return res.json() as Promise<T>;
 }

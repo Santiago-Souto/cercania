@@ -9,8 +9,8 @@ import { USE_FAKE } from "@/lib/api-shared";
 import { DemoBar } from "./demo-bar";
 import { cn } from "@/lib/utils";
 
-/** Centered 480px column on desktop, full width on phones. */
-export function AppShell({ children, className }: { children: React.ReactNode; className?: string }) {
+/** Centered 480px column on desktop, full width on phones. `anonymous`: login screens, no identity bar. */
+export function AppShell({ children, className, anonymous }: { children: React.ReactNode; className?: string; anonymous?: boolean }) {
   return (
     <div className={cn("mx-auto flex min-h-dvh w-full max-w-[480px] flex-col bg-background sm:border-x", className)}>
       {USE_FAKE && (
@@ -18,7 +18,7 @@ export function AppShell({ children, className }: { children: React.ReactNode; c
           Datos de prueba ficticios
         </Badge>
       )}
-      {!USE_FAKE && <DemoBar />}
+      {!USE_FAKE && !anonymous && <DemoBar />}
       {children}
     </div>
   );

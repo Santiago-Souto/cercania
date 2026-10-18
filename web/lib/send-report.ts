@@ -1,7 +1,7 @@
 // Browser-side call for the new report screen (CIA-31): POST /patients/{id}/reports.
 // Kept apart from lib/api.ts because that file uses server-only APIs.
 
-import { API_URL, ApiError, errorFrom, identityHeaders, NETWORK_ERROR_MESSAGE, USE_FAKE } from "./api-shared";
+import { ApiError, BROWSER_API_URL, errorFrom, identityHeaders, NETWORK_ERROR_MESSAGE, USE_FAKE } from "./api-shared";
 import { fakeProcessResult } from "./fake";
 import type { ProcessResult } from "./types";
 
@@ -41,7 +41,7 @@ export async function sendReport(patientId: string, clientId: string, input: Rep
 
   let res: Response;
   try {
-    res = await fetch(`${API_URL}/patients/${patientId}/reports`, {
+    res = await fetch(`${BROWSER_API_URL}/patients/${patientId}/reports`, {
       method: "POST",
       body,
       headers,
