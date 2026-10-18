@@ -2,11 +2,13 @@
 // Sign-up / login form: POST /auth/signup or /auth/login, then the code screen (CIA-32).
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { isValidPhoneNumber } from "react-phone-number-input";
 import { AlertCircleIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Spinner } from "@/components/ui/spinner";
 import { authErrorMessage, requestCode, safeNext, savePending } from "@/lib/auth";
 
@@ -14,16 +16,18 @@ export function LoginForm({ mode, next }: { mode: "signup" | "login"; next?: str
   const router = useRouter();
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [phone, setPhone] = useState<string | undefined>();
+  const [country, setCountry] = useState<string | undefined>("UY");
   const isLogin = mode === "login";
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
-    const phone = String(form.get("phone") ?? "").trim();
     const name = String(form.get("name") ?? "").trim();
     const email = String(form.get("email") ?? "").trim();
     if (!isLogin && !name) return setError("Escribí tu nombre.");
-    if (!phone) return setError("Escribí tu celular con el código de país, por ejemplo +598 99 123 456.");
+    if (!phone) return setError("Escribí tu celular.");
+    if (!isValidPhoneNumber(phone)) return setError("Revisá el número: no parece un celular válido para ese país.");
 
     setSending(true);
     setError(null);
@@ -54,7 +58,17 @@ export function LoginForm({ mode, next }: { mode: "signup" | "login"; next?: str
         )}
         <Field>
           <FieldLabel htmlFor="phone">Celular</FieldLabel>
-          <Input id="phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" placeholder="+598 9X XXX XXX" required className="h-12 bg-card text-base" />
+          <PhoneInput
+            id="phone"
+            value={phone}
+            onChange={setPhone}
+            onCountryChange={setCountry}
+            autoComplete="tel"
+            placeholder={country === "UY" ? "099 123 456" : "Número de celular"}
+            required
+            aria-invalid={!!error && !phone}
+            numberInputProps={{ className: "h-12 bg-card text-base" }}
+          />
           <FieldDescription>Ahí te llega el código por SMS. Con este mismo número te pueden invitar a un paciente.</FieldDescription>
         </Field>
       </FieldGroup>
