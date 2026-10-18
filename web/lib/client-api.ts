@@ -64,6 +64,10 @@ export function fetchMessages(patientId: string) {
   return call<{ messages: Message[] }>(`/patients/${patientId}/messages`).then((d) => d.messages);
 }
 
-export function sendMessage(patientId: string, text: string) {
-  return call<Message>(`/patients/${patientId}/messages`, { method: "POST", body: JSON.stringify({ text }) });
+/** `clientId` is reused on retry, so a send that timed out after the server stored it is not duplicated. */
+export function sendMessage(patientId: string, text: string, clientId: string) {
+  return call<Message>(`/patients/${patientId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ text, client_id: clientId }),
+  });
 }

@@ -616,10 +616,10 @@ The latest `limit` messages (default 100, max 200), **oldest first**. Listing ma
 ### `POST /patients/{patient_id}/messages`
 
 ```json
-{ "text": "Hola doctora…" }
+{ "text": "Hola doctora…", "client_id": "b7c1…" }
 ```
 
-`201` with the stored message (same shape as one item above). `text` is trimmed, 1-2000 chars; otherwise `422 invalid_request`.
+`201` with the stored message (same shape as one item above). `text` is trimmed, 1-2000 chars; otherwise `422 invalid_request`. `client_id` (optional, up to 64 chars) is generated once per message by the client and reused on retry: a repeat with the same `client_id` returns the message already stored instead of a second copy.
 
 Only `family` and health-team roles (`doctor`, `nurse`, `institution`); `caregiver` and `patient` get `403 forbidden`, no access `404`. Human-to-human: no model call. The UI always shows "not for emergencies".
 

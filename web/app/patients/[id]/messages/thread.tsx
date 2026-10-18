@@ -17,6 +17,13 @@ import type { Message as MessageT } from "@/lib/types";
 const POLL_MS = 5000;
 const MAX_CHARS = 2000;
 
+// crypto.randomUUID only exists in secure contexts (HTTPS / localhost); a plain-HTTP demo URL must still send.
+function newKey(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
 type Pending = { key: string; text: string; status: "sending" | "failed"; error?: string };
 
 export function MessageThread({ patientId, initial }: { patientId: string; initial: MessageT[] }) {
@@ -25,7 +32,17 @@ export function MessageThread({ patientId, initial }: { patientId: string; initi
   const [draft, setDraft] = useState("");
   const [pollError, setPollError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const stickToBottom = useRef(true);
   const count = messages.length + pending.length;
+
+  // Follow new messages only while the reader is at the bottom; reading older ones is never interrupted.
+  useEffect(() => {
+    const onScroll = () => {
+      stickToBottom.current = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 80;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -44,13 +61,13 @@ export function MessageThread({ patientId, initial }: { patientId: string; initi
   }, [refresh]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    if (stickToBottom.current) bottomRef.current?.scrollIntoView({ block: "end" });
   }, [count]);
 
   async function deliver(p: Pending) {
     setPending((list) => [...list.filter((x) => x.key !== p.key), { ...p, status: "sending", error: undefined }]);
     try {
-      const sent = await sendMessage(patientId, p.text);
+      const sent = await sendMessage(patientId, p.text, p.key);
       setMessages((list) => (list.some((m) => m.id === sent.id) ? list : [...list, sent]));
       setPending((list) => list.filter((x) => x.key !== p.key));
     } catch (e) {
@@ -64,7 +81,8 @@ export function MessageThread({ patientId, initial }: { patientId: string; initi
     const text = draft.trim();
     if (!text) return;
     setDraft("");
-    void deliver({ key: crypto.randomUUID(), text, status: "sending" });
+    stickToBottom.current = true; // your own message always scrolls into view
+    void deliver({ key: newKey(), text, status: "sending" });
   }
 
   return (

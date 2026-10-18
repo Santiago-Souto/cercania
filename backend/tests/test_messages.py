@@ -118,6 +118,15 @@ def test_rejects_empty_or_too_long(db, body):
     assert db.scalars(select(Message)).all() == []
 
 
+def test_retry_with_same_client_id_is_stored_once(db):
+    first = client.post(URL, json={"text": "Hola", "client_id": "c-1"}, headers=as_("fam"))
+    again = client.post(URL, json={"text": "Hola", "client_id": "c-1"}, headers=as_("fam"))
+    assert first.json()["id"] == again.json()["id"]
+    other = client.post(URL, json={"text": "Hola", "client_id": "c-2"}, headers=as_("fam"))
+    assert other.json()["id"] != first.json()["id"]
+    assert len(db.scalars(select(Message)).all()) == 2
+
+
 def test_threads_are_per_patient(db):
     client.post(URL, json={"text": "solo pat_x"}, headers=as_("fam"))
     assert client.get("/patients/pat_y/messages", headers=as_("other")).json() == {"messages": []}

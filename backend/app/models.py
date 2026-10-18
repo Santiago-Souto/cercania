@@ -564,12 +564,15 @@ class Message(TimestampMixin, Base):
     model never reads or answers these. Written once."""
 
     __tablename__ = "message"
+    # A retry after an ambiguous failure (timeout) sends the same client_id: stored once.
+    __table_args__ = (UniqueConstraint("sender_id", "client_id"),)
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("msg"))
     patient_id: Mapped[str] = mapped_column(ForeignKey("patient.id"), nullable=False, index=True)
     sender_id: Mapped[str] = mapped_column(ForeignKey("person.id"), nullable=False)
     sender_role: Mapped[Role] = mapped_column(enum_column(Role), nullable=False)  # role when sent
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    client_id: Mapped[str | None] = mapped_column(String(64))
 
     sender: Mapped[Person] = relationship()
     reads: Mapped[list[MessageRead]] = relationship(order_by="MessageRead.read_at")

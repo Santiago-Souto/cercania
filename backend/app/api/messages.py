@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.orm import Session
 
@@ -47,10 +48,9 @@ def list_messages(
     ).all()
     messages = list(reversed(latest))
     read_before = {m.id for m in messages if any(r.person_id == ctx.person_id for r in m.reads)}
+    # The rows inserted here are the caller's own reads, which serialize_message never looks at.
     _mark_read(db, [m.id for m in messages if m.sender_id != ctx.person_id and m.id not in read_before],
                ctx.person_id)
-    for m in messages:
-        db.refresh(m)
     return {"messages": [serializers.serialize_message(m, ctx.person_id, read_before) for m in messages]}
 
 
@@ -60,8 +60,26 @@ def send_message(
     ctx: PatientContext = Depends(patient_access(Permission.team_messages)),
     db: Session = Depends(get_db),
 ):
-    message = Message(patient_id=ctx.patient.id, sender_id=ctx.person_id, sender_role=ctx.role, text=body.text)
+    """Idempotent on `client_id`: a retry of a message already stored returns that message."""
+    existing = _by_client_id(db, ctx, body.client_id)
+    if existing is not None:
+        return serializers.serialize_message(existing, ctx.person_id, set())
+    message = Message(patient_id=ctx.patient.id, sender_id=ctx.person_id, sender_role=ctx.role,
+                      text=body.text, client_id=body.client_id)
     db.add(message)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:  # the same retry raced in between
+        db.rollback()
+        message = _by_client_id(db, ctx, body.client_id)
+        if message is None:
+            raise
     db.refresh(message)
     return serializers.serialize_message(message, ctx.person_id, set())
+
+
+def _by_client_id(db: Session, ctx: PatientContext, client_id: str | None) -> Message | None:
+    if client_id is None:
+        return None
+    return db.scalar(select(Message).where(Message.sender_id == ctx.person_id, Message.client_id == client_id,
+                                           Message.patient_id == ctx.patient.id))

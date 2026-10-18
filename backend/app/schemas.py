@@ -241,3 +241,4 @@ class Messages(BaseModel):
 
 class MessageRequest(BaseModel):
     text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+    client_id: Annotated[str, StringConstraints(min_length=1, max_length=64)] | None = None
