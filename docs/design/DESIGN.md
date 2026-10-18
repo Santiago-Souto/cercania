@@ -104,13 +104,15 @@ App chrome shared by all screens (centered 480px column, top bar, bottom nav, bo
 | `Patients` | `/patients` | CIA-33 | `GET /me/patients` |
 | `AddPatient` | `/patients/new` | CIA-34, CIA-51 | `POST /patients` (optional emergency number), members, invites |
 | `Main` | `/patients/[id]` | CIA-11, CIA-51 | `GET /patients/{id}`, `/reports`; "Número de emergencia" card + call banner (no artboard snapshot yet) |
-| `Report` | `/patients/[id]/reports/[reportId]` | CIA-11 | `GET /patients/{id}/reports` |
+| `Report` | `/patients/[id]/reports/[reportId]` | CIA-11, CIA-50 | `GET /patients/{id}/reports`, `GET /reports/{id}/versions`, `POST /reports/{id}/corrections` |
 | `NewReport` | `/patients/[id]/reports/new` | CIA-31 | `POST /patients/{id}/reports` |
 | `Alerts` | `/patients/[id]/alerts` | CIA-12 | reports' `alerts`, `red_flag` |
 | `Ask` | `/patients/[id]/ask` | CIA-13 | `POST /patients/{id}/query` |
 | `Family` | `/patients/[id]/family` | CIA-12 | same data, read-only |
 | `Messages` | `/patients/[id]/messages` | CIA-36 (bonus) | `/patients/{id}/messages` |
 | `Patient` | `/patients/[id]/me` | CIA-35 | `/patients/{id}/patient-messages` |
+
+**`Report` corrections and versions (CIA-50).** Below the item list: for caregivers of the patient (and only on `shift` reports) a "Corregir" button that opens an inline form with one text field per checklist item, prefilled with the current value. Emptying a field means "No mencionado". "Guardar corrección" sends only the changed items and is disabled until something changed; the backend's error message shows in a destructive alert, never silently. On success the page shows the new latest version, whose corrected items carry the "Corregido" badge and no quote. Then a "Versiones" list (newest first: number, author, time, "Corregido" badge on corrections). Picking an older one reloads the page with `?v=N`: items read-only, a warning row "Versión N, solo lectura" linking back to the current version, no "Corregir". Other roles see the version list but no button.
 
 **`NewReport` result state (CIA-46).** Built from the structured `ProcessResult`, not from `confirmation_text` (which is shown only inside the emergency banner). Top to bottom: emergency banner (`red_flag`) or "Reporte registrado" card; warning if triage failed; for voice reports a "Escuchar tu nota" player that plays the local recording (a `blob:` URL, since the stored audio may not be ready yet), for typed reports the typed text; "Lo que registramos": one row per mentioned item (same row as the `Report` screen) with label, value, level badge, medication dose badges, the verbatim quote (a play button seeking to its fragment when the item has audio times) and its verification (verificada, or "Esta cita no aparece en la transcripción"); "No mencionaste" chips; alerts; "Ver reporte" and "Mandar otra nota".
 

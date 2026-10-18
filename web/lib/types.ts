@@ -113,6 +113,18 @@ export type Report = {
   confirmation_text?: string;
 };
 
+/** One entry of GET /reports/{id}/versions (oldest first). Previous versions are immutable. */
+export type ReportVersion = {
+  version: number;
+  source: "original" | "correction";
+  created_at: string;
+  created_by: Person;
+  items: ReportItem[];
+  missing_items: ChecklistItem[];
+  alerts: Alert[];
+  confirmation_text?: string;
+};
+
 /** Web inbox row from GET /me/notifications. */
 export type AppNotification = {
   id: string;

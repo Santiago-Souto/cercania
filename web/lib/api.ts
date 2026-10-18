@@ -23,6 +23,7 @@ import type {
   PatientMessage,
   QueryResponse,
   Report,
+  ReportVersion,
   Role,
 } from "./types";
 
@@ -68,6 +69,12 @@ export async function getReport(patientId: string, reportId: string): Promise<Re
   await connection(); // patient data is always live: render at request time
   const reports = await getReports(patientId);
   return reports.find((r) => r.id === reportId);
+}
+
+export async function getReportVersions(reportId: string): Promise<ReportVersion[]> {
+  await connection(); // patient data is always live: render at request time
+  const data = await request<{ versions: ReportVersion[] }>(`/reports/${reportId}/versions`);
+  return data.versions;
 }
 
 export async function queryPatient(patientId: string, question: string): Promise<QueryResponse> {

@@ -3,7 +3,7 @@
 // Same-origin through the /api rewrite, so the session cookie goes along; a 401 sends the browser to /login.
 
 import { BROWSER_API, onUnauthorized } from "./api-shared";
-import type { AppNotification, Message } from "./types";
+import type { AppNotification, ChecklistItem, Message, Report } from "./types";
 
 export class ClientApiError extends Error {
   constructor(
@@ -65,4 +65,12 @@ export function sendMessage(patientId: string, text: string, clientId: string) {
 /** Signed URL for a report's voice note. `audioPath` is the report's `audio_url` (GET /reports/{id}/audio). */
 export function fetchAudioUrl(audioPath: string) {
   return call<{ url: string; expires_in_sec: number }>(audioPath);
+}
+
+/** Caregiver correction: only the changed items. An empty value means "not mentioned". Creates a new version. */
+export function correctReport(reportId: string, corrections: { item: ChecklistItem; value: string }[]) {
+  return call<Report>(`/reports/${reportId}/corrections`, {
+    method: "POST",
+    body: JSON.stringify({ corrections }),
+  });
 }
