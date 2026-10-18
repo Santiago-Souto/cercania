@@ -49,6 +49,17 @@ export function AudioPlayer({ audioPaths, children }: { audioPaths: (string | nu
   const [active, setActive] = useState<Active | null>(null);
   const [current, setCurrent] = useState(0);
   const [total, setTotal] = useState<number | null>(null);
+  // Every tap gets a token; async work (URL fetch, metadata load, play()) only acts if its tap is
+  // still the latest, so a slow earlier tap can never take over a newer one.
+  const tapRef = useRef(0);
+  const pendingRef = useRef<(() => void) | null>(null);
+
+  const dropPending = useCallback(() => {
+    const audio = audioRef.current;
+    if (audio && pendingRef.current) audio.removeEventListener("loadedmetadata", pendingRef.current);
+    pendingRef.current = null;
+  }, []);
+  useEffect(() => dropPending, [dropPending]);
 
   const fresh = useCallback((path: string) => {
     const hit = urls.current.get(path);
@@ -72,38 +83,51 @@ export function AudioPlayer({ audioPaths, children }: { audioPaths: (string | nu
     return () => window.clearInterval(timer);
   }, [pathsKey, load]);
 
-  const start = useCallback((clip: Clip, url: string) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    setActive({ clip, status: "loading" });
-    setCurrent(clip.start);
-    const seekAndPlay = () => {
-      audio.currentTime = Math.max(0, clip.start - LEAD_SEC);
-      audio.play().then(
-        () => setActive({ clip, status: "playing" }),
-        // Blocked (no direct tap) or failed: the next tap plays from the cached URL.
-        (err: unknown) =>
-          setActive({
-            clip,
-            status: "paused",
-            message: err instanceof DOMException && err.name === "NotAllowedError" ? TAP_AGAIN : PLAY_FAILED,
-          }),
-      );
-    };
-    if (audio.src === url && audio.readyState >= 1) {
-      seekAndPlay();
-    } else {
-      audio.src = url;
-      audio.addEventListener("loadedmetadata", seekAndPlay, { once: true });
-      audio.load();
-    }
-  }, []);
+  const start = useCallback(
+    (clip: Clip, url: string, tap: number) => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      dropPending();
+      const latest = () => tap === tapRef.current;
+      setActive({ clip, status: "loading" });
+      setCurrent(clip.start);
+      const seekAndPlay = () => {
+        pendingRef.current = null;
+        if (!latest()) return;
+        audio.currentTime = Math.max(0, clip.start - LEAD_SEC);
+        audio.play().then(
+          () => latest() && setActive({ clip, status: "playing" }),
+          // Blocked (no direct tap) or failed: the next tap plays from the cached URL.
+          (err: unknown) =>
+            latest() &&
+            setActive({
+              clip,
+              status: "paused",
+              message: err instanceof DOMException && err.name === "NotAllowedError" ? TAP_AGAIN : PLAY_FAILED,
+            }),
+        );
+      };
+      if (audio.src === url && audio.readyState >= 1) {
+        seekAndPlay();
+      } else {
+        audio.src = url;
+        pendingRef.current = seekAndPlay;
+        audio.addEventListener("loadedmetadata", seekAndPlay, { once: true });
+        audio.load();
+      }
+    },
+    [dropPending],
+  );
 
   const play = useCallback(
     (clip: Clip) => {
       const audio = audioRef.current;
       if (!audio) return;
+      const tap = ++tapRef.current;
+      const latest = () => tap === tapRef.current;
       if (USE_FAKE || !clip.audioPath) {
+        audio.pause();
+        dropPending();
         setActive({ clip, status: "error", message: USE_FAKE ? FAKE_AUDIO : NO_AUDIO });
         return;
       }
@@ -114,27 +138,32 @@ export function AudioPlayer({ audioPaths, children }: { audioPaths: (string | nu
           setActive({ clip, status: "paused" });
         } else if (audio.readyState >= 1) {
           if (clip.end !== null && audio.currentTime >= clip.end + TAIL_SEC) audio.currentTime = Math.max(0, clip.start - LEAD_SEC);
-          audio.play().then(() => setActive({ clip, status: "playing" }), () => setActive({ clip, status: "paused", message: PLAY_FAILED }));
+          audio.play().then(
+            () => latest() && setActive({ clip, status: "playing" }),
+            () => latest() && setActive({ clip, status: "paused", message: PLAY_FAILED }),
+          );
         } else {
           const url = fresh(clip.audioPath);
-          if (url) start(clip, url);
+          if (url) start(clip, url, tap);
         }
         return;
       }
       audio.pause();
+      dropPending();
       const url = fresh(clip.audioPath);
       if (url) {
-        start(clip, url); // still inside the tap
+        start(clip, url, tap); // still inside the tap
         return;
       }
       setActive({ clip, status: "loading" });
       load(clip.audioPath).then(
-        (u) => start(clip, u),
+        (u) => latest() && start(clip, u, tap),
         (err: unknown) =>
+          latest() &&
           setActive({ clip, status: "error", message: err instanceof ClientApiError ? err.message : PLAY_FAILED }),
       );
     },
-    [active, fresh, load, start],
+    [active, dropPending, fresh, load, start],
   );
 
   const onTimeUpdate = () => {
@@ -148,6 +177,7 @@ export function AudioPlayer({ audioPaths, children }: { audioPaths: (string | nu
   };
 
   const onError = () => {
+    dropPending();
     if (!active) return;
     if (active.clip.audioPath) urls.current.delete(active.clip.audioPath); // maybe expired: refetch next time
     setActive({ clip: active.clip, status: "error", message: PLAY_FAILED });
