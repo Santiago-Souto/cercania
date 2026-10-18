@@ -10,6 +10,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Message, MessageContent, MessageFooter, MessageGroup } from "@/components/ui/message";
 import { Spinner } from "@/components/ui/spinner";
+import { USE_FAKE } from "@/lib/api-shared";
 import { fetchMessages, sendMessage } from "@/lib/client-api";
 import { dayTime, ROLE_LABEL } from "@/lib/format";
 import type { Message as MessageT } from "@/lib/types";
@@ -44,9 +45,19 @@ export function MessageThread({ patientId, initial }: { patientId: string; initi
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  // A poll that started before a newer poll, or before a send was acknowledged, is stale: applying it
+  // would hide the just-sent message or bring back older read states. Each response carries the epoch
+  // it started in and is dropped if anything newer has been applied since.
+  const epoch = useRef(0);
+  const applied = useRef(0);
+
   const refresh = useCallback(async () => {
+    const started = ++epoch.current;
     try {
-      setMessages(await fetchMessages(patientId));
+      const fresh = await fetchMessages(patientId);
+      if (started < applied.current) return;
+      applied.current = started;
+      setMessages(fresh);
       setPollError(null);
     } catch (e) {
       setPollError(e instanceof Error ? e.message : "No pudimos actualizar los mensajes.");
@@ -54,6 +65,7 @@ export function MessageThread({ patientId, initial }: { patientId: string; initi
   }, [patientId]);
 
   useEffect(() => {
+    if (USE_FAKE) return; // fixture data (SIMULATED): no backend to poll
     const t = setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
     }, POLL_MS);
@@ -68,6 +80,7 @@ export function MessageThread({ patientId, initial }: { patientId: string; initi
     setPending((list) => [...list.filter((x) => x.key !== p.key), { ...p, status: "sending", error: undefined }]);
     try {
       const sent = await sendMessage(patientId, p.text, p.key);
+      applied.current = ++epoch.current; // polls already in flight may predate this message
       setMessages((list) => (list.some((m) => m.id === sent.id) ? list : [...list, sent]));
       setPending((list) => list.filter((x) => x.key !== p.key));
     } catch (e) {

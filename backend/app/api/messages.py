@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects import postgresql, sqlite
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app import schemas, serializers
 from app.deps import PatientContext, get_db, patient_access
@@ -43,6 +43,7 @@ def list_messages(
     latest = db.scalars(
         select(Message)
         .where(Message.patient_id == ctx.patient.id)
+        .options(selectinload(Message.reads), selectinload(Message.sender))  # 3 queries per poll, not 2 per message
         .order_by(Message.created_at.desc(), Message.id.desc())
         .limit(limit)
     ).all()

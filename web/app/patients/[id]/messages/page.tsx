@@ -17,7 +17,8 @@ export default async function MessagesPage(props: PageProps<"/patients/[id]/mess
         title={role === "family" ? "Equipo de salud" : "Mensajes de la familia"}
         subtitle={`Sobre ${patient.display_name}`}
       />
-      <div className="px-4 pb-3">
+      {/* Sticky: the "not for emergencies" notice stays visible however long the thread is. */}
+      <div className="sticky top-0 z-10 bg-background px-4 pt-1 pb-3">
         <Alert variant="warning">
           <TriangleAlertIcon />
           <AlertDescription className="text-[13px]">No es para urgencias. Ante una urgencia, llamá a emergencias.</AlertDescription>
