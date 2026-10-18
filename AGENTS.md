@@ -93,7 +93,7 @@ Appetite, sleep, urination/diuresis, medication, mood, mobility, pain, incidents
 
 ## 5. Data model (design rules)
 
-Schema lives in `backend/app/models.py`. Entities: `person` (anyone who logs in or messages the bot; name, email, WhatsApp number = identity; "user" in the contract), `patient_access` (person + patient + role; "membership" in the contract, see section 6), `invite` (pending membership by WhatsApp number), `login_code` (hashed 6-digit code sent by SMS, expiry, attempts, used flag), `auth_session` (hashed web session token), `patient` (optionally a registered health provider contact: name + phone, used only for emergency notifications), `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient). Pending in code: `patient_message`, `message` (and the invite endpoints; the `invite` table exists).
+Schema lives in `backend/app/models.py`. Entities: `person` (anyone who logs in or messages the bot; name, email, WhatsApp number = identity; "user" in the contract), `patient_access` (person + patient + role; "membership" in the contract, see section 6), `invite` (pending membership by WhatsApp number), `login_code` (hashed 6-digit code sent by SMS, expiry, attempts, used flag), `auth_session` (hashed web session token), `patient` (optionally a registered health provider contact: name + phone, used only for emergency notifications), `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient). Pending in code: `message` (and the invite endpoints; the `invite` table exists).
 
 Rules:
 - Structured data in Postgres; binaries (audio, images, documents) in object storage. `file` stores only the storage path and metadata.
@@ -157,6 +157,7 @@ backend/app/
   sms.py           send the login code by SMS (Twilio)       [infra/input owner]
   transcribe.py    audio -> text with vocabulary hint        [infra/input owner]
   web_reports.py   POST /patients/{id}/reports (text/audio)  [infra/input owner]
+  patient_messages.py  POST/GET /patients/{id}/patient-messages (help, feeling) [infra/input owner]
   ingest.py        single hand-off from channels to process_report [infra/input owner]
   storage.py       voice notes in Supabase Storage, signed URLs [infra/input owner]
   deps.py          DB session + current person dependencies  [shared]

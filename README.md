@@ -34,7 +34,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 | Web timeline (caregiver view) | Pending | Web owner |
 | Family read-only view | Pending | Web owner |
 | Doctor edits care plan (new version) | Pending | Role and permission in schema; no endpoint/view yet |
-| Patient view (how I feel + I need help; no reports or alerts) | Pending | Role and permission in schema; no endpoint/view yet |
+| Patient view (how I feel + I need help; no reports or alerts) | In progress | Backend done (CIA-29, `backend/app/patient_messages.py`): "Necesito ayuda" notifies every caregiver and health-team member in the web inbox with no model call; "Cómo me siento" (text or audio) goes through triage and notifies the team only on a red flag. Replies to the patient are fixed text. WhatsApp copies are best effort (`NOTIFY_WHATSAPP`). Screen pending (CIA-35) |
 | Login with 6-digit SMS code | Functional (backend) | `POST /auth/signup`, `/auth/login`, `/auth/verify`, `/auth/logout` (`backend/app/api/auth.py`), code sent by Twilio SMS, session cookie. Web screens not wired yet (CIA-32). A Twilio trial only texts numbers verified in its console |
 | Eval script and 20 cases | In progress | `eval/run_eval.py` built and tested; 4 cases in `eval/cases.csv` (c003 is an emergency), all `dev`, 0 unseen. Scores emergency recall and emergency false alarms on their own lines. Groq's free tier (8,000 tokens/minute) allows only a few reports per minute: run it with `--delay 30` |
 
