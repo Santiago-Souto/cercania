@@ -179,6 +179,8 @@ class Me(BaseModel):
     display_name: str
     phone_last4: str
     memberships: list[Membership]
+    is_admin: bool = False
+    can_add_patients: bool = False  # caregivers only (CIA-48)
 
 
 class MyPatient(BaseModel):
@@ -263,7 +265,7 @@ class Members(BaseModel):
 
 class InviteCreate(BaseModel):
     contact: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=254)]
-    role: RoleName
+    role: RoleName = "family"  # invites are family only (CIA-48); any other role is rejected
 
 
 class MessageSender(BaseModel):
@@ -307,3 +309,25 @@ class MyInvites(BaseModel):
 
 class InviteDeclined(BaseModel):
     status: Literal["declined"]
+
+
+# --- Admin (CIA-48) -------------------------------------------------------------------------
+
+PreRegistrationRole = Literal["caregiver", "family", "patient", "doctor", "nurse", "institution", "admin"]
+
+
+class AdminMembershipIn(BaseModel):
+    role: RoleName
+    confirm_overwrite: bool = False
+
+
+class PreRegistrationIn(BaseModel):
+    phone: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
+    role: PreRegistrationRole
+    patient_id: str | None = None
+    confirm_overwrite: bool = False
+
+
+class PreRegistrationPatch(BaseModel):
+    role: PreRegistrationRole
+    patient_id: str | None = None

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import schemas
+from app import roles, schemas
 from app.deps import current_person_id, get_db
 from app.errors import api_error
 from app.models import (
@@ -47,6 +47,8 @@ def get_me(person_id: str = Depends(current_person_id), db: Session = Depends(ge
         "id": person.id,
         "display_name": person.display_name,
         "phone_last4": person.phone[-4:],
+        "is_admin": roles.is_admin(person),
+        "can_add_patients": roles.is_caregiver(db, person),
         "memberships": [
             {"patient_id": p.id, "display_name": p.display_name, "role": a.role.value}
             for a, p in _memberships(db, person.id)
@@ -131,14 +133,15 @@ def list_my_invites(person_id: str = Depends(current_person_id), db: Session = D
 
 @router.post("/me/invites/{invite_id}/accept", response_model=schemas.Membership)
 def accept_invite(invite_id: str, person_id: str = Depends(current_person_id), db: Session = Depends(get_db)) -> dict:
-    """Creates the membership with the invite's role. If the caller is already a member
+    """Creates a `family` membership (invites are family only, CIA-48). If the caller is already a member
     (e.g. added another way), their current role is kept."""
     person = _me(db, person_id)
     invite = _my_pending_invite(db, person, invite_id)
     access = db.scalar(select(PatientAccess).where(PatientAccess.person_id == person.id,
                                                    PatientAccess.patient_id == invite.patient_id))
     if access is None:
-        access = PatientAccess(person_id=person.id, patient_id=invite.patient_id, role=invite.role)
+        # Invites are family only (CIA-48), whatever an older invite row says.
+        access = PatientAccess(person_id=person.id, patient_id=invite.patient_id, role=Role.family)
         db.add(access)
     invite.status = InviteStatus.accepted
     invite.accepted_at = utcnow()

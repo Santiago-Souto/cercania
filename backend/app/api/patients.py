@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app import schemas
+from app import roles, schemas
 from app.api.auth import normalize_phone
 from app.deps import PatientContext, current_person_id, get_db, patient_access
 from app.errors import api_error
@@ -120,11 +120,14 @@ def create_patient(
 ) -> dict:
     """The creator becomes the patient's caregiver and sets care plan v1.
 
-    Doses are stored as typed (AGENTS.md 7). Any signed-in person may add a patient:
-    a new caregiver has no memberships yet, so there is no per-patient permission to check.
+    Doses are stored as typed (AGENTS.md 7). Only caregivers add patients (CIA-48): a caregiver
+    membership on any patient, or a caregiver an admin registered before assigning patients.
     """
-    if db.get(Person, person_id) is None:
+    person = db.get(Person, person_id)
+    if person is None:
         raise api_error(401, "unauthenticated", "Iniciá sesión para continuar.")
+    if not roles.is_caregiver(db, person):
+        raise api_error(403, "forbidden", "Solo las personas cuidadoras pueden agregar pacientes.")
     patient = Patient(display_name=body.display_name, location=body.location or None)
     db.add(patient)
     db.flush()
@@ -181,8 +184,10 @@ def create_invite(
     if "@" in body.contact:
         raise api_error(400, "phone_invalid",
                         "Invitá por número de celular, no por email: el email no se puede verificar.")
+    if body.role != Role.family.value:
+        raise api_error(422, "family_only", "Las invitaciones son solo para familiares. Los demás roles los asigna una persona administradora.")
     phone = normalize_phone(body.contact)
-    role = Role(body.role)
+    role = Role.family
     already = db.scalar(
         select(PatientAccess.id)
         .join(Person, PatientAccess.person_id == Person.id)

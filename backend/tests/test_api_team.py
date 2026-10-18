@@ -41,6 +41,7 @@ def db():
     for pid, phone in [("cg", "+15550100001"), ("fam", "+15550100002"), ("doc", "+15550100003"),
                        ("new", "+15550100009")]:
         s.add(Person(id=pid, phone=phone, display_name=f"{pid} (ficticio)"))
+    s.get(Person, "new").is_caregiver = True  # caregiver an admin registered before assigning patients (CIA-48)
     s.add(Patient(id="pat_a", display_name="Rosa (ficticia)"))
     for pid, role in [("cg", Role.caregiver), ("fam", Role.family), ("doc", Role.doctor)]:
         s.add(PatientAccess(person_id=pid, patient_id="pat_a", role=role))
@@ -124,14 +125,20 @@ def test_invite_then_members_lists_it_as_pending(db):
     assert m["invites"] == [inv]
 
 
-def test_reinvite_updates_role_instead_of_duplicating(db):
+def test_reinvite_returns_the_pending_invite_instead_of_duplicating(db):
     first = client.post("/patients/pat_a/invites", json={"contact": "+59899111111", "role": "family"},
                         headers=h("cg")).json()
-    r = client.post("/patients/pat_a/invites", json={"contact": "+59899111111", "role": "nurse"},
-                    headers=h("cg"))
+    r = client.post("/patients/pat_a/invites", json={"contact": "+59899111111"}, headers=h("cg"))
     assert r.status_code == 200
-    assert r.json() == {**first, "role": "nurse"}
+    assert r.json() == first
     assert len(db.scalars(select(Invite)).all()) == 1
+
+
+@pytest.mark.parametrize("role", ["caregiver", "doctor", "nurse", "institution", "patient"])
+def test_invites_are_family_only(db, role):
+    r = client.post("/patients/pat_a/invites", json={"contact": "+59899111111", "role": role}, headers=h("cg"))
+    assert r.status_code == 422 and r.json()["error"]["code"] == "family_only"
+    assert db.scalars(select(Invite)).all() == []
 
 
 @pytest.mark.parametrize("contact", ["ana@example.com", "099111111", "+0123"])
@@ -142,7 +149,7 @@ def test_invite_rejects_email_and_bad_numbers(db, contact):
 
 
 def test_invite_existing_member_conflicts(db):
-    r = client.post("/patients/pat_a/invites", json={"contact": "+15550100002", "role": "doctor"},
+    r = client.post("/patients/pat_a/invites", json={"contact": "+15550100002", "role": "family"},
                     headers=h("cg"))
     assert r.status_code == 409
     assert r.json()["error"]["code"] == "already_member"
@@ -168,7 +175,7 @@ def test_members_access(db):
     assert client.get("/patients/pat_a/members", headers=h("new")).status_code == 403
 
 
-def invite_new(role="nurse"):
+def invite_new(role="family"):
     """cg invites the registered non-member `new` (+15550100009)."""
     r = client.post("/patients/pat_a/invites", json={"contact": "+15550100009", "role": role}, headers=h("cg"))
     assert r.status_code == 201
@@ -182,7 +189,7 @@ def test_invited_person_sees_the_invite_and_nothing_is_joined_yet(db):
     [mine] = r.json()["invites"]
     assert {k: mine[k] for k in ("id", "patient_id", "patient_display_name", "role", "invited_by")} == {
         "id": inv, "patient_id": "pat_a", "patient_display_name": "Rosa (ficticia)",
-        "role": "nurse", "invited_by": "cg (ficticio)"}
+        "role": "family", "invited_by": "cg (ficticio)"}
     assert client.get("/me", headers=h("new")).json()["memberships"] == []
     assert client.get("/patients/pat_a/reports", headers=h("new")).status_code == 404
     assert client.get("/me/invites", headers=h("fam")).json() == {"invites": []}
@@ -192,12 +199,12 @@ def test_accepting_creates_the_membership(db):
     inv = invite_new()
     r = client.post(f"/me/invites/{inv}/accept", headers=h("new"))
     assert r.status_code == 200
-    assert r.json() == {"patient_id": "pat_a", "display_name": "Rosa (ficticia)", "role": "nurse"}
+    assert r.json() == {"patient_id": "pat_a", "display_name": "Rosa (ficticia)", "role": "family"}
     assert db.get(Invite, inv).status == InviteStatus.accepted
     assert client.get("/patients/pat_a/reports", headers=h("new")).status_code == 200
     assert client.get("/me/invites", headers=h("new")).json() == {"invites": []}
     m = client.get("/patients/pat_a/members", headers=h("cg")).json()
-    assert ("new", "nurse") in [(x["user_id"], x["role"]) for x in m["members"]]
+    assert ("new", "family") in [(x["user_id"], x["role"]) for x in m["members"]]
     assert m["invites"] == []
     # No longer pending: a second accept is a 404.
     assert client.post(f"/me/invites/{inv}/accept", headers=h("new")).status_code == 404
@@ -257,7 +264,7 @@ def test_invite_insert_race_updates_the_winner(db, monkeypatch):
         return None if len(calls) == 1 else real(*args)
 
     monkeypatch.setattr(patients_api, "_pending_invite", first_misses)
-    r = client.post("/patients/pat_a/invites", json={"contact": "+59899111111", "role": "nurse"}, headers=h("cg"))
+    r = client.post("/patients/pat_a/invites", json={"contact": "+59899111111", "role": "family"}, headers=h("cg"))
     assert r.status_code == 200, r.text
-    assert r.json()["id"] == winner.id and r.json()["role"] == "nurse"
+    assert r.json()["id"] == winner.id and r.json()["role"] == "family"
     assert len(db.scalars(select(Invite)).all()) == 1
