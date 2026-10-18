@@ -2,9 +2,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { ChevronLeftIcon, MessageCircleIcon, MicIcon, UsersIcon } from "lucide-react";
+import { ChevronLeftIcon, MessageCircleIcon, MicIcon, TriangleAlertIcon, UsersIcon } from "lucide-react";
 import { AppShell, Brand, BottomNav } from "@/components/app/shell";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { EmergencyCallButton } from "@/components/app/emergency-call";
+import { EmergencyContactCard } from "@/components/app/emergency-contact-card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -53,6 +56,17 @@ export default async function PatientHome(props: PageProps<"/patients/[id]">) {
           </Link>
         </Button>
 
+        {last?.red_flag && (
+          <Alert variant="danger">
+            <TriangleAlertIcon />
+            <AlertTitle className="font-heading text-lg font-bold">Señal de alarma en el último reporte</AlertTitle>
+            <AlertDescription className="flex flex-col gap-2 text-[15px]">
+              <strong>Contactá a emergencias o al médico.</strong>
+              <EmergencyCallButton contact={patient.emergency_contact} className="self-start" />
+            </AlertDescription>
+          </Alert>
+        )}
+
         {healthTeam && (
           <Button asChild size="xl" variant="outline-primary">
             <Link href={`/patients/${id}/messages` as Route}>
@@ -89,6 +103,8 @@ export default async function PatientHome(props: PageProps<"/patients/[id]">) {
             </Button>
           </CardContent>
         </Card>
+
+        <EmergencyContactCard patientId={id} contact={patient.emergency_contact} canEdit={role === "caregiver" || role === "doctor"} />
 
         {last && (
           <section className="flex flex-col gap-2.5">

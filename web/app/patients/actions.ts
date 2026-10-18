@@ -4,9 +4,9 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { acceptInvite, ApiError, createInvite, createPatient, declineInvite } from "@/lib/api";
+import { acceptInvite, ApiError, createInvite, createPatient, declineInvite, setEmergencyContact } from "@/lib/api";
 import { checkPhone } from "@/lib/team";
-import type { NewPatient, Role } from "@/lib/types";
+import type { EmergencyContact, NewPatient, Role } from "@/lib/types";
 
 export type ActionError = { code: string; message: string };
 
@@ -45,6 +45,17 @@ export async function createPatientAction(
   revalidatePath("/patients");
   if (inviteErrors.length) return { patientId, inviteErrors };
   redirect(`/patients/${patientId}`);
+}
+
+/** PATCH /patients/{id}/emergency-contact (caregiver and doctor; `null` clears it). */
+export async function updateEmergencyContactAction(patientId: string, contact: EmergencyContact | null): Promise<{ error: ActionError } | { ok: true }> {
+  try {
+    await setEmergencyContact(patientId, contact);
+  } catch (e) {
+    return { error: asError(e) };
+  }
+  revalidatePath(`/patients/${patientId}`);
+  return { ok: true };
 }
 
 /** POST /patients/{id}/invites from the team page. */

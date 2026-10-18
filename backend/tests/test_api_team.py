@@ -261,3 +261,61 @@ def test_invite_insert_race_updates_the_winner(db, monkeypatch):
     assert r.status_code == 200, r.text
     assert r.json()["id"] == winner.id and r.json()["role"] == "nurse"
     assert len(db.scalars(select(Invite)).all()) == 1
+
+
+# --- Emergency contact (CIA-51) ---
+
+def test_emergency_contact_permission_matrix():
+    from app.models import ROLE_PERMISSIONS, Permission
+    allowed = {r for r, perms in ROLE_PERMISSIONS.items() if Permission.edit_emergency_contact in perms}
+    assert allowed == {Role.caregiver, Role.doctor}
+
+
+def test_create_patient_with_and_without_emergency_contact(db):
+    r = client.post("/patients", json={"display_name": "Ana (ficticia)"}, headers=h("cg"))
+    assert r.json()["emergency_contact"] is None
+    body = {"display_name": "Ana (ficticia)",
+            "emergency_contact": {"name": " Emergencias Residencia ", "phone": "+598 99 111 222"}}
+    r = client.post("/patients", json=body, headers=h("cg"))
+    assert r.status_code == 201, r.text
+    assert r.json()["emergency_contact"] == {"name": "Emergencias Residencia", "phone": "+59899111222"}
+    assert client.get(f"/patients/{r.json()['id']}", headers=h("cg")).json()["emergency_contact"]["phone"] == "+59899111222"
+
+
+def test_create_patient_rejects_bad_emergency_phone(db):
+    body = {"display_name": "Ana", "emergency_contact": {"name": "X", "phone": "099111111"}}
+    r = client.post("/patients", json=body, headers=h("cg"))
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "phone_invalid"
+    assert db.scalar(select(Patient).where(Patient.id != "pat_a")) is None
+
+
+@pytest.mark.parametrize("person", ["cg", "doc"])
+def test_caregiver_and_doctor_set_and_clear_emergency_contact(db, person):
+    r = client.patch("/patients/pat_a/emergency-contact",
+                     json={"name": "Residencia (ficticia)", "phone": "+15550100077"}, headers=h(person))
+    assert r.status_code == 200, r.text
+    assert r.json()["emergency_contact"] == {"name": "Residencia (ficticia)", "phone": "+15550100077"}
+    assert client.get("/patients/pat_a", headers=h("fam")).json()["emergency_contact"]["name"] == "Residencia (ficticia)"
+    r = client.patch("/patients/pat_a/emergency-contact", content="null",
+                     headers=h(person) | {"Content-Type": "application/json"})
+    assert r.status_code == 200
+    assert r.json()["emergency_contact"] is None
+
+
+def test_other_roles_cannot_edit_emergency_contact(db):
+    db.add(Person(id="nur", phone="+15550100004", display_name="nur"))
+    db.add(PatientAccess(person_id="nur", patient_id="pat_a", role=Role.nurse))
+    db.commit()
+    for person in ("fam", "nur"):
+        r = client.patch("/patients/pat_a/emergency-contact",
+                         json={"name": "X", "phone": "+15550100077"}, headers=h(person))
+        assert r.status_code == 403
+        assert r.json()["error"]["code"] == "forbidden"
+    assert client.get("/patients/pat_a", headers=h("cg")).json()["emergency_contact"] is None
+
+
+def test_patch_emergency_contact_invalid_phone_is_422(db):
+    r = client.patch("/patients/pat_a/emergency-contact", json={"name": "X", "phone": "abc"}, headers=h("cg"))
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "phone_invalid"

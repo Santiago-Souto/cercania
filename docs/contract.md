@@ -211,11 +211,12 @@ Permission: `read_care_plan` (all roles). Errors: `401`, `404 not_found`.
     ],
     "indications": ["Encourage fluids", "Assist when walking"],
     "allergies": []
-  }
+  },
+  "emergency_contact": { "name": "Emergencias Residencia", "phone": "+59899123456" }
 }
 ```
 
-`care_plan` is the active plan (`null` if none). `location` has no storage yet and is always `null`. The doctor edits the plan (new plan version); the edit endpoint is Pending.
+`emergency_contact` is the number the app offers to call when an emergency is shown (`null` when not set; the web then offers 911). Stored in the patient's `health_provider_name` / `health_provider_phone` columns. It is contact information: the server never calls or texts it. `care_plan` is the active plan (`null` if none). `location` has no storage yet and is always `null`. The doctor edits the plan (new plan version); the edit endpoint is Pending.
 
 ### `GET /patients/{patient_id}/reports`
 
@@ -418,7 +419,7 @@ Marks all of the caller's unread web notifications as read. Returns `{ "updated"
 Triggered when triage says emergency (AGENTS.md 4.2), from any registered sender. Dispatch is in `backend/app/notify.py`.
 
 - **Reply first**: the sender gets the fixed emergency text (no checklist questions). Dispatch runs after the reply, as a background task of the web endpoint.
-- **Recipients are decided in code** (`models.emergency_recipients`): every caregiver and family member with access to the patient. **Never** the patient, the doctor role, or the sender. The patient's registered health provider contact is stored as contact information only; it has no inbox, so it is not notified.
+- **Recipients are decided in code** (`models.emergency_recipients`): every caregiver and family member with access to the patient. **Never** the patient, the doctor role, or the sender. The patient's emergency contact is stored as contact information only; it has no inbox, so it is not notified. The web shows a `tel:` call button to it (or to 911 when none is set) wherever an emergency is shown; nothing is called automatically.
 - **Channel**: `web` only. A `sent` row per recipient, shown in the inbox (`GET /me/notifications`) and polled by the web. `failed` and `skipped` statuses exist for old rows; nothing writes them now.
 - **Message**: title `Emergencia: <patient>`; body with the sender's name, the local time and the triage reason. No transcript and no clinical advice.
 - **Idempotent**: recipients that already have a row for the alert are not notified again; dispatch returns all rows. Dispatch never raises.
@@ -491,7 +492,11 @@ Deletes the session server-side and clears the cookie. Returns `{ "status": "log
 }
 ```
 
-`location` is optional free text and is `null` when not set. Returns `201` with the patient as in `GET /patients/{patient_id}`. Any signed-in person may add a patient; the creator becomes `caregiver` and sets the initial care plan (version 1); after that only a `doctor` can edit it. Doses are stored as entered; nothing is computed. Each medication needs `name` and `dose` (1-120 characters); `times` are `HH:MM`. `care_plan` may be omitted (empty plan). Errors: `401`; `422 invalid_request` (empty name, bad time, too long).
+`location` is optional free text and is `null` when not set. `emergency_contact` (`{ name, phone }`) is optional; the phone is normalized to E.164 like other phones. Returns `201` with the patient as in `GET /patients/{patient_id}`. Any signed-in person may add a patient; the creator becomes `caregiver` and sets the initial care plan (version 1); after that only a `doctor` can edit it. Doses are stored as entered; nothing is computed. Each medication needs `name` and `dose` (1-120 characters); `times` are `HH:MM`. `care_plan` may be omitted (empty plan). Errors: `401`; `422 invalid_request` (empty name, bad time, too long); `422 phone_invalid` (emergency contact phone without country code).
+
+### `PATCH /patients/{patient_id}/emergency-contact`
+
+Permission: `edit_emergency_contact` (**caregiver and doctor** only; other roles get `403 forbidden`). Body: `{ "name": "Emergencias Residencia", "phone": "+598 99 123 456" }` to set, or the JSON `null` to clear. Name 1-120 characters; the phone is normalized to E.164. Returns `200` with the patient as in `GET /patients/{patient_id}`. Errors: `401`, `403`, `404`, `422 invalid_request` (empty name, malformed body), `422 phone_invalid` (message in Spanish, same text as other phone errors).
 
 ### `GET /patients/{patient_id}/members`
 

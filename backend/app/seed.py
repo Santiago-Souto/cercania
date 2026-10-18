@@ -11,7 +11,7 @@ History is shaped so code-based comparison has something to find:
 - Dra. Marta (doc_001) is the doctor for all three and authored their care plans.
 - Nadia (nur_001) is the nurse for Rosa and Jorge.
 - Jorge has his own login (ptl_002, role patient): he can read his care plan, not reports.
-- Rosa and Jorge have a registered health provider (emergency notifications);
+- Rosa and Jorge have an emergency contact (call button);
   Elena has none, to exercise the "no provider registered" path.
 
 Seeded reports use channel="seed" and model="seed" so they are never mistaken

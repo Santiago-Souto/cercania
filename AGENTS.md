@@ -77,7 +77,7 @@ Triggered when triage says emergency, for any registered sender.
 
 1. **Answer the sender immediately** with the fixed message: contact emergency services or the physician. No checklist questions in this reply.
 2. **Store** the report with `red_flag = true` and create an alert of type `emergency`, carrying the triage reason and quote, plus that quote's verification status.
-3. **Notify in the web inbox**: the other caregivers and family members with access to that patient (never the patient, never the sender). Record each notification on the alert and in the `notification` table; the app polls the inbox every ~5 s and shows a browser Notification while the tab is open. The patient's registered health provider contact is stored as contact information only: with no inbox it is not notified.
+3. **Notify in the web inbox**: the other caregivers and family members with access to that patient (never the patient, never the sender). Record each notification on the alert and in the `notification` table; the app polls the inbox every ~5 s and shows a browser Notification while the tab is open. The patient's **emergency contact** (name + phone, reusing the `health_provider_*` columns) has no inbox, so it is never notified by the server. Wherever the web shows an emergency (result after sending a report, banner on the patient, emergency alerts) it adds a `tel:` call button to that number, labeled with its name, or "Llamar al 911" when none is set. The fixed reply text does not change; nothing is called automatically (CIA-51).
 4. The web shows the emergency as a banner on the patient and in the alerts panel.
 
 There is no push channel outside the app: a recipient sees the emergency when they open the web app (or have it open). If the inbox write fails, the failure is logged on the server (dispatch is idempotent, so it can be re-run); never fail silently.
@@ -89,7 +89,7 @@ Appetite, sleep, urination/diuresis, medication, mood, mobility, pain, incidents
 
 ## 5. Data model (design rules)
 
-Schema lives in `backend/app/models.py`. Entities: `person` (anyone who logs in; name, email, phone number = identity; "user" in the contract), `patient_access` (person + patient + role; "membership" in the contract, see section 6), `invite` (pending membership by phone number), `login_code` (hashed 6-digit code sent by SMS, expiry, attempts, used flag), `auth_session` (hashed web session token), `patient` (optionally a registered health provider contact: name + phone, shown as contact information only), `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient). `message_read` records who opened the thread after each message.
+Schema lives in `backend/app/models.py`. Entities: `person` (anyone who logs in; name, email, phone number = identity; "user" in the contract), `patient_access` (person + patient + role; "membership" in the contract, see section 6), `invite` (pending membership by phone number), `login_code` (hashed 6-digit code sent by SMS, expiry, attempts, used flag), `auth_session` (hashed web session token), `patient` (optionally an emergency contact: name + phone in the `health_provider_*` columns, exposed as `emergency_contact`; a call button target, never notified by the server), `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient). `message_read` records who opened the thread after each message.
 
 Rules:
 - Structured data in Postgres; binaries (audio, images, documents) in object storage. `file` stores only the storage path and metadata.
@@ -106,8 +106,8 @@ One web app, same data, a view per role. Roles are per patient (`patient_access`
 
 | Role | Can do |
 |---|---|
-| Caregiver | Send reports (web, audio or text), confirm/correct, query, see timeline and alerts, add patients (with their initial care plan) and invite people |
-| Health team (doctor, nurse, hospital/institution) | See assigned patients, reports, alerts and query; reply to family messages. The **doctor** is the only role that edits the care plan after creation (each edit = new plan version) |
+| Caregiver | Send reports (web, audio or text), confirm/correct, query, see timeline and alerts, add patients (with their initial care plan and optional emergency number), edit the emergency number, and invite people |
+| Health team (doctor, nurse, hospital/institution) | See assigned patients, reports, alerts and query; reply to family messages. The **doctor** is the only role that edits the care plan after creation (each edit = new plan version); the doctor can also edit the emergency number |
 | Family | Read-only summary and alerts; message the health team |
 | Patient | Only two actions: tell how they feel (audio or text) and press "I need help". **No access to reports or alerts about them.** |
 
@@ -250,5 +250,4 @@ Problem: the shift handoff gets lost. Live demo: a juror dictates a report, sees
 - Final checklist item list (section 4) once validated with a caregiver contact.
 - Emergency triage criteria (section 4.2): the prompt in `triage.py` is provisional. It currently treats a past event the message says was attended, with the patient now fine ("se cayó a la mañana, la vio el médico, está bien"), as **not** an emergency, and anything unclear as an emergency. Confirm or change.
 - Whether to add a deterministic phrase list as a second safety net next to the model (rejected for now, Oct 17).
-- "Health provider" contact: who it is (residential center, emergency service, doctor) and where it lives (field on `patient` vs a contact table). It is contact information only until a channel to reach it exists.
 - Messages from family/doctor/patient that are not emergencies only get a link for now; revisit (e.g. family questions answered with `query.py`).

@@ -13,6 +13,7 @@ import type {
   Membership,
   Message,
   MyInvite,
+  EmergencyContact,
   MyPatient,
   NewPatient,
   Patient,
@@ -87,6 +88,10 @@ export async function getMembers(patientId: string): Promise<{ members: Member[]
 
 export async function createPatient(body: NewPatient): Promise<Patient> {
   return request<Patient>(`/patients`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function setEmergencyContact(patientId: string, contact: EmergencyContact | null): Promise<Patient> {
+  return request<Patient>(`/patients/${patientId}/emergency-contact`, { method: "PATCH", body: JSON.stringify(contact) });
 }
 
 export async function createInvite(patientId: string, contact: string, role: Role): Promise<Invite> {

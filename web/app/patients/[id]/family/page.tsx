@@ -7,6 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmergencyCallButton } from "@/components/app/emergency-call";
 import { getPatient, getReports } from "@/lib/api";
 import { CHECKLIST_LABEL, dayTime, firstName } from "@/lib/format";
 
@@ -39,6 +40,7 @@ export default async function FamilyPage(props: PageProps<"/patients/[id]/family
           <Alert key={r.id} variant="danger-soft">
             <AlertTitle className="font-bold">{dayTime(r.created_at)}: se reportó una señal de alarma</AlertTitle>
             <AlertDescription className="text-sm">El equipo fue avisado. Ante cualquier duda, contactá a la residencia.</AlertDescription>
+            <EmergencyCallButton contact={patient.emergency_contact} className="mt-2" />
           </Alert>
         ))}
 

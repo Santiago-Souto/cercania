@@ -39,10 +39,16 @@ class CarePlan(BaseModel):
     allergies: list[str]
 
 
+class EmergencyContact(BaseModel):
+    name: str
+    phone: str
+
+
 class Patient(BaseModel):
     id: str
     display_name: str
     location: str | None = None
+    emergency_contact: EmergencyContact | None = None
     care_plan: CarePlan | None = None
 
 
@@ -237,10 +243,16 @@ class CarePlanIn(BaseModel):
     allergies: list[_Line] = Field(default_factory=list, max_length=50)
 
 
+class EmergencyContactIn(BaseModel):
+    name: _Text120
+    phone: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
+
+
 class PatientCreate(BaseModel):
     display_name: _Text120
     location: Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)] | None = None
     care_plan: CarePlanIn = Field(default_factory=CarePlanIn)
+    emergency_contact: EmergencyContactIn | None = None
 
 
 class Member(BaseModel):
