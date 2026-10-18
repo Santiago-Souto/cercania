@@ -53,7 +53,9 @@ MSG_SMS = "Tu código de CercanIA es {code}. Vence en {minutes} minutos. No lo c
 
 
 def code_ttl_minutes() -> int:
-    return int(os.environ.get("LOGIN_CODE_TTL_MINUTES") or 10)
+    ttl = int(os.environ.get("LOGIN_CODE_TTL_MINUTES") or 10)
+    # The trial template's text says the code expires in 5 minutes; never promise more.
+    return min(ttl, sms.TRIAL_TEMPLATE_TTL_MINUTES) if sms.trial_template() else ttl
 
 
 def session_ttl() -> timedelta:
@@ -114,18 +116,31 @@ def _check_rate_limit(db: Session, phone: str) -> None:
         raise api_error(429, "too_many_requests", "Pediste demasiados códigos. Probá de nuevo en una hora.")
 
 
-def _new_code(db: Session, phone: str, signup_name: str | None = None,
-              signup_email: str | None = None) -> str:
-    """Stores a fresh code for the phone and retires any earlier unused one."""
+def _issue_code(db: Session, phone: str, send: bool, signup_name: str | None = None,
+                signup_email: str | None = None) -> sms.SmsResult | None:
+    """Sends (when `send`) and stores a fresh code for the phone, retiring any earlier
+    unused one. Returns the delivery result, or None when nothing was sent."""
+    code, result = None, None
+    if send and sms.trial_template():
+        # SIMULATED: a Twilio trial only sends predefined templates; the template writes
+        # its own code into the text, which Twilio echoes back. See sms.trial_template.
+        result = sms.send_sms(phone, sms.trial_template())
+        code = sms.code_in(result.body) if result.ok else None
+        if result.ok and code is None:
+            result = sms.SmsResult(False, None, "La plantilla de Twilio no devolvió un código.")
+    elif send:
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        result = _deliver(phone, code)
+    code = code or f"{secrets.randbelow(1_000_000):06d}"  # unsent: nobody can know it
+
     db.execute(update(LoginCode).where(LoginCode.phone == phone, LoginCode.used_at.is_(None))
                .values(used_at=utcnow()))
-    code = f"{secrets.randbelow(1_000_000):06d}"
     salt = secrets.token_hex(16)
     db.add(LoginCode(phone=phone, code_hash=_hash_code(salt, phone, code), salt=salt,
                      signup_name=signup_name, signup_email=signup_email,
                      expires_at=utcnow() + timedelta(minutes=code_ttl_minutes())))
     db.commit()
-    return code
+    return result
 
 
 def _deliver(phone: str, code: str) -> sms.SmsResult:
@@ -149,11 +164,10 @@ def signup(body: SignupIn, db: Session = Depends(get_db)) -> dict:
     _check_rate_limit(db, phone)
     known = db.scalar(select(Person.id).where(Person.phone == phone)) is not None
     if known:
-        code = _new_code(db, phone)
+        result = _issue_code(db, phone, send=True)
     else:
-        code = _new_code(db, phone, signup_name=body.name, signup_email=body.email or None)
+        result = _issue_code(db, phone, send=True, signup_name=body.name, signup_email=body.email or None)
     # Both branches text the phone, so reporting a failed SMS reveals nothing.
-    result = _deliver(phone, code)
     if not result.ok:
         raise api_error(502, "sms_unreachable",
                         "No pudimos mandar el SMS a ese número. Revisalo y probá de nuevo en un minuto.")
@@ -167,11 +181,10 @@ def login(body: LoginIn, db: Session = Depends(get_db)) -> dict:
     an error here would only ever happen for registered phones."""
     phone = normalize_phone(body.phone)
     _check_rate_limit(db, phone)
-    code = _new_code(db, phone)
-    if db.scalar(select(Person.id).where(Person.phone == phone)) is not None:
-        result = _deliver(phone, code)
-        if not result.ok:
-            log.error("Login code to %s not delivered: %s", mask(phone), result.error)
+    known = db.scalar(select(Person.id).where(Person.phone == phone)) is not None
+    result = _issue_code(db, phone, send=known)
+    if result is not None and not result.ok:
+        log.error("Login code to %s not delivered: %s", mask(phone), result.error)
     return _code_sent(phone)
 
 

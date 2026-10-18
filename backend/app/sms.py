@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass
 
 import httpx
@@ -20,13 +21,31 @@ TWILIO_API = "https://api.twilio.com/2010-04-01"
 
 # Twilio error: a trial account can only text numbers verified in its console.
 TRIAL_UNVERIFIED = 21608
+TRIAL_TEMPLATE_TTL_MINUTES = 5  # what the sms_2fa template's text promises
 
 
 @dataclass
 class SmsResult:
     ok: bool
-    code: int | None = None
+    code: int | None = None  # Twilio error code
     error: str | None = None
+    body: str | None = None  # the text Twilio says it sent
+
+
+def trial_template() -> str | None:
+    """SIMULATED security, demo only. A Twilio trial account (One Console) rejects free
+    text ("Trial accounts can only use predefined SMS templates"). Its `sms_2fa`
+    template writes a verification code into the text itself and echoes the text
+    back, so auth reads the code from the response. On a trial that code is the
+    SAME every time, so anyone who knows it can log in as any registered phone:
+    use only with fictional data, like ALLOW_DEV_IDENTITY_HEADER. Unset in any
+    real deploy (an upgraded account sends our own random code)."""
+    return os.environ.get("TWILIO_TRIAL_TEMPLATE") or None
+
+
+def code_in(text: str | None) -> str | None:
+    match = re.search(r"\b(\d{6})\b", text or "")
+    return match.group(1) if match else None
 
 
 def configured() -> bool:
@@ -58,7 +77,11 @@ def send_sms(to: str, body: str, client: httpx.Client | None = None) -> SmsResul
             auth=(sid, os.environ["TWILIO_AUTH_TOKEN"]),
         )
         if response.status_code in (200, 201):
-            return SmsResult(True)
+            try:
+                body = response.json().get("body")
+            except ValueError:
+                body = None
+            return SmsResult(True, body=body)
         try:
             err = response.json()
         except ValueError:

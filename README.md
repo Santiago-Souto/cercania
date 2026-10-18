@@ -40,6 +40,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 ### Simulated
 
 - **Caller identity (dev fallback):** the API identifies the caller by the session cookie from `POST /auth/verify`. Until the web login is wired (CIA-32), the web app can still send an `X-Person-Id` header from `NEXT_PUBLIC_DEV_PERSON_ID` (e.g. `cg_001`; `web/lib/api-shared.ts`); anyone can claim any id, so it is honored only with `ALLOW_DEV_IDENTITY_HEADER=1` (local dev / demo with fictional data). Not for real data.
+- **Login code on the Twilio trial (demo only):** a trial account only sends predefined templates, so with `TWILIO_TRIAL_TEMPLATE=sms_2fa` the backend sends Twilio's `sms_2fa` template and reads the code from Twilio's reply. A real SMS arrives, but on the trial that code is **always the same**, so anyone who knows it can log in as any registered phone. Only with fictional data; leave it unset once the account is upgraded (then our own random code is sent).
 - **Login code delivery (dev only):** with `AUTH_DEV_LOG_CODES=1` the code is written to the API log instead of being texted, for local dev without Twilio. Never set in a real deploy.
 - **Fake model clients** exist only in the backend tests. The running app calls the real models.
 - Patient, care plan and history data are fictional seed data (`backend/app/seed.py`). Seeded reports are marked `channel="seed"`, `model="seed"`: they are fixtures, not model output.

@@ -56,6 +56,7 @@ def texts(monkeypatch):
 
     monkeypatch.setattr(sms, "send_sms", fake_send)
     monkeypatch.delenv("AUTH_DEV_LOG_CODES", raising=False)
+    monkeypatch.delenv("TWILIO_TRIAL_TEMPLATE", raising=False)
     monkeypatch.delenv("ALLOW_DEV_IDENTITY_HEADER", raising=False)
     return sent
 
@@ -126,12 +127,14 @@ def test_signup_known_phone_sends_login_code_and_keeps_person(db, texts, client)
 
 
 def test_signup_sms_failure_is_reported(db, monkeypatch, client):
+    monkeypatch.delenv("TWILIO_TRIAL_TEMPLATE", raising=False)
     monkeypatch.setattr(sms, "send_sms", lambda to, body, client=None: sms.SmsResult(False, 21608, "unverified"))
     r = client.post("/auth/signup", json={"name": "Nueva", "phone": NEW})
     assert r.status_code == 502 and r.json()["error"]["code"] == "sms_unreachable"
 
 
 def test_login_sms_failure_still_code_sent(db, monkeypatch, client):
+    monkeypatch.delenv("TWILIO_TRIAL_TEMPLATE", raising=False)
     monkeypatch.setattr(sms, "send_sms", lambda to, body, client=None: sms.SmsResult(False, None, "down"))
     r = client.post("/auth/login", json={"phone": KNOWN})
     assert r.status_code == 200 and r.json()["status"] == "code_sent"
@@ -290,3 +293,53 @@ def test_send_sms_network_error(twilio_env):
 def test_send_sms_not_configured(monkeypatch):
     monkeypatch.delenv("TWILIO_ACCOUNT_SID", raising=False)
     assert not sms.send_sms(KNOWN, "hola").ok
+
+
+# --- Twilio trial template (SIMULATED security, demo only) --------------------------------
+
+
+TRIAL_TEXT = "Your verification code is 482913. It expires in 5 minutes. Do not share it. Test message from Twilio."
+
+
+@pytest.fixture
+def trial(db, monkeypatch):
+    sent = []
+
+    def fake_send(to, body, client=None):
+        sent.append((to, body))
+        return sms.SmsResult(True, body=TRIAL_TEXT)
+
+    monkeypatch.setattr(sms, "send_sms", fake_send)
+    monkeypatch.setenv("TWILIO_TRIAL_TEMPLATE", "sms_2fa")
+    monkeypatch.delenv("ALLOW_DEV_IDENTITY_HEADER", raising=False)
+    return sent
+
+
+def test_trial_template_sends_template_name_and_accepts_its_code(trial, client):
+    r = client.post("/auth/login", json={"phone": KNOWN})
+    assert r.json()["expires_in_sec"] == 300  # the template text says 5 minutes
+    assert trial == [(KNOWN, "sms_2fa")]
+    r = client.post("/auth/verify", json={"phone": KNOWN, "code": "482913"})
+    assert r.status_code == 200 and r.json()["user"]["id"] == "cg"
+
+
+def test_trial_template_unknown_phone_gets_no_usable_code(trial, client):
+    client.post("/auth/login", json={"phone": NEW})
+    assert trial == []
+    r = client.post("/auth/verify", json={"phone": NEW, "code": "482913"})
+    assert r.status_code == 400
+
+
+def test_trial_template_without_code_is_a_failed_send(db, monkeypatch, client):
+    monkeypatch.setenv("TWILIO_TRIAL_TEMPLATE", "sms_2fa")
+    monkeypatch.setattr(sms, "send_sms", lambda to, body, client=None: sms.SmsResult(True, body="Hello"))
+    r = client.post("/auth/signup", json={"name": "Nueva", "phone": NEW})
+    assert r.status_code == 502 and r.json()["error"]["code"] == "sms_unreachable"
+
+
+def test_send_sms_returns_twilio_body(twilio_env):
+    def handler(request):
+        return httpx.Response(201, json={"sid": "SM1", "body": TRIAL_TEXT})
+
+    result = sms.send_sms(KNOWN, "sms_2fa", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert result.body == TRIAL_TEXT and sms.code_in(result.body) == "482913"

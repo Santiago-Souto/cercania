@@ -439,7 +439,7 @@ The web app keeps the session in a cookie (`cercania_session`) set by `POST /aut
 { "phone": "+59899000000" }
 ```
 
-Both send a 6-digit code by SMS to the phone and reply:
+Both send a 6-digit code by SMS to the phone and reply (with `TWILIO_TRIAL_TEMPLATE` set, the code comes from Twilio's trial template and `expires_in_sec` is 300; see README "Simulated"):
 
 ```json
 { "status": "code_sent", "phone_last4": "0000", "expires_in_sec": 600, "resend_after_sec": 60 }
