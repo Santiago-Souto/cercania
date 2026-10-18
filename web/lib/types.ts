@@ -145,7 +145,12 @@ export type AppNotification = {
 };
 
 export type Citation = {
-  report_id: string;
+  /** A caregiver report, or what the patient said about themselves (CIA-62; never sent to family). */
+  source: "report" | "patient_message";
+  report_id: string | null;
+  patient_message_id: string | null;
+  /** When the cited report or message was received. */
+  created_at: string | null;
   quote: string;
   // null when the report has no segments (typed) or the quote is not in them (docs/contract.md).
   audio_start_sec: number | null;

@@ -308,7 +308,7 @@ Errors: `401`; `404 not_found`; `403 forbidden` (role is not caregiver); `409 no
 
 ### `POST /patients/{patient_id}/query`
 
-Permission: `read_reports`. Cited answer over the patient's reports from the last 14 days (at most 30, newest first). Model: Groq `openai/gpt-oss-120b` by default (`QUERY_MODEL` overrides; `query.py`).
+Permission: `read_reports`. Cited answer over the patient's reports from the last 14 days (at most 30, newest first) and, when the caller's role also has `read_patient_messages` (caregiver, doctor, nurse, institution; **not family**), the patient's own "how I feel" messages (`kind: feeling` with text) from the same window (at most 30). Help requests have no text and are not included. Asking does not mark messages as seen (CIA-62). Model: Groq `openai/gpt-oss-120b` by default (`QUERY_MODEL` overrides; `query.py`).
 
 ```json
 { "question": "Did she take the evening medication yesterday?" }
@@ -320,7 +320,10 @@ Permission: `read_reports`. Cited answer over the patient's reports from the las
 {
   "answer": "El reporte de ayer a las 21:05 no menciona la medicación de las 20:00.",
   "citations": [
-    { "report_id": "rep_122", "quote": "…", "audio_start_sec": null, "audio_end_sec": null }
+    { "source": "report", "report_id": "rep_122", "patient_message_id": null, "created_at": "2026-10-17T21:05:00Z",
+      "quote": "…", "audio_start_sec": null, "audio_end_sec": null },
+    { "source": "patient_message", "report_id": null, "patient_message_id": "pm_031", "created_at": "2026-10-18T09:12:00Z",
+      "quote": "me duele la rodilla", "audio_start_sec": null, "audio_end_sec": null }
   ],
   "confidence": "answered",
   "note": null
@@ -328,9 +331,10 @@ Permission: `read_reports`. Cited answer over the patient's reports from the las
 ```
 
 - `confidence` is `answered` or `unclear`. If the records do not contain the answer, return `unclear` and say so; never guess.
-- Every citation is checked in code: `report_id` must be one of the reports sent to the model and the quote must verify against that report's transcript. Unverified citations are dropped. An `answered` reply with no surviving citation becomes `unclear` with a note.
-- `audio_start_sec` / `audio_end_sec` come from the report's transcript segments by the rule in Transcript segments; `null` when there are none or the quote is not in them.
-- With no reports in the window, the answer is `unclear` with `citations: []` and no model call.
+- `source` says what is cited: a caregiver `report` (`report_id` set) or a `patient_message` (`patient_message_id` set; the patient's own words, which the answer attributes to the patient and never presents as a clinical finding). `created_at` is when that report or message was received.
+- Every citation is checked in code: its id must be one of the reports or patient messages sent to the model and the quote must verify against that source's text (report transcript or message text). Unverified citations are dropped. An `answered` reply with no surviving citation becomes `unclear` with a note.
+- `audio_start_sec` / `audio_end_sec` come from the report's transcript segments by the rule in Transcript segments; `null` when there are none, the quote is not in them, or the citation is a patient message.
+- With nothing the caller may read in the window (no reports, and no patient messages or none they may read), the answer is `unclear` with `citations: []` and no model call.
 
 Errors: `401`; `404`; `403` (role without `read_reports`, i.e. patient); `422 invalid_request` (empty or too long question); `502 query_failed` (model unavailable, timed out, refused, or returned an unusable answer; the message is safe to show and asks to retry).
 

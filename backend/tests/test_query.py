@@ -16,6 +16,9 @@ from app.models import (
     Base,
     Patient,
     PatientAccess,
+    PatientMessage,
+    PatientMessageKind,
+    PatientMessageSeen,
     Person,
     Report,
     ReportKind,
@@ -65,7 +68,7 @@ def db():
     session = Session(engine)
     session.add(Patient(id="pat_x", display_name="Rosa (ficticia)"))
     session.add(Patient(id="pat_y", display_name="Otro (ficticio)"))
-    for pid, role in [("cg", Role.caregiver), ("fam", Role.family), ("pt", Role.patient)]:
+    for pid, role in [("cg", Role.caregiver), ("fam", Role.family), ("pt", Role.patient), ("nur", Role.nurse)]:
         session.add(Person(id=pid, phone=f"+1555020000{pid}", display_name=pid))
         session.add(PatientAccess(person_id=pid, patient_id="pat_x", role=role))
     session.add(Person(id="out", phone="+1555020000out", display_name="out"))
@@ -104,13 +107,15 @@ client = TestClient(app)
 
 
 def test_answered_with_verified_citation(db, report, fake):
-    fake["client"] = FakeClient(model_reply([{"report_id": "rep_1", "quote": "le di la medicación de las ocho"}]))
+    fake["client"] = FakeClient(model_reply([{"source_id": "rep_1", "quote": "le di la medicación de las ocho"}]))
     r = client.post(URL, json=BODY, headers=AS_CAREGIVER)
     assert r.status_code == 200
     body = r.json()
     assert body["confidence"] == "answered"
-    assert body["citations"] == [{"report_id": "rep_1", "quote": "le di la medicación de las ocho",
-                                  "audio_start_sec": 0.0, "audio_end_sec": 3.5}]
+    [cit] = body["citations"]
+    assert cit.pop("created_at")  # when the report was received
+    assert cit == {"source": "report", "report_id": "rep_1", "patient_message_id": None,
+                   "quote": "le di la medicación de las ocho", "audio_start_sec": 0.0, "audio_end_sec": 3.5}
     call = fake["client"].calls[0]
     assert call["model"] == query_mod.llm.parse_model(FAKE_MODEL)[1]  # llm.py drops the provider prefix
     assert call["output_config"]["format"]["type"] == "json_schema"
@@ -119,8 +124,8 @@ def test_answered_with_verified_citation(db, report, fake):
 
 def test_invented_quote_is_dropped_and_real_one_kept(db, report, fake):
     fake["client"] = FakeClient(model_reply([
-        {"report_id": "rep_1", "quote": "se negó a tomar la medicación"},
-        {"report_id": "rep_1", "quote": "Comió poco en la cena"},
+        {"source_id": "rep_1", "quote": "se negó a tomar la medicación"},
+        {"source_id": "rep_1", "quote": "Comió poco en la cena"},
     ]))
     body = client.post(URL, json=BODY, headers=AS_CAREGIVER).json()
     assert [c["quote"] for c in body["citations"]] == ["Comió poco en la cena"]
@@ -129,15 +134,15 @@ def test_invented_quote_is_dropped_and_real_one_kept(db, report, fake):
 
 def test_unknown_report_id_is_dropped(db, report, fake):
     fake["client"] = FakeClient(model_reply([
-        {"report_id": "rep_999", "quote": "Comió poco en la cena"},
-        {"report_id": "rep_1", "quote": "Durmió bien"},
+        {"source_id": "rep_999", "quote": "Comió poco en la cena"},
+        {"source_id": "rep_1", "quote": "Durmió bien"},
     ]))
     body = client.post(URL, json=BODY, headers=AS_CAREGIVER).json()
     assert [c["report_id"] for c in body["citations"]] == ["rep_1"]
 
 
 def test_answered_without_surviving_citations_becomes_unclear(db, report, fake):
-    fake["client"] = FakeClient(model_reply([{"report_id": "rep_1", "quote": "tomó todo sin problemas"}]))
+    fake["client"] = FakeClient(model_reply([{"source_id": "rep_1", "quote": "tomó todo sin problemas"}]))
     body = client.post(URL, json=BODY, headers=AS_CAREGIVER).json()
     assert body["confidence"] == "unclear"
     assert body["citations"] == []
@@ -153,14 +158,14 @@ def test_unclear_reply_passes_through_with_note(db, report, fake):
 
 def test_segment_timing_from_the_segments_that_contain_the_quote():
     reports = [{"id": "rep_1", "transcript": TRANSCRIPT, "segments": SEGMENTS}]
-    one = query_mod.verify_citations([{"report_id": "rep_1", "quote": "comió poco en la cena"}], reports)
+    one = query_mod.verify_citations([{"source_id": "rep_1", "quote": "comió poco en la cena"}], reports)
     assert (one[0]["audio_start_sec"], one[0]["audio_end_sec"]) == (3.5, 6.0)
     # Spans two segments: from the first one's start to the second one's end.
-    two = query_mod.verify_citations([{"report_id": "rep_1", "quote": "las ocho. Comió poco"}], reports)
+    two = query_mod.verify_citations([{"source_id": "rep_1", "quote": "las ocho. Comió poco"}], reports)
     assert (two[0]["audio_start_sec"], two[0]["audio_end_sec"]) == (0.0, 6.0)
     # No segments stored (text report).
     none = query_mod.verify_citations(
-        [{"report_id": "rep_1", "quote": "Durmió bien"}], [{"id": "rep_1", "transcript": TRANSCRIPT, "segments": []}]
+        [{"source_id": "rep_1", "quote": "Durmió bien"}], [{"id": "rep_1", "transcript": TRANSCRIPT, "segments": []}]
     )
     assert none[0]["audio_start_sec"] is None
 
@@ -192,7 +197,7 @@ def test_no_reports_is_unclear_without_calling_the_model(db, fake):
 
 
 def test_family_can_query(db, report, fake):
-    fake["client"] = FakeClient(model_reply([{"report_id": "rep_1", "quote": "Durmió bien"}]))
+    fake["client"] = FakeClient(model_reply([{"source_id": "rep_1", "quote": "Durmió bien"}]))
     assert client.post(URL, json=BODY, headers={"X-Person-Id": "fam"}).status_code == 200
 
 
@@ -220,3 +225,58 @@ def test_invalid_question_is_422(db, report, fake, body):
 def test_default_query_model_is_groq():
     # No Anthropic key is configured on Render; the query shares Groq with extraction.
     assert query_mod.DEFAULT_MODEL == "groq:openai/gpt-oss-120b"
+
+
+# --- the patient's own messages (CIA-62) -----------------------------------------------------
+
+FEELING = "Hoy me duele mucho la rodilla y casi no dormí."
+
+
+@pytest.fixture
+def feeling(db):
+    db.add(PatientMessage(id="pm_1", patient_id="pat_x", sender_id="pt", kind=PatientMessageKind.feeling, text=FEELING))
+    db.add(PatientMessage(id="pm_help", patient_id="pat_x", sender_id="pt", kind=PatientMessageKind.help))
+    db.commit()
+
+
+@pytest.mark.parametrize("asker", ["cg", "nur"])
+def test_team_answers_read_and_cite_what_the_patient_said(db, report, feeling, fake, asker):
+    fake["client"] = FakeClient(model_reply([
+        {"source_id": "pm_1", "quote": "me duele mucho la rodilla"},
+        {"source_id": "pm_1", "quote": "me caí en el baño"},  # not in the message: dropped
+        {"source_id": "rep_1", "quote": "Durmió bien"},
+    ]))
+    body = client.post(URL, json={"question": "¿Cómo dice que se siente?"}, headers={"X-Person-Id": asker}).json()
+    prompt = fake["client"].calls[0]["messages"][0]["content"]
+    assert '<patient_message id="pm_1">' in prompt and FEELING in prompt
+    assert "pm_help" not in prompt  # help requests have no words to quote
+    by_source = {c["source"]: c for c in body["citations"]}
+    assert len(body["citations"]) == 2
+    assert by_source["patient_message"]["patient_message_id"] == "pm_1"
+    assert by_source["patient_message"]["report_id"] is None
+    assert by_source["patient_message"]["audio_start_sec"] is None and by_source["patient_message"]["created_at"]
+    assert by_source["report"]["report_id"] == "rep_1"
+    assert db.query(PatientMessageSeen).count() == 0  # asking does not mark them seen
+
+
+def test_family_never_gets_the_patients_messages(db, report, feeling, fake):
+    """Family may query but not read patient messages: they are not sent, and cannot be cited."""
+    fake["client"] = FakeClient(model_reply([
+        {"source_id": "pm_1", "quote": "me duele mucho la rodilla"},
+        {"source_id": "rep_1", "quote": "Durmió bien"},
+    ]))
+    body = client.post(URL, json=BODY, headers={"X-Person-Id": "fam"}).json()
+    prompt = fake["client"].calls[0]["messages"][0]["content"]
+    assert "pm_1" not in prompt and FEELING not in prompt and "<patient_message" not in prompt
+    assert [c["source"] for c in body["citations"]] == ["report"]
+
+
+def test_only_patient_messages_still_calls_the_model(db, feeling, fake):
+    fake["client"] = FakeClient(model_reply([{"source_id": "pm_1", "quote": "casi no dormí"}]))
+    body = client.post(URL, json=BODY, headers=AS_CAREGIVER).json()
+    assert len(fake["client"].calls) == 1
+    assert body["confidence"] == "answered" and body["citations"][0]["patient_message_id"] == "pm_1"
+    # Family has nothing it may read: no model call.
+    fake["client"] = FakeClient(model_reply([]))
+    body = client.post(URL, json=BODY, headers={"X-Person-Id": "fam"}).json()
+    assert body["confidence"] == "unclear" and fake["client"].calls == []

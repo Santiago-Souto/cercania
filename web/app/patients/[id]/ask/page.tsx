@@ -1,8 +1,8 @@
-// Ask with cited answers (artboard "Ask"). Ticket: CIA-13.
+// Ask with cited answers (artboard "Ask"). Tickets: CIA-13; CIA-62 (citations of the patient's own messages).
 // Works without JS: the composer is a GET form, the answer renders on the server.
 import Link from "next/link";
 import type { Route } from "next";
-import { ArrowRightIcon } from "lucide-react";
+import { ArrowRightIcon, MessageCircleIcon } from "lucide-react";
 import { AudioPlayer, ClipIcon, PlayClipButton, PlayerBar } from "@/components/app/audio-player";
 import { AppShell, BottomNav, ScreenHeader } from "@/components/app/shell";
 import { Badge } from "@/components/ui/badge";
@@ -25,7 +25,7 @@ export default async function AskPage(props: PageProps<"/patients/[id]/ask">) {
 
   return (
     <AppShell>
-      <ScreenHeader title="Preguntar" subtitle={`Sobre ${patient.display_name}. Cada respuesta cita el reporte.`} />
+      <ScreenHeader title="Preguntar" subtitle={`Sobre ${patient.display_name}. Cada respuesta cita su fuente.`} />
       <main className="flex flex-1 flex-col gap-3.5 px-4 pb-4">
         {result && (
           <>
@@ -37,14 +37,30 @@ export default async function AskPage(props: PageProps<"/patients/[id]/ask">) {
                 {result.confidence === "answered" ? (
                   <Badge variant="success">Respondido con citas</Badge>
                 ) : (
-                  <Badge variant="missing">No consta en los reportes</Badge>
+                  <Badge variant="missing">No consta en el registro</Badge>
                 )}
                 <p className="text-[17px]">{result.answer}</p>
                 {result.note && <p className="text-[13px] text-muted-foreground">{result.note}</p>}
-                <AudioPlayer audioPaths={result.citations.map((c) => byId.get(c.report_id)?.audio_url ?? null)}>
+                <AudioPlayer audioPaths={result.citations.map((c) => (c.report_id ? byId.get(c.report_id)?.audio_url ?? null : null))}>
                   <ItemGroup className="gap-2">
                     {result.citations.map((c, i) => {
-                      const r = byId.get(c.report_id);
+                      // What the patient said about themselves: no audio, attributed to them.
+                      if (c.source === "patient_message") {
+                        return (
+                          <Item key={`${c.patient_message_id}:${i}`} variant="muted" className="min-h-11 items-start rounded-xl border">
+                            <ItemMedia className="size-9 rounded-full bg-secondary text-secondary-foreground">
+                              <MessageCircleIcon className="size-4" />
+                            </ItemMedia>
+                            <ItemContent>
+                              <ItemTitle className="text-sm font-normal italic">“{c.quote}”</ItemTitle>
+                              <ItemDescription className="text-[13px]">
+                                {c.created_at ? `${dayTime(c.created_at)} · ` : ""}Mensaje de {firstName(patient.display_name)}
+                              </ItemDescription>
+                            </ItemContent>
+                          </Item>
+                        );
+                      }
+                      const r = c.report_id ? byId.get(c.report_id) : undefined;
                       const timed = c.audio_start_sec !== null && c.audio_end_sec !== null;
                       // Tapping plays the cited fragment; without segment times, the whole note.
                       const clip = {
@@ -80,7 +96,7 @@ export default async function AskPage(props: PageProps<"/patients/[id]/ask">) {
         )}
 
         <p className="text-[13px] text-muted-foreground">
-          Si los reportes no lo dicen, la respuesta es “No consta en los reportes”. Nunca se adivina.
+          Si el registro no lo dice, la respuesta es “No consta en el registro”. Nunca se adivina.
         </p>
 
         <div className="flex flex-wrap gap-2">
