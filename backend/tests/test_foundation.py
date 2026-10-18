@@ -156,6 +156,23 @@ def test_cors_preflight_allows_web_origin():
     assert r.headers["access-control-allow-credentials"] == "true"
 
 
+def test_cors_ignores_unlisted_origin():
+    r = TestClient(main_app).options(
+        "/health",
+        headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "GET"},
+    )
+    assert "access-control-allow-origin" not in r.headers
+
+
+def test_web_origins_fail_closed():
+    from app.main import web_origins
+
+    assert web_origins("") == []
+    assert web_origins("*") == []
+    assert web_origins(" https://cercania-web.onrender.com/ , http://localhost:3000") == [
+        "https://cercania-web.onrender.com", "http://localhost:3000"]
+
+
 def test_naive_datetimes_leave_as_utc():
     """SQLite returns naive datetimes; the web must get an explicit offset."""
     from datetime import datetime
