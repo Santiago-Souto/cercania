@@ -1,6 +1,12 @@
+import os
+
 import pytest
 
-from app import whatsapp
+# main.py reads WEB_ORIGINS once, at import; pin it before any test imports the app.
+# (.env never overrides it: models.py loads it with override=False.)
+os.environ["WEB_ORIGINS"] = "http://localhost:3000"
+
+from app import whatsapp  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

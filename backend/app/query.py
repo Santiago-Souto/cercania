@@ -16,10 +16,12 @@ from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from . import llm
 from .extract import normalize, verify_quote
 
 # Sonnet: reasoning across several reports (AGENTS.md section 8).
-DEFAULT_MODEL = "claude-sonnet-5-5"
+# QUERY_MODEL="<provider>:<model>" switches vendor; see llm.py.
+DEFAULT_MODEL = "anthropic:claude-sonnet-5-5"
 MAX_TOKENS = 2000
 TIMEOUT_SEC = 25.0
 MAX_REPORTS = 30
@@ -147,15 +149,21 @@ def verify_citations(raw_citations: list[dict], reports: list[dict]) -> list[dic
 # --- Model call ---------------------------------------------------------------------
 
 
-def _default_client():
-    import anthropic
+# Spanish message and retryable flag per llm.LLMError kind.
+_ERRORS: dict[str, tuple[str, bool]] = {
+    "config": ("El servicio de IA no está configurado (falta la clave de API).", False),
+    "auth": ("El servicio de IA rechazó la credencial configurada.", False),
+    "bad_request": ("No pudimos procesar la pregunta (solicitud inválida).", False),
+    "unavailable": ("El servicio de IA no respondió a tiempo. Volvé a intentar en un momento.", True),
+    "refused": ("El servicio de IA no pudo responder esta pregunta.", False),
+    "truncated": ("La respuesta de la IA quedó incompleta. Probá con una pregunta más acotada.", True),
+    "bad_output": ("La respuesta de la IA no tuvo el formato esperado.", True),
+}
 
-    try:
-        return anthropic.Anthropic(timeout=TIMEOUT_SEC, max_retries=1)
-    except anthropic.AnthropicError as e:
-        raise QueryError(
-            "El servicio de IA no está configurado (falta ANTHROPIC_API_KEY).", retryable=False
-        ) from e
+
+def _default_client():
+    """None lets llm.py build the client for the configured provider. Tests patch this."""
+    return None
 
 
 def answer_question(question: str, reports: list[dict], *, client=None, model: str | None = None) -> dict[str, Any]:
@@ -164,41 +172,25 @@ def answer_question(question: str, reports: list[dict], *, client=None, model: s
     Each report dict: id, created_at (readable local time), kind, sender, transcript,
     segments (optional [{start, end, text}]), items [{item, value}], alerts [{type, detail}].
     """
-    import anthropic
-
     if not question or not question.strip():
         raise QueryError("Escribí una pregunta.", retryable=False)
     reports = reports[:MAX_REPORTS]
     model = model or os.environ.get("QUERY_MODEL") or DEFAULT_MODEL
-    client = client or _default_client()
     now = format_time(datetime.now(timezone.utc))
     try:
-        response = client.messages.create(
+        raw = llm.complete_json(
+            system=SYSTEM_PROMPT,
+            user=_user_message(question.strip(), reports, now),
+            schema=SCHEMA,
             model=model,
             max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": _user_message(question.strip(), reports, now)}],
-            output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
+            timeout=TIMEOUT_SEC,
+            client=client or _default_client(),
         )
-    except anthropic.AuthenticationError as e:
-        raise QueryError("El servicio de IA rechazó la credencial configurada.", retryable=False) from e
-    except anthropic.BadRequestError as e:
-        raise QueryError("No pudimos procesar la pregunta (solicitud inválida).", retryable=False) from e
-    except (anthropic.RateLimitError, anthropic.APITimeoutError, anthropic.APIConnectionError,
-            anthropic.InternalServerError, anthropic.APIStatusError) as e:
-        raise QueryError("El servicio de IA no respondió a tiempo. Volvé a intentar en un momento.") from e
-
-    if response.stop_reason == "refusal":
-        raise QueryError("El servicio de IA no pudo responder esta pregunta.", retryable=False)
-    if response.stop_reason == "max_tokens":
-        raise QueryError("La respuesta de la IA quedó incompleta. Probá con una pregunta más acotada.")
-
-    text = next((b.text for b in response.content if b.type == "text"), None)
-    try:
-        raw = json.loads(text or "")
-    except json.JSONDecodeError as e:
-        raise QueryError("La respuesta de la IA no tuvo el formato esperado.") from e
-    if not isinstance(raw, dict) or not isinstance(raw.get("answer"), str):
+    except llm.LLMError as e:
+        message, retryable = _ERRORS.get(e.kind, _ERRORS["unavailable"])
+        raise QueryError(message, retryable=retryable) from e
+    if not isinstance(raw.get("answer"), str):
         raise QueryError("La respuesta de la IA no tuvo el formato esperado.")
 
     raw_citations = [c for c in (raw.get("citations") or []) if isinstance(c, dict)]

@@ -41,11 +41,16 @@ services:
         sync: false
       - key: WHATSAPP_VERIFY_TOKEN
         sync: false
+      # Browser origins allowed by CORS (comma-separated; credentials on, so never "*").
+      # Unset = no browser can call the API.
+      - key: WEB_ORIGINS
+        value: https://cercania-web.onrender.com
       # SIMULATED identity (X-Person-Id header) until login lands. "1" only with fictional data.
       - key: ALLOW_DEV_IDENTITY_HEADER
         sync: false
 
-  # Next.js web app. Pages fetch the API server-side, so no CORS is needed yet.
+  # Next.js web app. Browser-side calls (report form, notifications) need its origin
+  # in the API's WEB_ORIGINS.
   - type: web
     name: cercania-web
     runtime: node

@@ -23,10 +23,24 @@ async def lifespan(app: FastAPI):
     yield
 
 
+def web_origins(raw: str | None = None) -> list[str]:
+    """Browser origins allowed to call the API (WEB_ORIGINS, comma-separated).
+
+    Fails closed: unset or empty allows no origin, so a deploy that forgets the
+    variable blocks browsers instead of trusting a default. Credentials are on,
+    so "*" is never valid here.
+    """
+    raw = os.environ.get("WEB_ORIGINS", "") if raw is None else raw
+    origins = [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
+    if not origins:
+        log.warning("WEB_ORIGINS is not set: browsers cannot call the API")
+    return [o for o in origins if o != "*"]
+
+
 app = FastAPI(title="CercanIA API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in os.environ.get("WEB_ORIGINS", "http://localhost:3000").split(",") if o.strip()],
+    allow_origins=web_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["Content-Type", "X-Person-Id"],

@@ -8,6 +8,14 @@ from test_process import (  # noqa: F401  (db is a fixture)
     CG, DOC, FALL, FAM, REPORT, db, extract_client, fall_triage, happy_extract, run,
 )
 
+@pytest.fixture(autouse=True)
+def anthropic_models(monkeypatch):
+    """The fake clients here mimic the Anthropic SDK; pin both tasks to that provider
+    (extraction defaults to Groq, see llm.py)."""
+    monkeypatch.setenv("EXTRACT_MODEL", "anthropic:test-model")
+    monkeypatch.setenv("TRIAGE_MODEL", "anthropic:test-model")
+
+
 
 @pytest.fixture(autouse=True)
 def fake_extract_vendor(monkeypatch):

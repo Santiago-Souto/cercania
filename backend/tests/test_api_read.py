@@ -194,6 +194,17 @@ def test_my_patients(db):
     assert b["missing_report"] is True and b["open_alerts"] == 0
 
 
+def test_me_and_my_patients_accept_every_role(db):
+    """nurse and institution memberships must serialize (models.Role has six roles)."""
+    for i, (pid, role) in enumerate([("nur", Role.nurse), ("inst", Role.institution)]):
+        db.add(Person(id=pid, phone=f"+155509900{i}", display_name=pid))
+        db.add(PatientAccess(person_id=pid, patient_id="pat_a", role=role))
+    db.commit()
+    for pid, role in [("nur", "nurse"), ("inst", "institution")]:
+        assert client.get("/me", headers=h(pid)).json()["memberships"][0]["role"] == role
+        assert client.get("/me/patients", headers=h(pid)).json()["patients"][0]["role"] == role
+
+
 def test_my_patients_nulls_for_patient_role(db):
     body = client.get("/me/patients", headers=h("pt")).json()
     assert body["patients"] == [{"id": "pat_a", "display_name": "Rosa (ficticia)", "location": None,

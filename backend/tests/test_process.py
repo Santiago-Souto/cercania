@@ -21,6 +21,14 @@ from app.models import (
 CG, FAM, DOC = "cg_001", "fam_001", "doc_001"
 PAT = "pat_001"  # Rosa: enalapril 08:00 + 20:00 (med_001), metformina 08:00 (med_002)
 
+@pytest.fixture(autouse=True)
+def anthropic_models(monkeypatch):
+    """The fake clients here mimic the Anthropic SDK; pin both tasks to that provider
+    (extraction defaults to Groq, see llm.py)."""
+    monkeypatch.setenv("EXTRACT_MODEL", "anthropic:test-model")
+    monkeypatch.setenv("TRIAGE_MODEL", "anthropic:test-model")
+
+
 
 @pytest.fixture(autouse=True)
 def fake_extract_vendor(monkeypatch):
