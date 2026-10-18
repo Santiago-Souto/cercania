@@ -79,7 +79,6 @@ The tokens above are wired as the shadcn theme in `web/app/globals.css` (`--prim
 | Forms | `Field`, `FieldLabel`, `FieldDescription`, `Input`, `Select` | |
 | Search and chat composer | `InputGroup` | |
 | 6-digit code | `InputOTP` | |
-| Sign-up / login switch | `Tabs` | |
 | Help confirmation | `AlertDialog` | |
 | Chat (Ask, Messages) | `Bubble`, `Message` | |
 | Empty / error states | `Empty` | |
@@ -99,7 +98,7 @@ App chrome shared by all screens (centered 480px column, top bar, bottom nav, bo
 
 | Artboard | Route | Ticket | Data |
 |---|---|---|---|
-| `SignIn` | `/login` | CIA-32 | `POST /auth/signup`, `/auth/login` |
+| `SignIn` | `/login` (phone with country picker), `/login/code` (code, then name step for a new phone) | CIA-32 | `POST /auth/login`, `/auth/verify` |
 | `Code` (+ `Link` as the expired state) | `/login/code` | CIA-32 | `POST /auth/verify` |
 | `Patients` | `/patients` | CIA-33 | `GET /me/patients` |
 | `AddPatient` | `/patients/new` | CIA-34, CIA-51 | `POST /patients` (optional emergency number), members, invites |

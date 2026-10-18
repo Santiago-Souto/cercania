@@ -65,10 +65,15 @@ def get_my_patients(person_id: str = Depends(current_person_id), db: Session = D
     - `open_alerts`: emergency/omission/change alerts on the latest version of reports from the
       last 24 h (missing_item alerts are not counted so the number stays meaningful).
     - `missing_report`: no report in the last 24 h.
+    - A person with no role at all gets their own patient profile first (`roles.ensure_default_role`).
     - Role `patient` never sees reports or alerts (AGENTS.md section 6): all four are null.
     """
-    if db.get(Person, person_id) is None:
+    person = db.get(Person, person_id)
+    if person is None:
         raise api_error(401, "unauthenticated", "Iniciá sesión para continuar.")
+    # Someone with no role at all (older account, declined invite, memberships removed) is a patient.
+    if roles.ensure_default_role(db, person):
+        db.commit()
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     out = []
     for access, patient in _memberships(db, person_id):
