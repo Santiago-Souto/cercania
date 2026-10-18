@@ -107,7 +107,9 @@ def confirmation_text(items: list[dict], alerts: list[dict], *, triage: triage_m
     """Spanish text sent back to the caregiver. Written by code from verified data, never by the model."""
     if triage.emergency:
         return triage_mod.EMERGENCY_REPLY
-    recorded = [f"{ITEM_ES[i['item']]}: {i['value']}" for i in items if i["value"] is not None]
+    # An unverified quote means code could not find the fact in the transcript: say so.
+    recorded = [f"{ITEM_ES[i['item']]}: {i['value']}" + ("" if i.get("quote_verified") is not False else " (sin verificar)")
+                for i in items if i["value"] is not None]
     parts = ["Registré: " + "; ".join(recorded) + "." if recorded else "No pude registrar ningún dato."]
     omissions = [a["detail"] for a in alerts if a["type"] == "omission"]
     if omissions:

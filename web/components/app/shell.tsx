@@ -5,7 +5,8 @@ import type { Route } from "next";
 import { BellIcon, ChevronLeftIcon, HouseIcon, MessageCircleIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { USE_FAKE } from "@/lib/api";
+import { USE_FAKE } from "@/lib/api-shared";
+import { DemoBar } from "./demo-bar";
 import { cn } from "@/lib/utils";
 
 /** Centered 480px column on desktop, full width on phones. */
@@ -17,6 +18,7 @@ export function AppShell({ children, className }: { children: React.ReactNode; c
           Datos de prueba ficticios
         </Badge>
       )}
+      {!USE_FAKE && <DemoBar />}
       {children}
     </div>
   );

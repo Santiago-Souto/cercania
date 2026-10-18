@@ -3,9 +3,11 @@
 // a deploy that forgets the variable must hit the real API and fail loudly, never show fabricated patients.
 // Otherwise -> the backend at NEXT_PUBLIC_API_URL (CIA-14 finishes this switch, incl. session cookies).
 
+import { cookies } from "next/headers";
 import { connection } from "next/server";
 import { API_URL, ApiError, errorFrom, identityHeaders, USE_FAKE } from "./api-shared";
 import * as fake from "./fake";
+import { DEFAULT_PERSONA_ID, PERSONA_COOKIE } from "./persona";
 import type {
   Invite,
   Member,
@@ -20,11 +22,13 @@ import type {
 export { ApiError, USE_FAKE };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const personId = (await cookies()).get(PERSONA_COOKIE)?.value ?? DEFAULT_PERSONA_ID;
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     credentials: "include",
     cache: "no-store",
-    headers: { "Content-Type": "application/json", ...identityHeaders(), ...init?.headers },
+    // SIMULATED persona (cookie) wins over NEXT_PUBLIC_DEV_PERSON_ID: see lib/persona.ts.
+    headers: { "Content-Type": "application/json", ...identityHeaders(), "X-Person-Id": personId, ...init?.headers },
   });
   if (!res.ok) throw await errorFrom(res);
   return res.json() as Promise<T>;

@@ -49,11 +49,10 @@ def list_notifications(
     query = select(Notification).where(*_mine(person_id))
     if unread_only:
         query = query.where(Notification.read_at.is_(None))
-    rows = db.scalars(query.order_by(Notification.created_at.desc(), Notification.id.desc())).all()
     if since is not None:
-        cutoff = _aware(since)
-        rows = [n for n in rows if _aware(n.created_at) > cutoff]
-    return {"notifications": [_serialize(db, n) for n in rows[:limit]], "unread_count": unread_count or 0}
+        query = query.where(Notification.created_at > _aware(since).astimezone(timezone.utc))
+    rows = db.scalars(query.order_by(Notification.created_at.desc(), Notification.id.desc()).limit(limit)).all()
+    return {"notifications": [_serialize(db, n) for n in rows], "unread_count": unread_count or 0}
 
 
 @router.post("/me/notifications/read-all")

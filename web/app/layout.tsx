@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Atkinson_Hyperlegible, Bricolage_Grotesque } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import { NotificationWatcher } from "@/components/app/notifications";
 import { Toaster } from "@/components/ui/sonner";
 
 // Fonts from docs/design/DESIGN.md: Atkinson Hyperlegible for body, Bricolage Grotesque for headings.
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="text-base antialiased">
         {children}
         <Toaster position="top-center" />
+        <NotificationWatcher />
       </body>
     </html>
   );

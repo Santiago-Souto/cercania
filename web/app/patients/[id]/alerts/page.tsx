@@ -11,8 +11,21 @@ import { Card, CardContent, CardDescription, CardFooter } from "@/components/ui/
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Item, ItemContent, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { getPatient, getReports } from "@/lib/api";
-import { CHECKLIST_LABEL, dayTime, firstName } from "@/lib/format";
-import type { Alert as AlertT } from "@/lib/types";
+import { CHECKLIST_LABEL, ROLE_LABEL, dayTime, firstName } from "@/lib/format";
+import type { Alert as AlertT, AlertNotification } from "@/lib/types";
+
+const RECIPIENT_LABEL: Record<AlertNotification["to"], string> = {
+  health_provider: "Contacto de salud",
+  caregiver: ROLE_LABEL.caregiver,
+  family: ROLE_LABEL.family,
+};
+
+function deliveryStatus(n: AlertNotification): { label: string; variant: "success" | "missing" | "danger" } {
+  if (n.status === "sent") return { label: "Enviado", variant: "success" };
+  // "skipped" means the channel is switched off, not that something broke.
+  if (n.status === "skipped") return { label: n.channel === "whatsapp" ? "WhatsApp no activo" : "No activo", variant: "missing" };
+  return { label: "No se pudo enviar", variant: "danger" };
+}
 
 const GROUPS: { type: AlertT["type"]; label: string }[] = [
   { type: "omission", label: "Omisión · plan de cuidado" },
@@ -24,6 +37,7 @@ export default async function AlertsPage(props: PageProps<"/patients/[id]/alerts
   const { id } = await props.params;
   const [patient, reports] = await Promise.all([getPatient(id), getReports(id)]);
   const flagged = reports.filter((r) => r.red_flag);
+  const emergencyOf = (r: (typeof reports)[number]) => r.alerts.find((a) => a.type === "emergency");
   const last = reports[0];
   const alerts = reports.flatMap((r) => r.alerts.map((a) => ({ a, r })));
   const nothing = flagged.length === 0 && alerts.length === 0 && (!last || last.missing_items.length === 0);
@@ -40,7 +54,29 @@ export default async function AlertsPage(props: PageProps<"/patients/[id]/alerts
               <span>
                 {dayTime(r.created_at)} · {firstName(r.caregiver.display_name)} dijo: <em>“{r.red_flag_quote}”</em>
               </span>
+              {r.triage?.reason && <span>Motivo: {r.triage.reason}</span>}
+              {r.triage?.quote_verified === false && (
+                <span className="text-[13px]">La cita no pudo verificarse en el reporte original.</span>
+              )}
               <strong>Contactá a emergencias o al médico.</strong>
+              {(emergencyOf(r)?.notifications?.length ?? 0) > 0 && (
+                <ul className="mt-2 flex flex-col gap-1.5 rounded-lg bg-card p-3 text-card-foreground" aria-label="Avisos enviados">
+                  {emergencyOf(r)!.notifications!.map((n, i) => {
+                    const st = deliveryStatus(n);
+                    return (
+                      <li key={i} className="flex flex-col gap-0.5 text-[14px]">
+                        <span className="flex items-center justify-between gap-2">
+                          <span>
+                            {RECIPIENT_LABEL[n.to]} · {n.channel === "web" ? "App" : "WhatsApp"}
+                          </span>
+                          <Badge variant={st.variant}>{st.label}</Badge>
+                        </span>
+                        {n.status === "failed" && n.error && <span className="text-[12px]">{n.error}</span>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </AlertDescription>
           </Alert>
         ))}
