@@ -1,19 +1,16 @@
 "use client";
 // Browser side of sign-up / login (CIA-32): POST /auth/* through the same-origin /api rewrite, so the
-// session cookie set by /auth/verify lands on the web origin. Nothing here says whether a phone has an
-// account (AGENTS.md section 6): the backend answers the same way, and so do these messages.
+// session cookie set by /auth/verify lands on the web origin. One flow for sign-up and login: every phone
+// gets a code, and only after the code does the backend say a phone is new (AGENTS.md section 6).
 
 import { ApiError, BROWSER_API, errorFrom, NETWORK_ERROR_MESSAGE } from "./api-shared";
-import type { CodeSent, Verified } from "./types";
+import type { CodeSent, NewProfile, Verified } from "./types";
 
 export { landingFor, safeNext } from "./landing";
 
 /** What the code screen needs, kept in sessionStorage (never in the URL: the phone is personal data). */
 export type PendingLogin = {
-  mode: "signup" | "login";
   phone: string;
-  name?: string;
-  email?: string;
   next?: string;
   sent: CodeSent;
   sentAt: number;
@@ -62,15 +59,14 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-/** Sends a code: sign-up carries name and email, login only the phone. */
-export function requestCode(p: Pick<PendingLogin, "mode" | "phone" | "name" | "email">): Promise<CodeSent> {
-  return p.mode === "signup"
-    ? post<CodeSent>("/auth/signup", { name: p.name, email: p.email || null, phone: p.phone })
-    : post<CodeSent>("/auth/login", { phone: p.phone });
+/** Sends a code to any phone, registered or not. */
+export function requestCode(phone: string): Promise<CodeSent> {
+  return post<CodeSent>("/auth/login", { phone });
 }
 
-export function verifyCode(phone: string, code: string): Promise<Verified> {
-  return post<Verified>("/auth/verify", { phone, code });
+/** Checks the code; with `profile`, also creates the account of a new phone. */
+export function verifyCode(phone: string, code: string, profile?: NewProfile): Promise<Verified> {
+  return post<Verified>("/auth/verify", { phone, code, ...(profile && { name: profile.name, email: profile.email || null }) });
 }
 
 export async function logout(): Promise<void> {

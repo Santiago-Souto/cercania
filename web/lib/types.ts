@@ -255,8 +255,13 @@ export type Me = {
 /** POST /auth/signup and /auth/login */
 export type CodeSent = { status: "code_sent"; phone_last4: string; expires_in_sec: number; resend_after_sec: number };
 
-/** POST /auth/verify */
-export type Verified = { user: { id: string; name: string }; is_admin: boolean; memberships: Membership[] };
+/** POST /auth/verify: signed in, or a new phone that still has to give its name. */
+export type Verified =
+  | { status: "signed_in"; user: { id: string; name: string }; is_admin: boolean; memberships: Membership[] }
+  | { status: "profile_required" };
+
+/** Name and optional email for a new phone, sent with the same code. */
+export type NewProfile = { name: string; email?: string };
 
 // --- Admin (CIA-48): people and roles only, never clinical data. ---
 

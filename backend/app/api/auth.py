@@ -1,12 +1,13 @@
 """Sign-up / login with a 6-digit code sent by SMS (docs/contract.md "Auth").
 
-POST /auth/signup, /auth/login -> code_sent; POST /auth/verify -> session cookie;
-POST /auth/logout. No passwords. The phone number is the identity; email is
-unverified contact info and never grants access.
+POST /auth/login (or /auth/signup) -> code_sent; POST /auth/verify -> session cookie,
+or `profile_required` for a new phone; POST /auth/logout. No passwords. The phone
+number is the identity; email is unverified contact info and never grants access.
 
-Anti-enumeration: nothing here reveals whether a phone has an account. Login for
-an unknown phone stores a code row (so rate limits behave the same) but sends
-nothing; sign-up for a known phone sends a normal login code.
+Anti-enumeration: before the code is verified nothing reveals whether a phone has an
+account. Every phone gets the same SMS and the same answer; only someone holding the
+code learns that the phone is new, and is then asked for a name (one flow for
+sign-up and login).
 """
 
 from __future__ import annotations
@@ -96,6 +97,9 @@ class LoginIn(BaseModel):
 class VerifyIn(BaseModel):
     phone: str
     code: Code
+    # Only used when the phone has no account yet (the `profile_required` step).
+    name: Name | None = None
+    email: Email | None = None
 
 
 # --- Sending a code ---------------------------------------------------------------
@@ -114,22 +118,21 @@ def _check_rate_limit(db: Session, phone: str) -> None:
         raise api_error(429, "too_many_requests", "Pediste demasiados códigos. Probá de nuevo en una hora.")
 
 
-def _issue_code(db: Session, phone: str, send: bool, signup_name: str | None = None,
-                signup_email: str | None = None) -> sms.SmsResult | None:
-    """Sends (when `send`) and stores a fresh code for the phone, retiring any earlier
-    unused one. Returns the delivery result, or None when nothing was sent."""
-    code, result = None, None
-    if send and sms.trial_template():
+def _issue_code(db: Session, phone: str, signup_name: str | None = None,
+                signup_email: str | None = None) -> sms.SmsResult:
+    """Sends and stores a fresh code for the phone, retiring any earlier unused one.
+    Returns the delivery result."""
+    if sms.trial_template():
         # SIMULATED: a Twilio trial only sends predefined templates; the template writes
         # its own code into the text, which Twilio echoes back. See sms.trial_template.
         result = sms.send_sms(phone, sms.trial_template())
         code = sms.code_in(result.body) if result.ok else None
         if result.ok and code is None:
             result = sms.SmsResult(False, None, "La plantilla de Twilio no devolvió un código.")
-    elif send:
+    else:
         code = f"{secrets.randbelow(1_000_000):06d}"
         result = _deliver(phone, code)
-    code = code or f"{secrets.randbelow(1_000_000):06d}"  # unsent: nobody can know it
+    code = code or f"{secrets.randbelow(1_000_000):06d}"  # failed send: nobody can know it
 
     db.execute(update(LoginCode).where(LoginCode.phone == phone, LoginCode.used_at.is_(None))
                .values(used_at=utcnow()))
@@ -154,19 +157,16 @@ def _code_sent(phone: str) -> dict:
             "expires_in_sec": code_ttl_minutes() * 60, "resend_after_sec": RESEND_AFTER_SEC}
 
 
-@router.post("/auth/signup")
-def signup(body: SignupIn, db: Session = Depends(get_db)) -> dict:
-    """New phone: the code carries name/email; the person is created on verify.
-    Known phone: a normal login code (the stored name is kept)."""
-    phone = normalize_phone(body.phone)
+def _send_code(db: Session, phone: str, signup_name: str | None = None,
+               signup_email: str | None = None) -> dict:
     _check_rate_limit(db, phone)
     known = db.scalar(select(Person.id).where(Person.phone == phone)) is not None
-    if known:
-        result = _issue_code(db, phone, send=True)
-    else:
-        result = _issue_code(db, phone, send=True, signup_name=body.name, signup_email=body.email or None)
-    # Both branches text the phone, so reporting a failed SMS reveals nothing.
+    if known:  # a known phone keeps its stored name
+        signup_name = signup_email = None
+    result = _issue_code(db, phone, signup_name=signup_name, signup_email=signup_email)
+    # Every phone is texted, so reporting a failed SMS reveals nothing.
     if not result.ok:
+        log.error("Login code to %s not delivered: %s", mask(phone), result.error)
         raise api_error(502, "sms_unreachable",
                         "No pudimos mandar el SMS a ese número. Revisalo y probá de nuevo en un minuto.")
     return _code_sent(phone)
@@ -174,16 +174,16 @@ def signup(body: SignupIn, db: Session = Depends(get_db)) -> dict:
 
 @router.post("/auth/login")
 def login(body: LoginIn, db: Session = Depends(get_db)) -> dict:
-    """Always the same `code_sent` body. Unknown phones get a code row (never sent)
-    so the rate limit answers the same way; SMS failures are only logged, because
-    an error here would only ever happen for registered phones."""
-    phone = normalize_phone(body.phone)
-    _check_rate_limit(db, phone)
-    known = db.scalar(select(Person.id).where(Person.phone == phone)) is not None
-    result = _issue_code(db, phone, send=known)
-    if result is not None and not result.ok:
-        log.error("Login code to %s not delivered: %s", mask(phone), result.error)
-    return _code_sent(phone)
+    """Any phone, registered or not, gets a code. The web uses only this one: a new
+    phone gives its name after the code (`profile_required` in /auth/verify)."""
+    return _send_code(db, normalize_phone(body.phone))
+
+
+@router.post("/auth/signup")
+def signup(body: SignupIn, db: Session = Depends(get_db)) -> dict:
+    """Like login, with the name and email up front for a new phone (then verify
+    creates the person directly). A known phone keeps its stored name."""
+    return _send_code(db, normalize_phone(body.phone), body.name, body.email or None)
 
 
 # --- Verifying ------------------------------------------------------------------------
@@ -224,9 +224,13 @@ def verify(body: VerifyIn, response: Response, db: Session = Depends(get_db)) ->
 
     person = db.scalar(select(Person).where(Person.phone == phone))
     if person is None:
-        if not row.signup_name:  # login code for an unknown phone: it was never sent
-            raise invalid
-        person = Person(phone=phone, display_name=row.signup_name, email=row.signup_email)
+        name = body.name or row.signup_name
+        if not name:
+            # New phone, and the code proved the caller holds it: ask for the name. The code
+            # stays valid (same expiry, same attempts) so the next call can send it again.
+            return {"status": "profile_required"}
+        email = (body.email or None) if body.name else row.signup_email
+        person = Person(phone=phone, display_name=name, email=email)
         db.add(person)
         db.flush()
         # Starting role (CIA-48): admin pre-registration, else a pending invite, else patient.
@@ -243,6 +247,7 @@ def verify(body: VerifyIn, response: Response, db: Session = Depends(get_db)) ->
         .where(PatientAccess.person_id == person.id).order_by(Patient.display_name, Patient.id)
     )
     return {
+        "status": "signed_in",
         "user": {"id": person.id, "name": person.display_name},
         "is_admin": roles.is_admin(person),
         "memberships": [{"patient_id": p.id, "display_name": p.display_name, "role": a.role.value}
