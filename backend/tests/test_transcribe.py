@@ -20,16 +20,22 @@ def test_sends_model_language_and_vocabulary_hint():
         "language": "spanish",
         "duration": 3.2,
         "segments": [{"start": 0.0, "end": 1.5, "text": " Comió poco."}],
+        "words": [{"word": "Comió", "start": 0.0, "end": 0.6}, {"word": " poco.", "start": 0.6, "end": 1.5}],
     }
     with mock_client(body=body, record=requests) as c:
         result = t.transcribe(b"OggS", vocabulary=["Enalapril"], client=c)
 
     assert result.text == "Comió poco."
     assert result.segments == [t.Segment(start=0.0, end=1.5, text="Comió poco.")]
+    assert result.words == [t.Segment(0.0, 0.6, "Comió"), t.Segment(0.6, 1.5, "poco.")]
+    # Words are what gets stored: a quote maps to exactly its words.
+    assert result.segment_dicts() == [{"start": 0.0, "end": 0.6, "text": "Comió"},
+                                      {"start": 0.6, "end": 1.5, "text": "poco."}]
     sent = requests[0].content.decode(errors="ignore")
     assert requests[0].headers["Authorization"] == "Bearer groq-test"
     assert "whisper-large-v3-turbo" in sent
     assert "verbose_json" in sent
+    assert sent.count('name="timestamp_granularities[]"') == 2 and "word" in sent
     assert "Enalapril" in sent and "diuresis" in sent
 
 
@@ -56,3 +62,11 @@ def test_api_error_gives_user_message():
 def test_empty_transcript_is_an_error_not_a_guess():
     with mock_client(body={"text": "  "}) as c, pytest.raises(t.TranscriptionError):
         t.transcribe(b"OggS", client=c)
+
+
+def test_without_word_timestamps_segments_are_stored():
+    body = {"text": "Comió poco.", "segments": [{"start": 0.0, "end": 1.5, "text": " Comió poco."}]}
+    with mock_client(body=body) as c:
+        result = t.transcribe(b"OggS", client=c)
+    assert result.words == []
+    assert result.segment_dicts() == [{"start": 0.0, "end": 1.5, "text": "Comió poco."}]
