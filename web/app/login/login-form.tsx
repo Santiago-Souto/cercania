@@ -2,7 +2,7 @@
 // Sign-up / login form: POST /auth/signup or /auth/login, then the code screen (CIA-32).
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { isValidPhoneNumber } from "react-phone-number-input";
+import { isPossiblePhoneNumber } from "react-phone-number-input";
 import { AlertCircleIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,7 @@ export function LoginForm({ mode, next }: { mode: "signup" | "login"; next?: str
     const email = String(form.get("email") ?? "").trim();
     if (!isLogin && !name) return setError("Escribí tu nombre.");
     if (!phone) return setError("Escribí tu celular.");
-    if (!isValidPhoneNumber(phone)) return setError("Revisá el número: no parece un celular válido para ese país.");
+    if (!isPossiblePhoneNumber(phone)) return setError("Revisá el número: le faltan o le sobran números para ese país.");
 
     setSending(true);
     setError(null);
