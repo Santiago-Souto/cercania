@@ -15,12 +15,15 @@ validate the returned object: a vendor may not enforce the schema strictly.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import re
 import time
 
 import httpx
+
+log = logging.getLogger(__name__)
 
 # Env var holding the API key for each provider.
 API_KEY_ENV = {"groq": "GROQ_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "openai": "LLM_API_KEY"}
@@ -153,6 +156,7 @@ def _openai(system, user, schema, name, max_tokens, timeout, client, base_url, a
                 if attempt:
                     raise LLMError("unavailable", str(e)) from e
             else:
+                _log_response(name, base_url, api_key, response)
                 transient = (response.status_code == 429 or response.status_code >= 500
                              or _schema_rejected(response))
                 if attempt or not transient:
@@ -190,6 +194,23 @@ def _openai(system, user, schema, name, max_tokens, timeout, client, base_url, a
         raise LLMError("refused")
     content = message.get("content")
     return content if isinstance(content, str) else None
+
+
+def _log_response(name, base_url, api_key, response) -> None:
+    """One line per call: model, status, remaining quota and, on errors, the provider's message.
+
+    The key is shown only by its last 4 characters, to tell which key the server uses.
+    """
+    h = response.headers
+    quota = (f"tokens_left={h.get('x-ratelimit-remaining-tokens')}/{h.get('x-ratelimit-limit-tokens')} "
+             f"requests_left={h.get('x-ratelimit-remaining-requests')}/{h.get('x-ratelimit-limit-requests')} "
+             f"retry_after={h.get('retry-after')}")
+    key = f"...{api_key[-4:]}" if api_key else "none"
+    if response.status_code < 300:
+        log.info("llm %s status=%s key=%s %s", name, response.status_code, key, quota)
+    else:
+        log.warning("llm %s status=%s key=%s host=%s %s error=%s", name, response.status_code, key,
+                    httpx.URL(base_url).host, quota, _error_message(response)[:300])
 
 
 def _error_body(response) -> dict:

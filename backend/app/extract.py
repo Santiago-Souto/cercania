@@ -11,6 +11,7 @@ Nothing here computes doses, schedules or alerts; compare.py does the comparing.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import unicodedata
@@ -19,6 +20,8 @@ from typing import Any
 
 from . import llm
 from .models import ChecklistItem
+
+log = logging.getLogger(__name__)
 
 # Groq (GROQ_API_KEY, shared with transcription): one strict-schema call, no tools; code
 # verifies every quote (AGENTS.md section 8). EXTRACT_MODEL="<provider>:<model>" overrides it.
@@ -268,6 +271,7 @@ def extract(transcript: str, medications: list[dict], *, client=None, model: str
             client=client,
         )
     except llm.LLMError as e:
+        log.warning("extraction failed (%s): %s", model, e)
         message, retryable = _ERRORS.get(e.kind, _ERRORS["unavailable"])
         raise ExtractionError(message, retryable=retryable) from e
 
