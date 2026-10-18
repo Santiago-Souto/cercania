@@ -185,6 +185,9 @@ export type PatientMessage = {
   id: string;
   kind: "feeling" | "help";
   text: string | null;
+  red_flag: boolean;
+  /** Triage reason, only when `red_flag` is true. */
+  reason: string | null;
   created_at: string;
   seen_by: { user_id: string; name: string }[];
 };

@@ -80,6 +80,8 @@ export function NotificationWatcher() {
     // Invites already pending when the tab opens are on screen as cards; only later ones get a toast.
     let invitesPrimed = false;
     let stopped = false;
+    // Toasts on screen, by patient: the alerts screen lists them all, so "Ver alerta" clears that patient's.
+    const onScreen = new Map<string, AppNotification["patient_id"]>();
 
     // The invite card lives on "Mis pacientes" and on the patient's own view: refresh so it renders there.
     function announceInvite(inv: MyInvite) {
@@ -102,16 +104,35 @@ export function NotificationWatcher() {
     }
 
     function open(n: AppNotification) {
+      for (const [id, patient] of onScreen) {
+        if (patient !== n.patient_id) continue;
+        toast.dismiss(id);
+        onScreen.delete(id);
+      }
       setUnread(unread - 1);
       markNotificationRead(n.id).catch(() => {});
       routerRef.current.push(`/patients/${n.patient_id}/alerts` as Route);
     }
 
     function announce(n: AppNotification) {
+      onScreen.set(n.id, n.patient_id);
       toast.warning(n.title, {
-        description: n.body,
+        id: n.id,
+        onDismiss: () => onScreen.delete(n.id),
+        // "Abrí CercanIA." is for the browser notification; inside the app it is noise.
+        description: n.body.replace(/\s*Abrí CercanIA[^.]*\.?$/, ""),
         duration: Infinity,
-        action: { label: "Ver", onClick: () => open(n) },
+        closeButton: true,
+        action: { label: "Ver alerta", onClick: () => open(n) },
+        // Emergency look (danger tokens) and readable text: sonner's default description is too faint.
+        classNames: {
+          toast: "items-start! gap-3! border-2! border-danger! bg-danger-soft! p-4! text-danger-soft-foreground!",
+          icon: "mt-0.5! text-danger!",
+          title: "font-heading! text-base! font-bold!",
+          description: "mt-1! text-[15px]! leading-snug! text-danger-soft-foreground!",
+          actionButton: "h-10! self-center! rounded-full! bg-danger! px-4! text-sm! font-bold! text-danger-foreground!",
+          closeButton: "border-danger-ring! bg-card! text-danger-soft-foreground!",
+        },
       });
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
         try {
