@@ -166,6 +166,7 @@ backend/app/
   llm.py           one JSON-schema call, any vendor          [brain owner]
   triage.py        text -> emergency yes/no + quote (LLM)    [brain owner]
   extract.py       text -> JSON with quotes                  [brain owner]
+  segments.py      quote -> audio start/end from transcript segments (code) [shared]
   compare.py       plan/history/checklist logic, no model    [brain owner]
   query.py         cited natural-language answers            [brain owner]
   models.py        schema                                    [brain owner]

@@ -51,7 +51,7 @@ Update this table as work lands. Mark anything mocked as **Simulated**. Be hones
 - Real auth: login with the 6-digit WhatsApp code (CIA-32) is not built.
 - WhatsApp emergency notifications, pending Meta approval. `NOTIFY_WHATSAPP=0` by default, so they are recorded as `skipped`; the web inbox is the channel in use.
 - Audio storage and `audio_url` (Supabase Storage, signed URLs).
-- Transcript segments: citations have no audio times yet (`audio_start_sec` / `audio_end_sec` are `null`).
+- Transcript segments: the format and the quote -> audio rule are defined (`docs/contract.md`, CIA-23), but the channels do not store segments yet (CIA-18), so `audio_start_sec` / `audio_end_sec` are still `null`.
 - Members, invites and messages endpoints.
 - Eval not yet run against the real model for `process_report` and the cited query.
 
