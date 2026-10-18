@@ -124,7 +124,7 @@ export default async function ReportPage(props: PageProps<"/patients/[id]/report
         )}
 
         <p className="text-[13px] text-muted-foreground">
-          Las correcciones se hacen acá y crean una versión nueva. Las anteriores quedan visibles.
+          Cada corrección crea una versión nueva. Las anteriores quedan visibles.
         </p>
         </AudioPlayer>
       </main>
