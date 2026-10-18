@@ -46,7 +46,7 @@ function dayKey(d: Date): string {
 }
 
 /** "Hoy", "Ayer" or a short date, in the residence's time zone. */
-export function day(iso: string, now: Date = new Date()): string {
+function day(iso: string, now: Date = new Date()): string {
   const d = new Date(iso);
   const today = dayKey(now);
   const yesterday = dayKey(new Date(now.getTime() - 24 * 60 * 60 * 1000));

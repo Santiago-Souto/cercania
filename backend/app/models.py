@@ -668,11 +668,6 @@ def engine_options(url: str) -> dict:
             "pool_size": 5, "max_overflow": 5, "pool_recycle": 300}
 
 
-def describe_database(url: str) -> str:
-    """Human-readable target without the password, for logs and errors."""
-    return make_url(url).render_as_string(hide_password=True)
-
-
 engine = create_engine(database_url(), **engine_options(database_url()))
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 

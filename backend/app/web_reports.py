@@ -118,23 +118,15 @@ async def create_report(
     if transcript is None:
         transcript = text.strip()
 
-    try:
-        result = await run_in_threadpool(
-            ingest.process_report,
-            patient_id=patient_id,
-            sender_id=person_id,
-            transcript=transcript,
-            audio_ref=None,
-            message_id=message_id,
-            segments=segments,
-        )
-    except ingest.ProcessingUnavailable:
-        log.error("Web report %s: process_report is not available yet", message_id)
-        return error_response(
-            503,
-            "processing_unavailable",
-            "No pudimos registrar el reporte: el análisis todavía no está disponible. Probá de nuevo más tarde.",
-        )
+    result = await run_in_threadpool(
+        ingest.process_report,
+        patient_id=patient_id,
+        sender_id=person_id,
+        transcript=transcript,
+        audio_ref=None,
+        message_id=message_id,
+        segments=segments,
+    )
     report_id = (result.get("report") or {}).get("id") if isinstance(result, dict) else None
     if isinstance(result, dict) and result.get("red_flag") and report_id:
         # Runs after the response is sent; dispatch is idempotent, so repeats are harmless.
