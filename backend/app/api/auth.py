@@ -235,6 +235,9 @@ def verify(body: VerifyIn, response: Response, db: Session = Depends(get_db)) ->
         db.flush()
         # Starting role (CIA-48): admin pre-registration, else a pending invite, else patient.
         roles.on_signup(db, person)
+    else:
+        # An existing account left with no role at all is a patient too.
+        roles.ensure_default_role(db, person)
     row.used_at = utcnow()
     token = secrets.token_urlsafe(32)
     db.add(AuthSession(token_hash=hash_token(token), person_id=person.id,

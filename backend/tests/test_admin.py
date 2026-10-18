@@ -93,6 +93,31 @@ def test_signup_with_pending_invite_gets_no_profile_and_accepts_as_family(db, si
     assert c.post(f"/me/invites/{inv['id']}/accept").json()["role"] == "family"
 
 
+def test_person_with_no_role_becomes_patient_on_my_patients(db):
+    db.add(Person(id="old", phone=NEW, display_name="Vieja (ficticia)"))
+    db.commit()
+    [p] = client.get("/me/patients", headers=h("old")).json()["patients"]
+    assert p["role"] == "patient" and p["display_name"] == "Vieja (ficticia)"
+    assert client.get("/me/patients", headers=h("old")).json()["patients"] == [p]  # only once
+    assert db.scalar(select(RoleChange).where(RoleChange.action == "default_patient_applied")).person_id == "old"
+
+
+def test_person_with_no_role_becomes_patient_on_login(db, signup):
+    db.add(Person(id="old", phone=NEW, display_name="Vieja (ficticia)"))
+    db.commit()
+    _, verified = signup()  # existing phone: the code logs in
+    assert [m["role"] for m in verified["memberships"]] == ["patient"]
+
+
+def test_no_default_patient_for_admin_caregiver_or_pending_invite(db):
+    db.add(Person(id="cg2", phone="+15550100031", display_name="Cuidadora (ficticia)", is_caregiver=True))
+    db.add(Person(id="inv", phone=NEW, display_name="Invitada (ficticia)"))
+    db.commit()
+    client.post("/patients/pat_a/invites", json={"contact": NEW}, headers=h("cg"))
+    for pid in ("adm", "cg2", "inv"):
+        assert client.get("/me/patients", headers=h(pid)).json()["patients"] == []
+
+
 @pytest.mark.parametrize("role, patient, expected", [
     ("caregiver", "pat_a", [("pat_a", "caregiver")]),
     ("doctor", "pat_b", [("pat_b", "doctor")]),

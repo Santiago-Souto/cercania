@@ -113,7 +113,7 @@ One web app, same data, a view per role. Roles are per patient (`patient_access`
 | Admin (global, not per patient) | Only lists people and assigns roles (including pre-registering a phone that has not signed up). **No access to reports, alerts, care plans or messages.** Set by hand in the database, from an `admin` pre-registration, or by another admin on an existing person, always after a confirmation (decided Oct 18, CIA-48) |
 
 **Who gets which role (decided Oct 18, CIA-48), in code in `backend/app/roles.py`:**
-- **Self sign-up is always patient:** a new person with no admin pre-registration and no pending invite gets their own patient profile and the `patient` role.
+- **Self sign-up is always patient:** a new person with no admin pre-registration and no pending invite gets their own patient profile and the `patient` role. The same default applies to an existing person left with no role at all (older account, declined invite, memberships removed) on login or when opening My patients (`roles.ensure_default_role`).
 - **Caregivers invite family or patients.** Family is always tied to one of the caregiver's patients. A patient invite is either that patient's own login, or, without a patient, a new profile created when the person accepts, with the inviting caregiver as its caregiver.
 - **Every other role is assigned by an admin**, to registered people or by pre-registering a phone (caregivers and admins may be pre-registered without a patient). Replacing something that exists needs the admin's explicit confirmation (`409` first).
 - **Only caregivers create patients** (they become the patient's caregiver).
