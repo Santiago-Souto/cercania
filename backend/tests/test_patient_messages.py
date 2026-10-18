@@ -282,3 +282,14 @@ def test_whatsapp_sends_when_enabled(factory, monkeypatch):
     notify.send_patient_message_whatsapp("pm_2", session_factory=factory, whatsapp_sender=Sender())
     assert len(sent) == len(TEAM)
     assert all(text.startswith("Pedido de ayuda: Rosa (ficticia)") for _, text in sent)
+
+
+def test_overlapping_polls_never_fail_on_seen(db, factory):
+    """Two polls that both saw the message as unseen insert the same pair; the second is skipped."""
+    with factory() as s:
+        s.add(PatientMessage(id="pm_9", patient_id="pat_x", sender_id="ptl", kind="help"))
+        s.commit()
+    patient_messages.mark_seen(db, ["pm_9"], "doc")
+    patient_messages.mark_seen(db, ["pm_9"], "doc")  # a plain insert would violate the unique pair here
+    with factory() as s:
+        assert [x.person_id for x in s.get(PatientMessage, "pm_9").seen] == ["doc"]

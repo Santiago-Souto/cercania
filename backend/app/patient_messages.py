@@ -17,6 +17,7 @@ import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from sqlalchemy import select
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
@@ -32,6 +33,7 @@ from app.models import (
     Role,
     can,
     role_for,
+    utcnow,
 )
 from app.transcribe import TranscriptionError, transcribe
 from app.web_reports import AUDIO_TYPES, MAX_AUDIO_BYTES
@@ -139,6 +141,18 @@ async def create_patient_message(
             "red_flag": message.red_flag, "message_for_patient": reply}
 
 
+def mark_seen(db: Session, message_ids: list[str], person_id: str) -> None:
+    """Record that `person_id` saw these messages. Race-safe: the web polls every few seconds,
+    so two overlapping requests may insert the same pair; the duplicate is skipped, never a 500."""
+    if not message_ids:
+        return
+    dialect = postgresql if db.get_bind().dialect.name == "postgresql" else sqlite
+    rows = [{"patient_message_id": m, "person_id": person_id, "seen_at": utcnow()} for m in message_ids]
+    db.execute(dialect.insert(PatientMessageSeen).values(rows)
+               .on_conflict_do_nothing(index_elements=["patient_message_id", "person_id"]))
+    db.commit()
+
+
 @router.get("/patients/{patient_id}/patient-messages")
 def list_patient_messages(
     limit: int = Query(50, ge=1, le=100),
@@ -154,12 +168,9 @@ def list_patient_messages(
     ).all()
     if ctx.role is not Role.patient:
         new = [m for m in messages if all(s.person_id != ctx.person_id for s in m.seen)]
+        mark_seen(db, [m.id for m in new], ctx.person_id)
         for m in new:
-            db.add(PatientMessageSeen(patient_message_id=m.id, person_id=ctx.person_id))
-        if new:
-            db.commit()
-            for m in new:
-                db.refresh(m)
+            db.refresh(m)
     return {"messages": [
         {"id": m.id, "kind": m.kind.value, "text": m.text, "red_flag": m.red_flag, "created_at": m.created_at,
          "seen_by": [{"user_id": s.person_id, "name": s.person.display_name if s.person else ""} for s in m.seen]}
