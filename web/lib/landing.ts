@@ -13,7 +13,9 @@ export function safeNext(next: string | null | undefined): string | undefined {
 }
 
 /** Where to go after login: a lone patient-role membership opens the patient view, everyone else My patients. */
-export function landingFor(memberships: Membership[], next?: string): Route {
+export function landingFor(memberships: Membership[], next?: string, isAdmin = false): Route {
+  // An admin with no patients of their own has one screen: the people list (CIA-48).
+  if (isAdmin && memberships.length === 0) return (next ?? "/admin") as Route;
   if (memberships.length === 1 && memberships[0].role === "patient") {
     return `/patients/${memberships[0].patient_id}/me` as Route;
   }

@@ -89,7 +89,7 @@ Appetite, sleep, urination/diuresis, medication, mood, mobility, pain, incidents
 
 ## 5. Data model (design rules)
 
-Schema lives in `backend/app/models.py`. Entities: `person` (anyone who logs in; name, email, phone number = identity; "user" in the contract), `patient_access` (person + patient + role; "membership" in the contract, see section 6), `invite` (pending membership by phone number), `login_code` (hashed 6-digit code sent by SMS, expiry, attempts, used flag), `auth_session` (hashed web session token), `patient` (optionally a registered health provider contact: name + phone, shown as contact information only), `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient). `message_read` records who opened the thread after each message.
+Schema lives in `backend/app/models.py`. Entities: `person` (anyone who logs in; name, email, phone number = identity; "user" in the contract), `patient_access` (person + patient + role; "membership" in the contract, see section 6), `invite` (pending membership by phone number), `login_code` (hashed 6-digit code sent by SMS, expiry, attempts, used flag), `auth_session` (hashed web session token), `patient` (optionally a registered health provider contact: name + phone, shown as contact information only), `care_plan` (versioned; indications, allergies) + `medication` (schedule and dose text), `report`, `report_version`, `report_item`, `alert`, `file`, `patient_message` (how the patient feels, or a help request), `message` (family <-> health team thread per patient), `pre_registration` (a role an admin assigned to a phone that has not signed up yet) and `role_change` (audit log of every role an admin assigned or a sign-up applied). `person.is_admin` marks a global admin (CIA-48). `message_read` records who opened the thread after each message.
 
 Rules:
 - Structured data in Postgres; binaries (audio, images, documents) in object storage. `file` stores only the storage path and metadata.
@@ -110,12 +110,19 @@ One web app, same data, a view per role. Roles are per patient (`patient_access`
 | Health team (doctor, nurse, hospital/institution) | See assigned patients, reports, alerts and query; reply to family messages. The **doctor** is the only role that edits the care plan after creation (each edit = new plan version) |
 | Family | Read-only summary and alerts; message the health team |
 | Patient | Only two actions: tell how they feel (audio or text) and press "I need help". **No access to reports or alerts about them.** |
+| Admin (global, not per patient) | Only lists people and assigns roles (including pre-registering a phone that has not signed up). **No access to reports, alerts, care plans or messages.** Set by hand in the database or from an `admin` pre-registration; an existing person is never made admin from the app (decided Oct 18, CIA-48) |
+
+**Who gets which role (decided Oct 18, CIA-48), in code in `backend/app/roles.py`:**
+- **Self sign-up is always patient:** a new person with no admin pre-registration and no pending invite gets their own patient profile and the `patient` role.
+- **Family comes from a caregiver's invite**, tied to one of the caregiver's patients. Invites are family only.
+- **Every other role is assigned by an admin**, to registered people or by pre-registering a phone (caregivers and admins may be pre-registered without a patient). Replacing something that exists needs the admin's explicit confirmation (`409` first).
+- **Only caregivers create patients** (they become the patient's caregiver).
 
 Any role can raise an emergency (a caregiver in a report, the patient in the patient view; section 4.1); only caregivers send shift reports. Raising an emergency gives the sender no extra read access.
 
 The patient is the subject of the profile; optionally they also have their own login with the `patient` role. Dose text is written by people (caregiver at creation, doctor afterwards); code never computes or suggests doses.
 
-Auth: sign up with name, email and phone number -> a **6-digit code by SMS** (Twilio; decided Oct 18, CIA-43) -> code entered on the web -> session cookie. Codes are single-use, expire in 10 minutes, are stored hashed, lock after 5 wrong tries and are rate-limited per number. No passwords. The phone number is the person's identity; invites are matched on it. Invited users see the invite in the web app (matched on the phone their session proved) and get its role only when they accept it. Only caregivers can invite, by phone number only (email is not verified, so it never grants access). A caregiver may invite with any of the six roles, including `doctor` (decided Oct 18, CIA-34): the caregiver sets up the team, so the app trusts them on who the doctor is and does not verify it. Email is contact info, not identity, and need not be unique. Login and sign-up never reveal whether a phone is registered. Corrections and reports take the author from the session, never from the request body.
+Auth: sign up with name, email and phone number -> a **6-digit code by SMS** (Twilio; decided Oct 18, CIA-43) -> code entered on the web -> session cookie. Codes are single-use, expire in 10 minutes, are stored hashed, lock after 5 wrong tries and are rate-limited per number. No passwords. The phone number is the person's identity; invites are matched on it. Invited users see the invite in the web app (matched on the phone their session proved) and get its role only when they accept it. Only caregivers can invite, by phone number only (email is not verified, so it never grants access), and **only as family** (decided Oct 18, CIA-48; replaces the CIA-34 rule that allowed any role): the health team and other caregivers are assigned by an admin. Email is contact info, not identity, and need not be unique. Login and sign-up never reveal whether a phone is registered. Corrections and reports take the author from the session, never from the request body.
 
 ## 7. Safety rules (non-negotiable)
 
@@ -153,12 +160,13 @@ backend/app/
   web_reports.py   POST /patients/{id}/reports (text/audio)  [infra/input owner]
   patient_messages.py  POST/GET /patients/{id}/patient-messages (help, feeling) [infra/input owner]
   ingest.py        single hand-off from channels to process_report [infra/input owner]
+  roles.py         who gets which role: sign-up rule, pre-registration, caregiver check [shared]
   storage.py       voice notes in Supabase Storage, signed URLs [infra/input owner]
   deps.py          DB session + current person dependencies  [shared]
   errors.py        {error: {code, message}} shape and handlers [shared]
   schemas.py       Pydantic models for every endpoint (mirror contract) [shared]
   serializers.py   ORM -> contract dicts, one place          [shared]
-  api/             web routes, one module per area: auth, patients, reports, corrections, me, notifications, query, messages [shared]
+  api/             web routes, one module per area: auth, admin, patients, reports, corrections, me, notifications, query, messages [shared]
   process.py       process_report: triage + extraction -> compare -> store [brain owner]
   notify.py        emergency notifications: web inbox [shared]
   llm.py           one JSON-schema call, any vendor          [brain owner]
@@ -193,7 +201,7 @@ Endpoints (initial): `GET /patients/:id`, `GET /patients/:id/reports`, `POST /pa
 
 ## 10. Out of scope (do not build)
 
-Health-system / clinical-record integration, any push channel outside the web app (decided Oct 18, CIA-47; alerts, help requests and emergency notifications go to the in-app web inbox, polled every ~5 s, plus the browser Notification API while the tab is open), passwords / OAuth / SSO, voice replies from the agent (text confirmation first; audio reply only if time remains Sunday), roles beyond the six in section 6 (caregiver, family, patient, doctor, nurse, institution), AI answers inside family <-> health team messages.
+Health-system / clinical-record integration, any push channel outside the web app (decided Oct 18, CIA-47; alerts, help requests and emergency notifications go to the in-app web inbox, polled every ~5 s, plus the browser Notification API while the tab is open), passwords / OAuth / SSO, voice replies from the agent (text confirmation first; audio reply only if time remains Sunday), per-patient roles beyond the six in section 6 (caregiver, family, patient, doctor, nurse, institution; the global admin of CIA-48 assigns them and is not one of them), organizations or multi-tenant admins, AI answers inside family <-> health team messages.
 
 **Priority order (scope was widened on Sat 13:45; the critical path still comes first):**
 1. Critical path: voice note or web report in -> verified record + alerts -> cited query, and the views that show it.

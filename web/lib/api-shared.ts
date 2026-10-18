@@ -17,6 +17,8 @@ export class ApiError extends Error {
     public code: string,
     message: string,
     public status: number,
+    /** Extra error data, e.g. `current` on an admin 409 overwrite warning (CIA-48). */
+    public current?: unknown,
   ) {
     super(message);
   }
@@ -31,6 +33,7 @@ export async function errorFrom(res: Response): Promise<ApiError> {
     body?.error?.code ?? "unknown",
     body?.error?.message ?? "No pudimos conectar con el servidor. Probá de nuevo.",
     res.status,
+    body?.error?.current,
   );
 }
 

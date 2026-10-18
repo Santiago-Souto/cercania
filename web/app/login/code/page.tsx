@@ -64,7 +64,7 @@ export default function CodePage() {
       const res = await verifyCode(pending.phone, value);
       clearPending();
       // Full load: server components and the notification poller start fresh with the new cookie.
-      window.location.assign(landingFor(res.memberships, pending.next));
+      window.location.assign(landingFor(res.memberships, pending.next, res.is_admin));
     } catch (err) {
       setCode("");
       if (isDeadCode(err)) setDead(authErrorMessage(err));

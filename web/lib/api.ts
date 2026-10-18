@@ -7,6 +7,9 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { API_URL, ApiError, errorFrom, SESSION_COOKIE } from "./api-shared";
 import type {
+  AdminPeople,
+  AdminPerson,
+  AdminRole,
   Invite,
   Me,
   Member,
@@ -140,4 +143,33 @@ export async function getSession(): Promise<Me | null> {
   } catch {
     return null;
   }
+}
+
+// --- Admin (CIA-48) ---
+
+export async function getAdminPeople(): Promise<AdminPeople> {
+  await connection();
+  return request<AdminPeople>(`/admin/people`);
+}
+
+export async function adminSetMembership(personId: string, patientId: string, role: Role, confirm: boolean): Promise<AdminPerson> {
+  return request<AdminPerson>(`/admin/people/${personId}/memberships/${patientId}`, {
+    method: "PUT",
+    body: JSON.stringify({ role, confirm_overwrite: confirm }),
+  });
+}
+
+export async function adminRemoveMembership(personId: string, patientId: string): Promise<AdminPerson> {
+  return request<AdminPerson>(`/admin/people/${personId}/memberships/${patientId}`, { method: "DELETE" });
+}
+
+export async function adminPreRegister(phone: string, role: AdminRole, patientId: string | null, confirm: boolean): Promise<unknown> {
+  return request(`/admin/pre-registrations`, {
+    method: "POST",
+    body: JSON.stringify({ phone, role, patient_id: patientId, confirm_overwrite: confirm }),
+  });
+}
+
+export async function adminDeletePreRegistration(id: string): Promise<unknown> {
+  return request(`/admin/pre-registrations/${id}`, { method: "DELETE" });
 }
