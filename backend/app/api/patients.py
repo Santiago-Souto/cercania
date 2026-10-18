@@ -1,5 +1,5 @@
 """Patient routes: reads (GET /patients/{id}, /reports, /alerts) and the team
-(POST /patients, GET /patients/{id}/members, POST /patients/{id}/invites).
+(POST /patients, PATCH /patients/{id}/emergency-contact, GET /patients/{id}/members, POST /patients/{id}/invites).
 
 See docs/contract.md. Permissions via `patient_access`.
 """
@@ -7,8 +7,8 @@ See docs/contract.md. Permissions via `patient_access`.
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Query, Response
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Request, Query, Response
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
@@ -112,6 +112,14 @@ def list_alerts(
     return {"alerts": [serialize_alert(a) for a in db.scalars(stmt)]}
 
 
+def _emergency_phone(raw: str) -> str:
+    """Same normalization as other phones; a bad number is a 422 here (it is a body field)."""
+    try:
+        return normalize_phone(raw)
+    except HTTPException as exc:
+        raise api_error(422, "phone_invalid", exc.detail["message"]) from exc
+
+
 @router.post("/patients", response_model=schemas.Patient, status_code=201)
 def create_patient(
     body: schemas.PatientCreate,
@@ -129,6 +137,9 @@ def create_patient(
     if not roles.is_caregiver(db, person):
         raise api_error(403, "forbidden", "Solo las personas cuidadoras pueden agregar pacientes.")
     patient = Patient(display_name=body.display_name, location=body.location or None)
+    if body.emergency_contact is not None:
+        patient.health_provider_name = body.emergency_contact.name
+        patient.health_provider_phone = _emergency_phone(body.emergency_contact.phone)
     db.add(patient)
     db.flush()
     plan = CarePlan(patient_id=patient.id, version=1, created_by=person_id,
@@ -140,6 +151,30 @@ def create_patient(
     db.add(PatientAccess(person_id=person_id, patient_id=patient.id, role=Role.caregiver))
     db.commit()
     return serialize_patient(db, patient)
+
+
+@router.patch("/patients/{patient_id}/emergency-contact", response_model=schemas.Patient)
+async def set_emergency_contact(
+    request: Request,
+    ctx: PatientContext = Depends(patient_access(Permission.edit_emergency_contact)),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Set or clear (`null`) the number the app offers to call on an emergency. Only stored:
+    the server never calls or texts it (AGENTS.md 4.2). The body is read by hand because
+    FastAPI treats a JSON `null` body as missing."""
+    try:
+        raw = await request.json()
+        body = None if raw is None else schemas.EmergencyContactIn.model_validate(raw)
+    except (ValueError, ValidationError) as exc:
+        raise api_error(422, "invalid_request", "Revisá los datos enviados.") from exc
+    if body is None:
+        ctx.patient.health_provider_name = None
+        ctx.patient.health_provider_phone = None
+    else:
+        ctx.patient.health_provider_phone = _emergency_phone(body.phone)
+        ctx.patient.health_provider_name = body.name
+    db.commit()
+    return serialize_patient(db, ctx.patient)
 
 
 @router.get("/patients/{patient_id}/members", response_model=schemas.Members)

@@ -13,7 +13,7 @@ export default async function NewReportPage(props: PageProps<"/patients/[id]/rep
   return (
     <AppShell>
       <TopBar back={`/patients/${id}`} title="Nuevo reporte" subtitle={`${patient.display_name} · fin de turno`} />
-      <ReportComposer patientId={id}>
+      <ReportComposer patientId={id} emergencyContact={patient.emergency_contact}>
         <Alert className="rounded-xl border-0 bg-secondary p-3.5 text-primary">
           <MessageCircleIcon />
           <AlertDescription className="text-sm text-primary">

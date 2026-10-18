@@ -15,7 +15,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegen
 import { Input } from "@/components/ui/input";
 import { Item, ItemActions, ItemContent } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
-import { MAX_TEXT, parseTimes } from "@/lib/team";
+import { checkPhone, MAX_TEXT, parseTimes } from "@/lib/team";
 import type { NewPatient, Role } from "@/lib/types";
 import { createPatientAction, type CreatePatientResult } from "../actions";
 
@@ -27,12 +27,21 @@ let nextKey = 1;
 const key = () => nextKey++;
 
 /** Builds the POST /patients body, or the errors to show next to each field. */
-function validate(name: string, location: string, meds: MedRow[], indications: TextRow[], allergies: TextRow[]): { body: NewPatient } | { errors: Errors } {
+function validate(name: string, location: string, ecName: string, ecPhone: string, meds: MedRow[], indications: TextRow[], allergies: TextRow[]): { body: NewPatient } | { errors: Errors } {
   const errors: Errors = {};
   const tooLong = `Hasta ${MAX_TEXT} caracteres.`;
   if (!name.trim()) errors.name = "Escribí el nombre del paciente.";
   else if (name.trim().length > MAX_TEXT) errors.name = tooLong;
   if (location.trim().length > MAX_TEXT) errors.location = tooLong;
+
+  let emergency_contact: NewPatient["emergency_contact"] = null;
+  if (ecName.trim() || ecPhone.trim()) {
+    if (!ecName.trim()) errors.ecName = "Escribí a quién corresponde el número.";
+    else if (ecName.trim().length > MAX_TEXT) errors.ecName = tooLong;
+    const p = checkPhone(ecPhone);
+    if ("error" in p) errors.ecPhone = p.error;
+    else if (!errors.ecName) emergency_contact = { name: ecName.trim(), phone: p.phone };
+  }
 
   const medications: NewPatient["care_plan"]["medications"] = [];
   for (const m of meds) {
@@ -58,6 +67,7 @@ function validate(name: string, location: string, meds: MedRow[], indications: T
   const body: NewPatient = {
     display_name: name.trim(),
     location: location.trim() || null,
+    emergency_contact,
     care_plan: { medications, indications: lines(indications, "ind"), allergies: lines(allergies, "all") },
   };
   return Object.keys(errors).length ? { errors } : { body };
@@ -66,6 +76,8 @@ function validate(name: string, location: string, meds: MedRow[], indications: T
 export function NewPatientForm() {
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
+  const [ecName, setEcName] = useState("");
+  const [ecPhone, setEcPhone] = useState("");
   const [meds, setMeds] = useState<MedRow[]>([]);
   const [indications, setIndications] = useState<TextRow[]>([]);
   const [allergies, setAllergies] = useState<TextRow[]>([]);
@@ -89,7 +101,7 @@ export function NewPatientForm() {
     e.preventDefault();
     if (saved) return;
     setFormError(null);
-    const v = validate(name, location, meds, indications, allergies);
+    const v = validate(name, location, ecName, ecPhone, meds, indications, allergies);
     if ("errors" in v) {
       setErrors(v.errors);
       setFormError("Revisá los campos marcados.");
@@ -178,6 +190,44 @@ export function NewPatientForm() {
               />
               <FieldError>{errors.location}</FieldError>
             </Field>
+            <FieldSet>
+              <FieldLegend variant="label">Número de emergencia (opcional)</FieldLegend>
+              <FieldDescription>Es el número que la app ofrece llamar si hay una emergencia. Sin número, ofrece el 911.</FieldDescription>
+              <Field {...fieldProps("ecName")}>
+                <FieldLabel htmlFor="ecname">Nombre</FieldLabel>
+                <Input
+                  id="ecname"
+                  placeholder="Emergencias Residencia"
+                  className="h-12 text-base"
+                  autoComplete="off"
+                  value={ecName}
+                  {...inputProps("ecName")}
+                  onChange={(e) => {
+                    setEcName(e.target.value);
+                    clear("ecName");
+                  }}
+                />
+                <FieldError>{errors.ecName}</FieldError>
+              </Field>
+              <Field {...fieldProps("ecPhone")}>
+                <FieldLabel htmlFor="ecphone">Teléfono</FieldLabel>
+                <Input
+                  id="ecphone"
+                  type="tel"
+                  inputMode="tel"
+                  placeholder="+598 99 123 456"
+                  className="h-12 text-base"
+                  autoComplete="off"
+                  value={ecPhone}
+                  {...inputProps("ecPhone")}
+                  onChange={(e) => {
+                    setEcPhone(e.target.value);
+                    clear("ecPhone");
+                  }}
+                />
+                <FieldError>{errors.ecPhone}</FieldError>
+              </Field>
+            </FieldSet>
           </FieldGroup>
         </CardContent>
       </Card>

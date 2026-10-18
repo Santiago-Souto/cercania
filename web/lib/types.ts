@@ -20,10 +20,13 @@ export type CarePlan = {
   allergies: string[];
 };
 
+export type EmergencyContact = { name: string; phone: string };
+
 export type Patient = {
   id: string;
   display_name: string;
   location?: string;
+  emergency_contact: EmergencyContact | null;
   care_plan: CarePlan;
 };
 
@@ -172,6 +175,7 @@ export type Invite = { id: string; contact: string; role: Role; status: "pending
 export type NewPatient = {
   display_name: string;
   location: string | null;
+  emergency_contact?: EmergencyContact | null;
   care_plan: { medications: Omit<Medication, "id">[]; indications: string[]; allergies: string[] };
 };
 

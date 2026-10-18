@@ -137,8 +137,11 @@ def serialize_patient(session: Session, patient: Patient) -> dict:
             "indications": list(plan.indications or []),
             "allergies": list(plan.allergies or []),
         }
+    contact = None
+    if patient.health_provider_name and patient.health_provider_phone:
+        contact = {"name": patient.health_provider_name, "phone": patient.health_provider_phone}
     return {"id": patient.id, "display_name": patient.display_name, "location": patient.location,
-            "care_plan": care_plan}
+            "emergency_contact": contact, "care_plan": care_plan}
 
 
 def serialize_invite(invite: Invite) -> dict:

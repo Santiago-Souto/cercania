@@ -16,6 +16,7 @@ import type {
   Membership,
   Message,
   MyInvite,
+  EmergencyContact,
   MyPatient,
   NewPatient,
   Patient,
@@ -99,6 +100,10 @@ export async function createPatient(body: NewPatient): Promise<Patient> {
   return request<Patient>(`/patients`, { method: "POST", body: JSON.stringify(body) });
 }
 
+export async function setEmergencyContact(patientId: string, contact: EmergencyContact | null): Promise<Patient> {
+  return request<Patient>(`/patients/${patientId}/emergency-contact`, { method: "PATCH", body: JSON.stringify(contact) });
+}
+
 /** POST /invites (CIA-48): a caregiver invites a patient who has no profile yet. */
 export async function invitePatientWithoutProfile(contact: string): Promise<Invite> {
   return request<Invite>(`/invites`, { method: "POST", body: JSON.stringify({ contact, role: "patient" }) });
@@ -136,6 +141,11 @@ export async function getMessages(patientId: string): Promise<Message[]> {
   await connection(); // patient data is always live: render at request time
   const data = await request<{ messages: Message[] }>(`/patients/${patientId}/messages`);
   return data.messages;
+}
+
+export async function getMe(): Promise<Me> {
+  await connection(); // the logged-in person is per request
+  return request<Me>(`/me`);
 }
 
 /** The logged-in person, or null when this device has no valid session. Never redirects, so the login
