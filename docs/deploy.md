@@ -12,7 +12,8 @@ Both services deploy from `main` through the Render Blueprint in `render.yaml`. 
 
 ## Current state
 
-- **The web shows fictional fake data** (`NEXT_PUBLIC_USE_FAKE_DATA=1`, with a "Datos de prueba ficticios" banner) until the API has read endpoints (CIA-14). To switch, set it to `0` in Render and redeploy the web. `NEXT_PUBLIC_*` values are fixed at build time, so changing them in Render does nothing without a redeploy.
+- **The web reads the real API** with a real login (6-digit SMS code, CIA-32 / CIA-14). There is no fake data anymore. The browser calls `/api/*` on the web, which Next.js rewrites to `NEXT_PUBLIC_API_URL`, so the session cookie is first-party on the web origin. `NEXT_PUBLIC_*` values and the rewrite are fixed at build time: change them, then redeploy the web.
+- `NEXT_PUBLIC_USE_FAKE_DATA` and `NEXT_PUBLIC_DEV_PERSON_ID` are no longer read: delete them from the web service. Unset `ALLOW_DEV_IDENTITY_HEADER` on the API (the web never sends `X-Person-Id` now).
 - **Free plan: both services sleep** after ~15 minutes idle, and the first request then takes about a minute. Open both URLs a minute before a demo.
 
 ## Environment variables
@@ -21,11 +22,12 @@ Secrets live only in Render (service -> Environment). Never commit them. The ful
 
 | Service | Variables |
 |---|---|
-| API | `DATABASE_URL` (Supabase session pooler), `GROQ_API_KEY` (transcription, extraction, triage and cited query), optional `ANTHROPIC_API_KEY`, `EXTRACT_MODEL` / `TRIAGE_MODEL` / `QUERY_MODEL` / `LLM_BASE_URL` / `LLM_API_KEY` to switch LLM vendor, `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` / `SUPABASE_BUCKET` (voice notes; private bucket `media`, service key backend only: legacy `service_role` JWT or new `sb_secret_` key), `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `PUBLIC_BASE_URL` (= the API URL), `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` (login code by SMS), `TWILIO_TRIAL_TEMPLATE=sms_2fa` while the Twilio account is a trial (simulated security, see README), `WEB_ORIGINS` (= the web URL; the session cookie needs it), `ALLOW_DEV_IDENTITY_HEADER` (simulated identity; `1` only with fictional data) |
-| Web | `NEXT_PUBLIC_API_URL` (= the API URL), `NEXT_PUBLIC_USE_FAKE_DATA`, `NEXT_PUBLIC_DEV_PERSON_ID` (simulated identity sent as `X-Person-Id`; only with `ALLOW_DEV_IDENTITY_HEADER=1` and fictional data) |
+| API | `DATABASE_URL` (Supabase session pooler), `GROQ_API_KEY` (transcription, extraction, triage and cited query), optional `ANTHROPIC_API_KEY`, `EXTRACT_MODEL` / `TRIAGE_MODEL` / `QUERY_MODEL` / `LLM_BASE_URL` / `LLM_API_KEY` to switch LLM vendor, `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` / `SUPABASE_BUCKET` (voice notes; private bucket `media`, service key backend only: legacy `service_role` JWT or new `sb_secret_` key), `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `PUBLIC_BASE_URL` (= the API URL), `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` (login code by SMS), `TWILIO_TRIAL_TEMPLATE=sms_2fa` while the Twilio account is a trial (simulated security, see README), `WEB_ORIGINS` (= the web URL), `SESSION_COOKIE_SAMESITE=lax` (the cookie is first-party through the web's `/api` rewrite), `ALLOW_DEV_IDENTITY_HEADER` (backend dev fallback; leave unset in the deploy) |
+| Web | `NEXT_PUBLIC_API_URL` (= the API URL; used by server components and by the `/api/*` rewrite) |
 
 ## Troubleshooting
 
 - **The API answers 502 or takes a long time:** it is waking up. Wait about a minute and retry `/health`.
+- **Login works but every screen sends you back to `/login`:** the session cookie is not reaching the API. Check that the browser calls go to `/api/...` on the web host (not the API host) and that the web was redeployed after changing `NEXT_PUBLIC_API_URL`.
 - **The web shows "No pudimos conectar con el servidor":** check `NEXT_PUBLIC_API_URL` on the web service and that the API's `/health` responds.
 - **No WhatsApp messages arrive:** see the troubleshooting section in `docs/whatsapp-setup.md`.
