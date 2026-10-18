@@ -192,12 +192,12 @@ README.md          Functional / Simulated / Pending
 .agents/skills/    shared agent skills, tool-agnostic (.claude/skills is a symlink here)
 ```
 
-Contract first: the web owner builds against fake data from `docs/contract.md` and must not wait on the backend. Change the contract only by editing `docs/contract.md` in the same commit as the code.
+Contract first: `docs/contract.md` is the source of truth for endpoints and data shapes. Change the contract only by editing `docs/contract.md` in the same commit as the code.
 
 Core interface:
 `process_report(patient, caregiver, transcript, audio, message_id, segments) -> { record, missing_items, alerts }`
 
-Endpoints (initial): `GET /patients/:id`, `GET /patients/:id/reports`, `POST /patients/:id/query` (question -> answer + citations).
+Endpoints: see `docs/contract.md`.
 
 ## 10. Out of scope (do not build)
 
@@ -241,7 +241,7 @@ Rule: never tune the prompt against the same cases we will demo with and then ca
 | Time | Must exist |
 |---|---|
 | 12:30 | Contract, schema, seed data, hello-world deployed |
-| 14:00 | Voice note transcribing from the web app. Brain processes text. Web shows fake data. |
+| 14:00 | Voice note transcribing from the web app. Brain processes text. |
 | 17:00 | First end-to-end integration: audio -> record -> alert -> view. Most important checkpoint. |
 | 19:30 | Feature freeze. Bugs, eval cases, error handling, README only. |
 | 21:00 | Venue closes. Everything deployed. (No backup video: decided Oct 18, the live demo relies on its fallbacks.) |

@@ -13,18 +13,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import models, storage
+from app import models, process, storage
 from app.models import File, FileKind, Patient, Report, active_care_plan
 
 log = logging.getLogger(__name__)
-
-# Where Dev A's process_report is expected to live (CIA-7).
-PROCESS_REPORT_MODULE = "app.process"
-
-
-class ProcessingUnavailable(Exception):
-    """process_report is not merged yet. Never replaced by a fake result."""
-
 
 def vocabulary_for(session: Session, patient_id: str) -> list[str]:
     """Transcription hint: the patient's own words plus their medication names."""
@@ -49,12 +41,7 @@ def existing_report(session: Session, message_id: str) -> Report | None:
 def process_report(patient_id: str, sender_id: str, transcript: str, audio_ref: str | None, message_id: str,
                    segments: list[dict] | None = None) -> dict:
     """`segments`: timestamped transcript pieces from transcription; [] for typed reports."""
-    try:
-        module = __import__(PROCESS_REPORT_MODULE, fromlist=["process_report"])
-        brain = module.process_report
-    except (ImportError, AttributeError) as exc:
-        raise ProcessingUnavailable(str(exc)) from exc
-    return brain(
+    return process.process_report(
         patient_id=patient_id,
         sender_id=sender_id,
         transcript=transcript,

@@ -136,11 +136,6 @@ export async function getMessages(patientId: string): Promise<Message[]> {
   return data.messages;
 }
 
-export async function getMe(): Promise<Me> {
-  await connection(); // the logged-in person is per request
-  return request<Me>(`/me`);
-}
-
 /** The logged-in person, or null when this device has no valid session. Never redirects, so the login
  *  page can use it to skip the form; a backend that cannot be reached also counts as "no session". */
 export async function getSession(): Promise<Me | null> {
