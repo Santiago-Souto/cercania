@@ -214,6 +214,13 @@ class Person(TimestampMixin, Base):
     phone: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)  # E.164
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
     email: Mapped[str | None] = mapped_column(String(254))  # not unique, never grants access
+    # Global admin (CIA-48): lists people and assigns roles, nothing else. Set by hand in the
+    # database, from an admin pre-registration at sign-up, or by another admin (confirmed).
+    # Nullable so init_db can add it to an existing table; NULL = false.
+    is_admin: Mapped[bool | None] = mapped_column(default=False)
+    # Caregiver granted by an admin before any patient is assigned (pre-registered without a
+    # patient). Lets them create patients and keeps sign-up from making them a patient.
+    is_caregiver: Mapped[bool | None] = mapped_column(default=False)
 
     access: Mapped[list[PatientAccess]] = relationship(back_populates="person")
 
@@ -292,6 +299,40 @@ class AuthSession(TimestampMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class PreRegistration(TimestampMixin, Base):
+    """A role an admin assigned to a phone that has not signed up yet (CIA-48).
+
+    Nothing is sent. When that phone verifies its sign-up code, the role is applied and the
+    row is deleted (the role_change log keeps the history). `role` is a Role value or "admin";
+    `patient_id` is required for family/doctor/nurse/institution, optional for caregiver,
+    unused for admin and patient.
+    """
+
+    __tablename__ = "pre_registration"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("pre"))
+    phone: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)  # E.164
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    patient_id: Mapped[str | None] = mapped_column(ForeignKey("patient.id"))
+    created_by: Mapped[str] = mapped_column(ForeignKey("person.id"), nullable=False)
+
+
+class RoleChange(Base):
+    """Audit log of every role change made by an admin or applied at sign-up (CIA-48)."""
+
+    __tablename__ = "role_change"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    actor_id: Mapped[str | None] = mapped_column(ForeignKey("person.id"))  # the admin
+    action: Mapped[str] = mapped_column(String(40), nullable=False)
+    person_id: Mapped[str | None] = mapped_column(ForeignKey("person.id"))
+    phone: Mapped[str | None] = mapped_column(String(20))
+    patient_id: Mapped[str | None] = mapped_column(ForeignKey("patient.id"))
+    before: Mapped[dict | None] = mapped_column(JSONType)
+    after: Mapped[dict | None] = mapped_column(JSONType)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class InviteStatus(str, enum.Enum):
     pending = "pending"
     accepted = "accepted"
@@ -310,9 +351,11 @@ class Invite(TimestampMixin, Base):
     )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("inv"))
-    patient_id: Mapped[str] = mapped_column(ForeignKey("patient.id"), nullable=False)
+    # NULL only for a `patient` invite to someone without a profile yet (CIA-48): accepting it
+    # creates their patient profile and makes `invited_by` its caregiver.
+    patient_id: Mapped[str | None] = mapped_column(ForeignKey("patient.id"))
     phone: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # E.164
-    role: Mapped[Role] = mapped_column(enum_column(Role), nullable=False)
+    role: Mapped[Role] = mapped_column(enum_column(Role), nullable=False)  # family or patient (CIA-48)
     invited_by: Mapped[str | None] = mapped_column(ForeignKey("person.id"))
     status: Mapped[InviteStatus] = mapped_column(
         enum_column(InviteStatus), default=InviteStatus.pending, nullable=False

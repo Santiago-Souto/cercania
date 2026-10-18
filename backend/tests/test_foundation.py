@@ -149,7 +149,7 @@ def test_cors_preflight_allows_web_origin():
     r = TestClient(main_app).options(
         "/health",
         headers={"Origin": "http://localhost:3000", "Access-Control-Request-Method": "GET",
-                 "Access-Control-Request-Headers": "X-Person-Id"},
+                 "Access-Control-Request-Headers": "Content-Type"},  # X-Person-Id only with the dev fallback on
     )
     assert r.status_code == 200
     assert r.headers["access-control-allow-origin"] == "http://localhost:3000"

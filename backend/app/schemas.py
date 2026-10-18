@@ -185,6 +185,8 @@ class Me(BaseModel):
     display_name: str
     phone_last4: str
     memberships: list[Membership]
+    is_admin: bool = False
+    can_add_patients: bool = False  # caregivers only (CIA-48)
 
 
 class MyPatient(BaseModel):
@@ -273,9 +275,16 @@ class Members(BaseModel):
     invites: list[Invite]
 
 
+class CaregiverInviteCreate(BaseModel):
+    """POST /invites: `family` needs a patient; `patient` may go without one (a new profile)."""
+    contact: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=254)]
+    role: RoleName = "family"
+    patient_id: str | None = None
+
+
 class InviteCreate(BaseModel):
     contact: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=254)]
-    role: RoleName
+    role: RoleName = "family"  # family or patient (CIA-48); any other role is rejected
 
 
 class MessageSender(BaseModel):
@@ -306,8 +315,9 @@ class MessageRequest(BaseModel):
 
 class MyInvite(BaseModel):
     id: str
-    patient_id: str
-    patient_display_name: str
+    # null for a `patient` invite without a profile yet: accepting creates it (CIA-48)
+    patient_id: str | None = None
+    patient_display_name: str | None = None
     role: RoleName
     invited_by: str | None = None
     created_at: datetime
@@ -319,3 +329,29 @@ class MyInvites(BaseModel):
 
 class InviteDeclined(BaseModel):
     status: Literal["declined"]
+
+
+# --- Admin (CIA-48) -------------------------------------------------------------------------
+
+PreRegistrationRole = Literal["caregiver", "family", "patient", "doctor", "nurse", "institution", "admin"]
+
+
+class AdminMembershipIn(BaseModel):
+    role: RoleName
+    confirm_overwrite: bool = False
+
+
+class PreRegistrationIn(BaseModel):
+    phone: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
+    role: PreRegistrationRole
+    patient_id: str | None = None
+    confirm_overwrite: bool = False
+
+
+class MakeAdminIn(BaseModel):
+    confirm_overwrite: bool = False
+
+
+class PreRegistrationPatch(BaseModel):
+    role: PreRegistrationRole
+    patient_id: str | None = None

@@ -55,7 +55,9 @@ PEOPLE = [
     ("doc_001", "+15550100021", "Dra. Marta (ficticia)"),
     ("nur_001", "+15550100022", "Enf. Nadia (ficticia)"),
     ("ptl_002", "+15550100031", "Jorge (ficticio)"),  # Jorge's own login
+    ("adm_001", "+15550100041", "Admin (ficticio)"),  # lists people and assigns roles only (CIA-48)
 ]
+ADMINS = {"adm_001"}
 
 PATIENTS = [
     {
@@ -307,7 +309,8 @@ def seed() -> None:
 
         for pid, phone, name in PEOPLE:
             # Fictional address on a reserved domain.
-            s.add(Person(id=pid, phone=phone, display_name=name, email=f"{pid}@example.com"))
+            s.add(Person(id=pid, phone=phone, display_name=name, email=f"{pid}@example.com",
+                         is_admin=pid in ADMINS))
 
         for p in PATIENTS:
             provider_name, provider_phone = p.get("health_provider") or (None, None)

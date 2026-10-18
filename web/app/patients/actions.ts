@@ -4,7 +4,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { acceptInvite, ApiError, createInvite, createPatient, declineInvite, setEmergencyContact } from "@/lib/api";
+import { acceptInvite, ApiError, createInvite, createPatient, declineInvite, invitePatientWithoutProfile, setEmergencyContact } from "@/lib/api";
 import { checkPhone } from "@/lib/team";
 import type { EmergencyContact, NewPatient, Role } from "@/lib/types";
 
@@ -80,5 +80,18 @@ export async function answerInviteAction(inviteId: string, accept: boolean): Pro
     return { error: asError(e) };
   }
   revalidatePath("/patients");
+  return { ok: true };
+}
+
+/** POST /invites (CIA-48): invite a patient who has no profile yet; accepting creates it with the
+ * inviting caregiver as its caregiver. */
+export async function invitePatientAction(contact: string): Promise<{ error: ActionError } | { ok: true }> {
+  const checked = checkPhone(contact);
+  if ("error" in checked) return { error: { code: "phone_invalid", message: checked.error } };
+  try {
+    await invitePatientWithoutProfile(checked.phone);
+  } catch (e) {
+    return { error: asError(e) };
+  }
   return { ok: true };
 }

@@ -13,9 +13,9 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app import schemas
+from app import roles, schemas
 from app.api.auth import normalize_phone
-from app.deps import PatientContext, current_person_id, get_db, patient_access
+from app.deps import PatientContext, _authorize, current_person_id, get_db, patient_access
 from app.errors import api_error
 from app.models import (
     Alert,
@@ -128,11 +128,14 @@ def create_patient(
 ) -> dict:
     """The creator becomes the patient's caregiver and sets care plan v1.
 
-    Doses are stored as typed (AGENTS.md 7). Any signed-in person may add a patient:
-    a new caregiver has no memberships yet, so there is no per-patient permission to check.
+    Doses are stored as typed (AGENTS.md 7). Only caregivers add patients (CIA-48): a caregiver
+    membership on any patient, or a caregiver an admin registered before assigning patients.
     """
-    if db.get(Person, person_id) is None:
+    person = db.get(Person, person_id)
+    if person is None:
         raise api_error(401, "unauthenticated", "Iniciá sesión para continuar.")
+    if not roles.is_caregiver(db, person):
+        raise api_error(403, "forbidden", "Solo las personas cuidadoras pueden agregar pacientes.")
     patient = Patient(display_name=body.display_name, location=body.location or None)
     if body.emergency_contact is not None:
         patient.health_provider_name = body.emergency_contact.name
@@ -198,9 +201,62 @@ def list_members(
     return {"members": members, "invites": invites}
 
 
-def _pending_invite(db: Session, patient_id: str, phone: str) -> Invite | None:
-    return db.scalar(select(Invite).where(Invite.patient_id == patient_id, Invite.phone == phone,
-                                          Invite.status == InviteStatus.pending))
+def _pending_invite(db: Session, patient_id: str | None, phone: str, inviter_id: str | None = None) -> Invite | None:
+    stmt = select(Invite).where(Invite.phone == phone, Invite.status == InviteStatus.pending)
+    if patient_id is None:  # a new-patient invite: one pending per inviter and phone
+        stmt = stmt.where(Invite.patient_id.is_(None), Invite.invited_by == inviter_id)
+    else:
+        stmt = stmt.where(Invite.patient_id == patient_id)
+    return db.scalar(stmt)
+
+
+INVITE_ROLES = {Role.family.value, Role.patient.value}
+
+
+def _invite(db: Session, response: Response, inviter_id: str, patient_id: str | None, contact: str, role_name: str) -> dict:
+    """Family or patient invite (CIA-48). It becomes `patient_access` only when the person with
+    that phone accepts it in the app (api/me.py `accept_invite`). Re-inviting a pending number
+    updates its role instead of adding a second invite."""
+    if role_name not in INVITE_ROLES:
+        raise api_error(422, "invite_role", "Se invita como familiar o como paciente. Los demás roles los asigna una persona administradora.")
+    if "@" in contact:
+        raise api_error(400, "phone_invalid",
+                        "Invitá por número de celular, no por email: el email no se puede verificar.")
+    phone = normalize_phone(contact)
+    role = Role(role_name)
+    if patient_id is not None:
+        already = db.scalar(
+            select(PatientAccess.id)
+            .join(Person, PatientAccess.person_id == Person.id)
+            .where(PatientAccess.patient_id == patient_id, Person.phone == phone)
+        )
+        if already is not None:
+            raise api_error(409, "already_member", "Esa persona ya tiene acceso a este paciente.")
+        if role is Role.patient and roles.other_patient_login(db, patient_id, None):
+            raise api_error(409, "patient_has_login", roles.PATIENT_HAS_LOGIN)
+    elif roles.has_own_profile(db, db.scalar(select(Person).where(Person.phone == phone))):
+        # A profile-less patient invite is for someone with no profile yet: never a way into an
+        # existing person's profile (it would make the inviter their caregiver).
+        raise api_error(409, "profile_exists", roles.PROFILE_EXISTS)
+    invite = _pending_invite(db, patient_id, phone, inviter_id)
+    created = invite is None
+    if created:
+        invite = Invite(patient_id=patient_id, phone=phone, role=role, invited_by=inviter_id)
+        db.add(invite)
+        try:
+            db.commit()
+        except IntegrityError:
+            # A concurrent request inserted the pending invite first (uq_invite_pending): update that one.
+            db.rollback()
+            invite = _pending_invite(db, patient_id, phone, inviter_id)
+            if invite is None:
+                raise
+            created = False
+    if not created:
+        invite.role = role
+        db.commit()
+        response.status_code = 200
+    return serialize_invite(invite)
 
 
 @router.post("/patients/{patient_id}/invites", response_model=schemas.Invite, status_code=201)
@@ -210,37 +266,27 @@ def create_invite(
     ctx: PatientContext = Depends(patient_access(Permission.invite)),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Pending membership for a phone number; it becomes `patient_access` only when the
-    person with that phone accepts it in the app (api/me.py `accept_invite`). Re-inviting a pending number updates
-    its role instead of adding a second invite."""
-    if "@" in body.contact:
-        raise api_error(400, "phone_invalid",
-                        "Invitá por número de celular, no por email: el email no se puede verificar.")
-    phone = normalize_phone(body.contact)
-    role = Role(body.role)
-    already = db.scalar(
-        select(PatientAccess.id)
-        .join(Person, PatientAccess.person_id == Person.id)
-        .where(PatientAccess.patient_id == ctx.patient.id, Person.phone == phone)
-    )
-    if already is not None:
-        raise api_error(409, "already_member", "Esa persona ya tiene acceso a este paciente.")
-    invite = _pending_invite(db, ctx.patient.id, phone)
-    created = invite is None
-    if created:
-        invite = Invite(patient_id=ctx.patient.id, phone=phone, role=role, invited_by=ctx.person_id)
-        db.add(invite)
-        try:
-            db.commit()
-        except IntegrityError:
-            # A concurrent request inserted the pending invite first (uq_invite_pending): update that one.
-            db.rollback()
-            invite = _pending_invite(db, ctx.patient.id, phone)
-            if invite is None:
-                raise
-            created = False
-    if not created:
-        invite.role = role
-        db.commit()
-        response.status_code = 200
-    return serialize_invite(invite)
+    """A caregiver invites someone to this patient: as family, or as the patient's own login."""
+    return _invite(db, response, ctx.person_id, ctx.patient.id, body.contact, body.role)
+
+
+@router.post("/invites", response_model=schemas.Invite, status_code=201)
+def create_caregiver_invite(
+    body: schemas.CaregiverInviteCreate,
+    response: Response,
+    person_id: str = Depends(current_person_id),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Same invite, with the patient chosen in the body. `family` needs a patient; `patient`
+    without one invites someone with no profile yet: accepting creates it, with the inviting
+    caregiver as its caregiver."""
+    person = db.get(Person, person_id)
+    if person is None:
+        raise api_error(401, "unauthenticated", "Iniciá sesión para continuar.")
+    if body.patient_id is not None:
+        _authorize(db, person_id, body.patient_id, Permission.invite)
+    elif body.role == Role.family.value:
+        raise api_error(422, "patient_required", "Para invitar a un familiar, elegí el paciente.")
+    elif not roles.is_caregiver(db, person):
+        raise api_error(403, "forbidden", "Solo las personas cuidadoras pueden invitar.")
+    return _invite(db, response, person_id, body.patient_id, body.contact, body.role)
